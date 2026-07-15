@@ -1,0 +1,7 @@
+node_modules/
+.plasmo/
+build/
+.env
+.env.*.local
+out/
+keys.json

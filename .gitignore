@@ -1,0 +1,21 @@
+# Python (backend)
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# Node / frontend (Plasmo)
+node_modules/
+.plasmo/
+build/
+out/
+keys.json
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
