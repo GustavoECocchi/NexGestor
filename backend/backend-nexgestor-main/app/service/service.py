@@ -1090,7 +1090,11 @@ async def analyze_campaign_async(data: AnalyzeInput) -> CampaignAnalysisResponse
         )
     except Exception:
         import logging
-        logging.getLogger(__name__).exception("IA falhou inesperadamente")
+        import traceback
+        from app.service.ai_service import _redact_key
+        logging.getLogger(__name__).error(
+            "IA falhou inesperadamente:\n%s", _redact_key(traceback.format_exc())
+        )
         ai_result = None
 
     # ── Converter resposta da IA em AIInsights (se veio) ──

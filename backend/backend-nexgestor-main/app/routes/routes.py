@@ -5,10 +5,12 @@ Todas as rotas ficam sob /api/v1/campaign (prefixo definido aqui + em main.py).
 A lógica de negócio fica em `service.py` — esta camada só roteia e trata erros.
 """
 import logging
+import traceback
 from fastapi import APIRouter, HTTPException
 
 from app.schema.schema import AnalyzeInput, CampaignAnalysisResponse
 from app.service.service import analyze_campaign_async
+from app.service.ai_service import _redact_key
 from app.enum.campaign import ScenarioCode
 
 logger = logging.getLogger(__name__)
@@ -39,9 +41,12 @@ async def analyze(data: AnalyzeInput) -> CampaignAnalysisResponse:
         # Erros de validação semântica do domínio.
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
-        # Bugs inesperados — logamos o stack completo e respondemos
-        # genericamente para não vazar detalhes internos ao cliente.
-        logger.exception("Erro interno em analyze_campaign")
+        # Bugs inesperados — logamos o stack completo (redigindo qualquer key
+        # que escape) e respondemos genericamente para não vazar detalhes
+        # internos ao cliente.
+        logger.error(
+            "Erro interno em analyze_campaign:\n%s", _redact_key(traceback.format_exc())
+        )
         raise HTTPException(
             status_code=500,
             detail="Erro interno ao processar análise. A equipe foi notificada.",
