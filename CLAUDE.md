@@ -48,5 +48,5 @@ frontend/nexgestor-extension/      Extensão Chrome (side panel), Plasmo + React
 2. ✅ **Integração Gemini validada ao vivo** — key real configurada, modelo corrigido (`gemini-flash-lite-latest`), resposta de IA confirmada ponta a ponta via chamada HTTP real ao endpoint.
 3. ✅ Frontend: UI completa rodando sobre dados mockados.
 4. ⬜ **Próximo passo (Fase E)**: plugar o frontend no backend real — mapear `CampaignAnalysisResponse` para `CampaignVM`, substituir `data/mock.ts`, implementar coleta (content script no Ads Manager ou Meta Marketing API via OAuth).
-5. ⬜ **Pendente do usuário**: rotacionar a `GEMINI_API_KEY` — o valor atual apareceu em texto puro no output de um teste durante esta sessão (antes da correção do `repr`) e deve ser considerado exposto.
+5. ⬜ **Pendente (líder da equipe)**: revogar a `GEMINI_API_KEY` atual — o valor apareceu em texto puro no output de um teste durante esta sessão (antes da correção do `repr`) e deve ser considerado exposto. O líder da equipe vai revogar; depois disso, gerar uma key nova e configurar no `.env` local antes de usar a IA de novo.
 6. ⬜ Investigar/decidir se `test_debug_default_false` e `test_engine_detecta_cenario_ai_none` devem isolar o `.env` de dev explicitamente nos testes (ex.: `_env_file=None`), já que hoje qualquer `.env` local com `DEBUG=True` ou key real gera falso-negativo nesses dois testes.
