@@ -21,13 +21,19 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-# Padrão de API key do Google (AIza + 35 chars). Usado para não vazar a key em logs.
+# Padrão de API key do Google no formato antigo (AIza + 35 chars). O formato novo
+# (ex.: "AQ.Ab8...") não tem prefixo/comprimento fixo, então também redatamos
+# abaixo a key exata configurada em runtime — cobre os dois formatos.
 _API_KEY_PATTERN = re.compile(r"AIza[0-9A-Za-z_\-]{35}")
 
 
 def _redact_key(text: str) -> str:
     """Mascara qualquer API key do Google que apareça em mensagens de erro/log."""
-    return _API_KEY_PATTERN.sub("AIza***REDACTED***", text)
+    text = _API_KEY_PATTERN.sub("AIza***REDACTED***", text)
+    current_key = settings.GEMINI_API_KEY
+    if current_key:
+        text = text.replace(current_key, "***REDACTED***")
+    return text
 
 
 # ─────────────────────────────────────────────────────────────────────────────

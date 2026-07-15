@@ -6,7 +6,7 @@ Os valores podem ser sobrescritos via .env ou variável de ambiente.
 """
 from typing import Optional
 from typing_extensions import Annotated
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
 
 
@@ -38,8 +38,11 @@ class Settings(BaseSettings):
 
     # ── Gemini (IA) ──────────────────────────────────────
     # Sem chave configurada => IA fica desligada e o engine funciona normalmente.
-    GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    # repr=False: a key nunca aparece em repr(settings)/str(settings) — evita
+    # vazamento via prints de debug ou em asserts de teste que falham (o pytest
+    # imprime o repr dos dois lados da comparação).
+    GEMINI_API_KEY: Optional[str] = Field(default=None, repr=False)
+    GEMINI_MODEL: str = "gemini-flash-lite-latest"
     GEMINI_TIMEOUT_SECONDS: float = 8.0
     GEMINI_ENABLED: bool = True
 
