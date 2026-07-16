@@ -865,10 +865,12 @@ class TestAuditoriaFixes:
         """Item 7: DEBUG default seguro (False) no código."""
         from app.core.config import Settings
         import os
-        # Garantir que não há DEBUG no ambiente influenciando
+        # O default é do CÓDIGO, não do ambiente: _env_file=None ignora o .env
+        # local (o de dev costuma ter DEBUG=True) e o pop tira a variável do SO.
+        # Sem as duas coisas, um .env de conveniência gera falso-negativo aqui.
         old = os.environ.pop("DEBUG", None)
         try:
-            assert Settings().DEBUG is False
+            assert Settings(_env_file=None).DEBUG is False
         finally:
             if old is not None:
                 os.environ["DEBUG"] = old
