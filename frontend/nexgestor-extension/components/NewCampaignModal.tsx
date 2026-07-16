@@ -50,6 +50,86 @@ const FIELDS_TARGETS: Field[] = [
   { label: "Hook rate mín. (%)", key: "min_hook_rate", ph: "35" }
 ]
 
+// ── importação de arquivo (.json) ───────────────────────────────────────────
+// Lista fechada dos campos aceitos, com o MESMO nome usado em Metrics/Targets
+// (~types) e no contrato do backend (CONTRATO_API_FRONTEND.md). A cópia é
+// sempre campo-a-campo por nome exato — nunca por posição/heurística — então
+// "cpa": 50 no arquivo só pode virar metrics.cpa, nunca metrics.cpc. Chaves
+// fora desta lista, ou com tipo errado, são ignoradas e reportadas na
+// pré-visualização, nunca enviadas silenciosamente.
+const METRIC_KEYS: (keyof Metrics)[] = [
+  "impressions", "reach", "spend", "video_views_3s", "video_views_50pct", "thruplays",
+  "hook_rate", "hold_rate", "link_clicks", "all_clicks", "ctr_link", "ctr_all",
+  "cpm", "cpc", "cpl", "cpa", "roas", "landing_page_views", "lp_conversion_rate",
+  "conversions", "weekly_conversions", "frequency", "learning_phase"
+]
+const TARGET_KEYS: (keyof Targets)[] = [
+  "min_hook_rate", "min_hold_rate", "min_ctr_link", "max_ctr_all_ratio", "max_cpa",
+  "max_cpc", "max_cpm", "max_cpl", "min_roas", "min_lp_conversion_rate",
+  "max_frequency_fatigue", "max_frequency_critical", "max_frequency_horizontal",
+  "min_weekly_conversions", "scale_cpa_margin", "scale_frequency_ceiling"
+]
+
+type ParsedFile = { input: AnalyzeInput; unknownKeys: string[]; invalidTypeKeys: string[] }
+
+function parseFileJSON(raw: string): ParsedFile | { error: string } {
+  let obj: unknown
+  try {
+    obj = JSON.parse(raw)
+  } catch {
+    return { error: "JSON inválido — confira vírgulas e chaves. Use o formato de campaign/metrics/targets do CONTRATO_API_FRONTEND.md." }
+  }
+  if (typeof obj !== "object" || obj === null) {
+    return { error: "O arquivo precisa ser um objeto JSON com os blocos 'campaign', 'metrics' e/ou 'targets'." }
+  }
+
+  const root = obj as Record<string, unknown>
+  const rawCampaign = (typeof root.campaign === "object" && root.campaign !== null ? root.campaign : {}) as Record<string, unknown>
+  const rawMetrics = (typeof root.metrics === "object" && root.metrics !== null ? root.metrics : {}) as Record<string, unknown>
+  const rawTargets = (typeof root.targets === "object" && root.targets !== null ? root.targets : {}) as Record<string, unknown>
+
+  const metrics: Metrics = {}
+  const targets: Targets = {}
+  const unknownKeys: string[] = []
+  const invalidTypeKeys: string[] = []
+
+  for (const [k, v] of Object.entries(rawMetrics)) {
+    if (!METRIC_KEYS.includes(k as keyof Metrics)) { unknownKeys.push(`metrics.${k}`); continue }
+    if (k === "learning_phase") {
+      if (typeof v === "boolean") (metrics as Record<string, unknown>)[k] = v
+      else invalidTypeKeys.push(`metrics.${k}`)
+    } else if (typeof v === "number" && Number.isFinite(v)) {
+      (metrics as Record<string, number>)[k] = v
+    } else {
+      invalidTypeKeys.push(`metrics.${k}`)
+    }
+  }
+  for (const [k, v] of Object.entries(rawTargets)) {
+    if (!TARGET_KEYS.includes(k as keyof Targets)) { unknownKeys.push(`targets.${k}`); continue }
+    if (typeof v === "number" && Number.isFinite(v)) (targets as Record<string, number>)[k] = v
+    else invalidTypeKeys.push(`targets.${k}`)
+  }
+
+  const nameFromFile = typeof rawCampaign.name === "string" ? rawCampaign.name.trim() : ""
+  const objectiveFromFile = typeof rawCampaign.objective === "string" ? rawCampaign.objective : "conversion"
+  const platformFromFile = typeof rawCampaign.platform === "string" ? rawCampaign.platform : "meta_ads"
+  const nicheFromFile = typeof rawCampaign.niche === "string" ? rawCampaign.niche : null
+
+  const input: AnalyzeInput = {
+    campaign: {
+      id: nextLiveId(),
+      name: nameFromFile || "Campanha via arquivo",
+      objective: objectiveFromFile,
+      platform: platformFromFile,
+      niche: nicheFromFile
+    },
+    metrics,
+    targets
+  }
+
+  return { input, unknownKeys, invalidTypeKeys }
+}
+
 export function NewCampaignModal({
   onClose,
   onAnalyzed
@@ -57,19 +137,63 @@ export function NewCampaignModal({
   onClose: () => void
   onAnalyzed: (vm: CampaignVM) => void
 }) {
-  const [mode, setMode] = useState<"auto" | "manual">("manual")
+  const [mode, setMode] = useState<"auto" | "manual" | "file">("manual")
   const [step, setStep] = useState(-1) // -1 = idle
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [objective, setObjective] = useState("conversion")
   const [platform, setPlatform] = useState("meta_ads")
   const [values, setValues] = useState<Record<string, string>>({})
+  const [autoStatus, setAutoStatus] = useState<"idle" | "detecting" | "error">("idle")
+  const [autoError, setAutoError] = useState<string | null>(null)
+  const [autoFound, setAutoFound] = useState(0)
+  const [fileRaw, setFileRaw] = useState("")
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [filePreview, setFilePreview] = useState<ParsedFile | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
   const setV = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setValues((v) => ({ ...v, [key]: e.target.value }))
+
+  // Detecção automática (provisória): lê a tabela de campanhas aberta na aba
+  // do Ads Manager via content script (contents/ads-manager.ts). Best-effort
+  // — a Meta pode mudar a página sem aviso; por isso os campos vêm sempre
+  // editáveis antes do envio, nunca enviados direto.
+  async function detectFromTab() {
+    setAutoError(null)
+    setAutoStatus("detecting")
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id || !tab.url || !/facebook\.com/.test(tab.url)) {
+        setAutoStatus("error")
+        setAutoError("Abra o Ads Manager (facebook.com) em uma aba e deixe a tabela de campanhas visível, depois tente de novo.")
+        return
+      }
+      const res = await chrome.tabs.sendMessage(tab.id, { type: "NEXGESTOR_SCRAPE_REQUEST" })
+      if (!res?.ok) throw new Error(res?.error ?? "Falha ao ler a página.")
+      const found = Object.entries(res.metrics ?? {}) as [string, number][]
+      if (found.length === 0) {
+        setAutoStatus("error")
+        setAutoError("Não encontrei métricas na página. Confirme que a tabela de campanhas está com as colunas visíveis (Impressões, CPM, Resultados etc.).")
+        return
+      }
+      setValues((v) => ({ ...v, ...Object.fromEntries(found.map(([k, n]) => [k, String(n)])) }))
+      if (res.name && !name) setName(res.name)
+      setAutoFound(found.length)
+      setAutoStatus("idle")
+      setMode("manual") // reaproveita o formulário manual, já preenchido, para revisão
+    } catch (e) {
+      setAutoStatus("error")
+      const msg = e instanceof Error ? e.message : String(e)
+      setAutoError(
+        msg.includes("Could not establish connection")
+          ? "A extensão não conseguiu falar com a aba do Ads Manager. Recarregue a página do Facebook e tente de novo."
+          : `Falha na detecção automática: ${msg}`
+      )
+    }
+  }
 
   function buildInput(): AnalyzeInput {
     const metrics: Metrics = {}
@@ -94,9 +218,9 @@ export function NewCampaignModal({
     }
   }
 
-  async function runAnalyze() {
+  async function runAnalyze(overrideInput?: AnalyzeInput) {
     setError(null)
-    const input = buildInput()
+    const input = overrideInput ?? buildInput()
 
     if (Object.keys(input.metrics).length === 0) {
       setError("Preencha pelo menos uma métrica para o engine analisar.")
@@ -131,24 +255,140 @@ export function NewCampaignModal({
       <div className="modal">
         <div className="modal-grab" />
         <h2>Criar nova campanha</h2>
-        <p className="sub">Insira as métricas manualmente — a coleta automática chega na Fase C.</p>
+        <p className="sub">Insira manualmente, detecte na aba do Ads Manager ou importe um arquivo de dados.</p>
 
         {!collecting && (
           <div className="seg">
             <button className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}><IconEdit />Inserir manual</button>
             <button className={mode === "auto" ? "active" : ""} onClick={() => setMode("auto")}><IconBolt />Coletar automático</button>
+            <button className={mode === "file" ? "active" : ""} onClick={() => setMode("file")}><IconRefresh />Importar arquivo</button>
           </div>
         )}
 
         {mode === "auto" && !collecting && (
           <div>
             <div className="detect"><span className="pulse" /><span>Coleta automática do <b>Meta Ads Manager</b></span></div>
-            <button className="collect-btn" disabled style={{ opacity: 0.45, cursor: "not-allowed" }}>
-              <IconRefresh />Disponível na Fase C (integração Meta)
+            <button
+              className="collect-btn"
+              disabled={autoStatus === "detecting"}
+              onClick={detectFromTab}
+              style={autoStatus === "detecting" ? { opacity: 0.6, cursor: "wait" } : undefined}>
+              <IconRefresh />{autoStatus === "detecting" ? "Lendo a página…" : "Detectar campanha na aba ativa"}
             </button>
+            {autoError && (
+              <div
+                role="alert"
+                style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 10, background: "var(--red-bg)", color: "var(--red)", fontSize: 12.5, lineHeight: 1.45 }}>
+                {autoError}
+              </div>
+            )}
             <p className="collect-hint">
-              A leitura automática das campanhas abertas na aba depende do OAuth com a Meta (Fases C/D).
-              Por enquanto, use a inserção manual — o diagnóstico do engine é o mesmo.
+              Provisório: lê a tabela de campanhas aberta na aba do Ads Manager (scraping da página). Frágil por
+              natureza — confira os campos preenchidos antes de analisar. Será substituído pela Meta Marketing
+              API (OAuth) antes do lançamento.
+            </p>
+          </div>
+        )}
+        {autoFound > 0 && mode === "manual" && !collecting && (
+          <div style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 10, background: "var(--amber-bg, rgba(245,158,11,.12))", color: "var(--amber)", fontSize: 12.5, lineHeight: 1.45 }}>
+            {autoFound} campo(s) preenchido(s) automaticamente a partir da aba do Ads Manager — confira antes de analisar.
+          </div>
+        )}
+
+        {mode === "file" && !collecting && (
+          <div>
+            <div className="detect"><span className="pulse" /><span>Importar dados de um <b>arquivo .json</b></span></div>
+
+            <input
+              className="file-input"
+              type="file"
+              accept=".json,.txt,application/json"
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                setFileRaw(await f.text())
+                setFilePreview(null)
+                setFileError(null)
+              }}
+            />
+            <textarea
+              className="file-drop"
+              rows={7}
+              placeholder={'{\n  "campaign": { "name": "Black Friday" },\n  "metrics": { "cpa": 50, "impressions": 50000 },\n  "targets": { "max_cpa": 80 }\n}'}
+              value={fileRaw}
+              onChange={(e) => { setFileRaw(e.target.value); setFilePreview(null); setFileError(null) }}
+            />
+
+            <button
+              className="collect-btn"
+              style={{ marginTop: 10 }}
+              onClick={() => {
+                const result = parseFileJSON(fileRaw)
+                if ("error" in result) { setFileError(result.error); setFilePreview(null); return }
+                setFileError(null)
+                setFilePreview(result)
+              }}>
+              <IconRefresh />Carregar e revisar
+            </button>
+
+            {fileError && (
+              <div
+                role="alert"
+                style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 10, background: "var(--red-bg)", color: "var(--red)", fontSize: 12.5, lineHeight: 1.45 }}>
+                {fileError}
+              </div>
+            )}
+
+            {filePreview && (
+              <div className="grp" style={{ marginTop: 12 }}>
+                <div className="grp-h">Pré-visualização — confira antes de analisar</div>
+                <div style={{ fontSize: 12.5, color: "var(--txt-2)" }}>
+                  <b style={{ color: "var(--txt)" }}>{filePreview.input.campaign.name}</b>
+                  {" · "}{filePreview.input.campaign.objective}{" · "}{filePreview.input.campaign.platform}
+                </div>
+
+                {Object.keys(filePreview.input.metrics).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>MÉTRICAS</div>
+                    <ul className="preview-list">
+                      {Object.entries(filePreview.input.metrics).map(([k, v]) => (
+                        <li key={k}><span>{k}</span><span>{String(v)}</span></li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {Object.keys(filePreview.input.targets).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>METAS</div>
+                    <ul className="preview-list">
+                      {Object.entries(filePreview.input.targets).map(([k, v]) => (
+                        <li key={k}><span>{k}</span><span>{String(v)}</span></li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {filePreview.unknownKeys.length > 0 && (
+                  <div style={{ color: "var(--amber)", fontSize: 11.5, marginTop: 10 }}>
+                    Chaves desconhecidas ignoradas (não enviadas): {filePreview.unknownKeys.join(", ")}
+                  </div>
+                )}
+                {filePreview.invalidTypeKeys.length > 0 && (
+                  <div style={{ color: "var(--red)", fontSize: 11.5, marginTop: 6 }}>
+                    Valores com tipo inválido ignorados (não enviados): {filePreview.invalidTypeKeys.join(", ")}
+                  </div>
+                )}
+
+                <button className="submit" style={{ marginTop: 12 }} onClick={() => runAnalyze(filePreview.input)}>
+                  Analisar campanha
+                </button>
+              </div>
+            )}
+
+            <p className="collect-hint">
+              Formato: JSON com os blocos <code>campaign</code>, <code>metrics</code>, <code>targets</code> — mesmo
+              esquema do backend (ver CONTRATO_API_FRONTEND.md). Cada chave só é copiada para o campo de mesmo
+              nome — "cpa" nunca vira "cpc". Chaves desconhecidas ou com tipo errado nunca são enviadas: aparecem
+              acima como aviso.
             </p>
           </div>
         )}
@@ -251,7 +491,7 @@ export function NewCampaignModal({
               </div>
             </div>
 
-            <button className="submit" onClick={runAnalyze}>Analisar campanha</button>
+            <button className="submit" onClick={() => runAnalyze()}>Analisar campanha</button>
           </div>
         )}
       </div>

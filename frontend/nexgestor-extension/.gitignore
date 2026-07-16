@@ -5,3 +5,4 @@ build/
 .env.*.local
 out/
 keys.json
+tsconfig.tsbuildinfo
