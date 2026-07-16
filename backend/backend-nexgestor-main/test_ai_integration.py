@@ -111,6 +111,14 @@ def make_ai_response_completa():
 class TestIADesativada:
     """Quando GEMINI_API_KEY está vazia, IA fica desativada silenciosamente."""
 
+    @pytest.fixture(autouse=True)
+    def _ia_desativada(self):
+        # Força o estado que a classe descreve, em vez de torcer para o .env
+        # local não ter key: com uma key válida configurada, estes testes
+        # fariam chamada real ao Gemini (lenta, cara e não determinística).
+        with patch("app.service.ai_service.is_ai_available", return_value=False):
+            yield
+
     def test_engine_detecta_cenario_ai_none(self):
         """Engine detecta cenário, ai_insights deve ser None."""
         r = client.post("/api/v1/campaign/analyze", json=make_payload_with_scenario())
