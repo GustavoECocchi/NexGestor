@@ -48,7 +48,7 @@ frontend/nexgestor-extension/      Extensão Chrome (side panel), Plasmo + React
 
 ## Sessão de 2026-07-16 (parte 3) — testes isolados do `.env` + key confirmada revogada
 
-**Mudança de código** (branch `worktree-isolar-env-testes`, PR draft aberto contra `main` — link no fim desta seção):
+**Mudança de código** (branch `worktree-isolar-env-testes`, PR #1, mergeado na `main` via squash em 2026-07-16 — commit `29fd5b8`):
 
 - `test_engine.py::TestAuditoriaFixes::test_debug_default_false`: agora usa `Settings(_env_file=None)` em vez de só remover `DEBUG` do ambiente do SO. Isso neutraliza de vez a influência do `.env` de dev (que tem `DEBUG=True` por conveniência).
 - `test_ai_integration.py::TestIADesativada`: ganhou uma fixture `autouse` que faz `patch("app.service.ai_service.is_ai_available", return_value=False)`. Antes a classe inteira ("quando `GEMINI_API_KEY` está vazia") só torcia pro ambiente não ter key configurada — com uma key válida no `.env`, os três testes fariam chamada de rede real ao Gemini a cada `pytest` (lento, gasta cota, não determinístico).
@@ -57,13 +57,17 @@ frontend/nexgestor-extension/      Extensão Chrome (side panel), Plasmo + React
 
 **Achado ao investigar por que a suite tinha "melhorado sozinha" antes desta mudança** (estava 104/105, não 103/105 como a sessão anterior registrou): a key do Gemini configurada no `.env` de dev retorna **`401 UNAUTHENTICATED`** numa chamada real à API — ou seja, **a key exposta na sessão de 2026-07-14 já foi revogada** pelo líder da equipe. O `.env` local ainda tem essa key morta; para voltar a usar a IA é preciso gerar uma nova no Google AI Studio e configurar no `.env`.
 
-**Pendente**: PR draft `worktree-isolar-env-testes` → `main` aberto e pushado (commit `515afad`), mas não mergeado — `gh` não estava disponível no ambiente que criou o PR, então ele precisa ser revisado/mergeado manualmente. Link: https://github.com/GustavoECocchi/NexGestor/pull/new/worktree-isolar-env-testes (criar o PR se o link acima só mostrar a tela de criação).
+**Merge do PR**: `gh` CLI instalado e autenticado nesta sessão (`gh auth login --web`) especificamente para poder criar/mergear PRs direto pelo terminal. PR #1 criado e mergeado via squash contra `main` (https://github.com/GustavoECocchi/NexGestor/pull/1); branch remota `worktree-isolar-env-testes` deletada automaticamente no merge.
+
+## Decisão de escopo (2026-07-16)
+
+**Meta Marketing API (OAuth) — adiada de propósito.** O usuário confirmou explicitamente que o projeto está entrando em período de testes e que a migração do scraping (item 4 abaixo) para a Meta Marketing API fica para depois — não é prioridade enquanto os testes rodam. Não retomar esse trabalho por iniciativa própria; só quando o usuário sinalizar que o período de testes terminou ou que está perto de lançar para usuários reais. O scraping continua sendo aceitável **apenas** para esse período de testes, não para produção.
 
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **105/105**, sem falhas ambientais (ver sessão de 2026-07-16 parte 3) — os dois testes que dependiam do `.env` local agora isolam o estado explicitamente.
 2. ✅ **Integração Gemini validada ao vivo** — modelo corrigido (`gemini-flash-lite-latest`). **A key usada nesse teste já foi revogada** (confirmado em 2026-07-16, retorna 401); pra usar IA de novo é preciso gerar key nova.
 3. ✅ Frontend: UI completa; modo manual já plugado no backend real (ver correção de estado acima), mock continua como demo ao lado das campanhas vivas.
-4. 🟡 **Coleta automática — provisória (scraping via content script), não é a solução final.** Funciona mecanicamente (mensageria + manifest validados), mas não foi testada contra um Ads Manager real e **deve ser trocada pela Meta Marketing API (OAuth) antes do lançamento** — combinado explicitamente com o usuário em 2026-07-16.
+4. 🟡 **Coleta automática — provisória (scraping via content script), aceitável só para o período de testes atual.** Funciona mecanicamente (mensageria + manifest validados), mas não foi testada contra um Ads Manager real. **Migração para Meta Marketing API (OAuth) adiada de propósito** (ver "Decisão de escopo" acima) — não é bloqueante para o período de testes, só para o lançamento real.
 5. ✅ **Key exposta revogada** — confirmado em 2026-07-16 via chamada real à API (401 UNAUTHENTICATED). Falta gerar uma key nova no Google AI Studio e configurar no `.env` local antes de usar a IA de novo.
-6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR draft aberto, pendente de merge.
+6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`.
