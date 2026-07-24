@@ -73,6 +73,7 @@ export function App() {
       {screen.name === "home" || !detail ? (
         <Home
           campaigns={campaigns}
+          liveCount={live.length}
           onOpenCampaign={openCampaign}
           onNew={() => setModal("new")}
           onCompare={() => setModal("compare")}

@@ -49,3 +49,39 @@ export function nextLiveId(): number {
 export function isLiveId(id: number): boolean {
   return id >= LIVE_ID_BASE
 }
+
+// =============================================================================
+// Checkmarks das "Ações prioritárias" — por campanha, chave = título da ação
+// (não há id estável vindo do engine). Sobrevive a sair/voltar do detalhe.
+// =============================================================================
+
+const DONE_KEY = "nex:doneActions"
+
+function loadDoneMap(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(DONE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export function loadDoneActions(campaignId: number): Set<string> {
+  return new Set(loadDoneMap()[String(campaignId)] ?? [])
+}
+
+export function toggleDoneAction(campaignId: number, title: string): Set<string> {
+  const map = loadDoneMap()
+  const key = String(campaignId)
+  const cur = new Set(map[key] ?? [])
+  cur.has(title) ? cur.delete(title) : cur.add(title)
+  map[key] = [...cur]
+  try {
+    localStorage.setItem(DONE_KEY, JSON.stringify(map))
+  } catch {
+    /* quota — não pode derrubar a UI */
+  }
+  return cur
+}

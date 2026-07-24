@@ -24,7 +24,14 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
     <>
       <div className="scroll fade-in">
         <div className="detail-hd">
-          <div className="back" onClick={onBack}><IconBack />Voltar</div>
+          <div
+            className="back"
+            role="button"
+            tabIndex={0}
+            onClick={onBack}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onBack())}>
+            <IconBack />Voltar
+          </div>
           <div className="detail-title-row">
             <h2>{c.name}</h2>
             <div className="pill" style={{ background: s.bg, color: s.color }}>{s.label}</div>

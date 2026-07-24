@@ -1,5 +1,7 @@
 import { IconLogo, IconSearch } from "~components/Icons"
 
+const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform)
+
 export function Header({ onSearch }: { onSearch?: () => void }) {
   return (
     <div className="hd">
@@ -9,7 +11,10 @@ export function Header({ onSearch }: { onSearch?: () => void }) {
         <p>Diagnóstico inteligente para tráfego pago</p>
       </div>
       <div className="spacer" />
-      <div className="icon-btn" title="Buscar (⌘K)" onClick={onSearch}><IconSearch /></div>
+      <button className="search-trigger" title="Buscar campanhas" onClick={onSearch}>
+        <IconSearch />
+        <span className="search-kbd">{isMac ? "⌘K" : "Ctrl K"}</span>
+      </button>
     </div>
   )
 }

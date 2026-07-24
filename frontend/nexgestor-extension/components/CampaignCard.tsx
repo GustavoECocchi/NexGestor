@@ -7,20 +7,31 @@ import type { CampaignVM } from "~types"
 export function CampaignCard({
   c,
   index,
+  demo,
   onOpen
 }: {
   c: CampaignVM
   index: number
+  demo?: boolean
   onOpen: (id: number) => void
 }) {
   const s = STATUS[c.status]
   const td = c.trend > 0 ? "up" : c.trend < 0 ? "down" : "flat"
   return (
-    <div className="card" style={{ animationDelay: `${index * 70}ms` }} onClick={() => onOpen(c.id)}>
+    <div
+      className={`card${demo ? " demo" : ""}`}
+      style={{ animationDelay: `${index * 70}ms` }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(c.id)}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen(c.id))}>
       <div className="glow" style={{ background: `radial-gradient(180px 90px at 90% 0%, ${s.bg}, transparent 70%)` }} />
       <div className="card-top">
         <div style={{ flex: 1 }}>
-          <div className="card-name">{c.name}</div>
+          <div className="card-name">
+            {c.name}
+            {demo && <span className="demo-tag">exemplo</span>}
+          </div>
           <div className="card-plat"><span className="dot" style={{ background: s.color }} />{c.platform}</div>
         </div>
         <div className="pill" style={{ background: s.bg, color: s.color }}>{s.label}</div>

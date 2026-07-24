@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { IconBolt, IconBulb, IconTrendUp } from "~components/Icons"
+import { loadDoneActions, toggleDoneAction } from "~lib/store"
 import { sanitizeHtml } from "~lib/sanitize"
 import { PA_COLOR, PRIO, STATUS, URG_COLOR } from "~lib/status"
 import type { CampaignVM } from "~types"
@@ -53,11 +54,25 @@ export function DiagnosisCards({ c }: { c: CampaignVM }) {
   )
 }
 
-function PriorityActionItem({ a }: { a: CampaignVM["actions"][number] }) {
-  const [done, setDone] = useState(false)
+function PriorityActionItem({
+  a,
+  campaignId
+}: {
+  a: CampaignVM["actions"][number]
+  campaignId: number
+}) {
+  const [doneSet, setDoneSet] = useState(() => loadDoneActions(campaignId))
+  const done = doneSet.has(a.title)
   const p = PA_COLOR[a.prio]
+  const toggle = () => setDoneSet(toggleDoneAction(campaignId, a.title))
   return (
-    <div className={`pa${done ? " checked" : ""}`} onClick={() => setDone((d) => !d)}>
+    <div
+      className={`pa${done ? " checked" : ""}`}
+      role="checkbox"
+      aria-checked={done}
+      tabIndex={0}
+      onClick={toggle}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggle())}>
       <div className="cb">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
       </div>
@@ -77,7 +92,7 @@ export function PriorityActions({ c }: { c: CampaignVM }) {
   return (
     <>
       {c.actions.map((a) => (
-        <PriorityActionItem key={a.title} a={a} />
+        <PriorityActionItem key={a.title} a={a} campaignId={c.id} />
       ))}
     </>
   )

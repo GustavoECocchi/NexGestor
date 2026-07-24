@@ -1,18 +1,21 @@
 import { useState } from "react"
 
 import { CampaignCard } from "~components/CampaignCard"
-import { IconCompare, IconPlus } from "~components/Icons"
+import { IconCompare, IconPlus, IconSpark } from "~components/Icons"
 import { Summary } from "~components/Summary"
+import { isLiveId } from "~lib/store"
 import { STATUS } from "~lib/status"
 import type { CampaignVM, UIStatus } from "~types"
 
 export function Home({
   campaigns,
+  liveCount,
   onOpenCampaign,
   onNew,
   onCompare
 }: {
   campaigns: CampaignVM[]
+  liveCount: number
   onOpenCampaign: (id: number) => void
   onNew: () => void
   onCompare: () => void
@@ -20,6 +23,8 @@ export function Home({
   const [filter, setFilter] = useState<UIStatus | null>(null)
   const toggle = (s: UIStatus) => setFilter((f) => (f === s ? null : s))
   const list = filter ? campaigns.filter((c) => c.status === filter) : campaigns
+  // Usuário nunca analisou uma campanha própria: só há demos na tela.
+  const noneOwn = liveCount === 0
 
   return (
     <div className="scroll fade-in">
@@ -37,11 +42,36 @@ export function Home({
         <button className="mini-btn" onClick={onCompare}><IconCompare />Comparar</button>
       </div>
 
-      <div className="feed">
-        {list.map((c, i) => (
-          <CampaignCard key={c.id} c={c} index={i} onOpen={onOpenCampaign} />
-        ))}
-      </div>
+      {campaigns.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-ico"><IconSpark /></div>
+          <h3>Nenhuma campanha ainda</h3>
+          <p>Analise sua primeira campanha pra começar a ver o diagnóstico aqui.</p>
+        </div>
+      ) : (
+        <>
+          {noneOwn && !filter && (
+            <div className="demo-note">
+              <IconSpark />
+              <div>
+                <b>Você ainda não criou nenhuma campanha.</b>
+                <span>As abaixo são exemplos para explorar — clique em “Nova campanha” para analisar a sua.</span>
+              </div>
+            </div>
+          )}
+          {list.length === 0 ? (
+            <div className="empty-state empty-state-sm">
+              <p>Nenhuma campanha com esse status.</p>
+            </div>
+          ) : (
+            <div className="feed">
+              {list.map((c, i) => (
+                <CampaignCard key={c.id} c={c} index={i} demo={!isLiveId(c.id)} onOpen={onOpenCampaign} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       <div style={{ padding: "0 16px 22px" }}>
         <button className="new-btn" onClick={onNew}><IconPlus />Nova campanha</button>

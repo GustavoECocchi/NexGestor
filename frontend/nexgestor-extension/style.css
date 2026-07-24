@@ -48,6 +48,12 @@ body::after{
 .icon-btn:hover{color:var(--txt);border-color:var(--line-2);background:var(--panel-2)}
 .icon-btn svg{width:15px;height:15px}
 
+.search-trigger{height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--txt-2);display:flex;align-items:center;gap:6px;padding:0 8px;cursor:pointer;transition:.18s;font-family:var(--font-body)}
+.search-trigger:hover{color:var(--txt);border-color:var(--line-2);background:var(--panel-2)}
+.search-trigger svg{width:14px;height:14px;flex:none}
+.search-kbd{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.03em;color:var(--txt-3);border:1px solid var(--line-2);border-radius:5px;padding:2px 5px;white-space:nowrap}
+.search-trigger:hover .search-kbd{color:var(--txt-2)}
+
 .sec-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:0 20px;margin:16px 0 10px;display:flex;align-items:center;gap:10px}
 .sec-label .ln{flex:1;height:1px;background:var(--line)}
 .sec-cap{font-size:11px;color:var(--txt-3);padding:0 20px;margin:-4px 0 10px;line-height:1.45;display:flex;gap:6px;align-items:flex-start}
@@ -74,6 +80,9 @@ body::after{
 .card{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:15px;margin-bottom:11px;cursor:pointer;position:relative;overflow:hidden;transition:transform .2s cubic-bezier(.2,.7,.3,1),border-color .2s,box-shadow .2s;opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards}
 @keyframes rise{to{opacity:1;transform:none}}
 .card:hover{transform:translateY(-2px);border-color:var(--line-2);box-shadow:0 14px 30px -16px rgba(0,0,0,.8)}
+.card:focus-visible,.pa:focus-visible,.back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Card de exemplo (demo): coloração delicada, borda tracejada — sinaliza "não é padrão" sem chamar atenção. */
+.card.demo{border-style:dashed;border-color:rgba(91,140,255,.28);background:linear-gradient(165deg,rgba(91,140,255,.05),var(--panel))}
 .card .glow{position:absolute;inset:0;opacity:.5;pointer-events:none}
 .card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:13px}
 .card-name{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.01em;line-height:1.2}
@@ -92,6 +101,20 @@ body::after{
 .ai-strip .sp{width:15px;height:15px;flex:none;margin-top:1px;color:var(--accent)}
 .ai-strip p{font-size:11.5px;color:var(--txt-2);line-height:1.45;margin:0}
 .ai-strip b{color:var(--txt);font-weight:600}
+
+.empty-state{margin:8px 16px 4px;padding:34px 20px;text-align:center;border:1px dashed var(--line-2);border-radius:var(--radius);background:rgba(91,140,255,.03)}
+.empty-ico{width:44px;height:44px;margin:0 auto 14px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
+.empty-ico svg{width:22px;height:22px}
+.empty-state h3{font-family:var(--font-display);font-weight:700;font-size:14.5px;margin-bottom:6px}
+.empty-state p{font-size:12px;color:var(--txt-2);line-height:1.5;margin:0}
+.empty-state-sm{padding:20px}
+
+.demo-note{display:flex;gap:10px;align-items:flex-start;margin:2px 16px 12px;padding:11px 13px;border-radius:12px;background:var(--accent-soft);border:1px solid rgba(91,140,255,.2)}
+.demo-note svg{width:16px;height:16px;color:var(--accent);flex:none;margin-top:1px}
+.demo-note b{display:block;font-size:12.5px;color:var(--txt);font-weight:600;margin-bottom:2px}
+.demo-note span{font-size:11.5px;color:var(--txt-2);line-height:1.45}
+
+.demo-tag{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;vertical-align:middle;margin-left:7px;padding:2px 6px;border-radius:5px;background:var(--bg);border:1px solid var(--line-2);color:var(--muted);font-weight:500}
 
 .new-btn{width:100%;border:1px dashed var(--line-2);background:rgba(91,140,255,.04);border-radius:var(--radius);padding:14px;color:var(--txt-2);cursor:pointer;font-family:var(--font-body);font-weight:600;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;transition:.2s}
 .new-btn:hover{border-color:var(--accent);color:var(--txt);background:var(--accent-soft)}
@@ -153,13 +176,16 @@ body::after{
 .pa-impact svg{width:12px;height:12px;flex:none}
 
 .sug-wrap{padding:2px 16px 4px}
-.sg2{display:flex;flex-direction:column;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:8px;cursor:pointer;transition:.18s}
-.sg2:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sg2{display:flex;flex-direction:column;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:8px}
 .sg2 .sn{font-size:12.5px;font-weight:600;color:var(--txt);display:flex;gap:7px;align-items:center}
 .sg2 .sn svg{width:13px;height:13px;color:var(--accent);flex:none}
 .sg2 .sm{display:flex;gap:6px;flex-wrap:wrap}
 .tag{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.03em;padding:3px 7px;border-radius:6px;background:var(--bg);border:1px solid var(--line);color:var(--txt-2)}
 .tag b{font-weight:500}
+
+.quick-asks{display:flex;flex-wrap:wrap;gap:7px;padding:0 16px 10px}
+.quick-ask{font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:6px 11px;cursor:pointer;transition:.15s}
+.quick-ask:hover{color:var(--txt);border-color:var(--accent);background:var(--accent-soft)}
 
 .chat{margin:6px 16px 0;border-top:1px solid var(--line);padding-top:14px}
 .msg{margin-bottom:11px;max-width:88%;font-size:12.5px;line-height:1.5;padding:11px 13px;border-radius:13px}
