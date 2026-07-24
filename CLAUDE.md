@@ -63,6 +63,14 @@ frontend/nexgestor-extension/      Extensão Chrome (side panel), Plasmo + React
 
 **Meta Marketing API (OAuth) — adiada de propósito.** O usuário confirmou explicitamente que o projeto está entrando em período de testes e que a migração do scraping (item 4 abaixo) para a Meta Marketing API fica para depois — não é prioridade enquanto os testes rodam. Não retomar esse trabalho por iniciativa própria; só quando o usuário sinalizar que o período de testes terminou ou que está perto de lançar para usuários reais. O scraping continua sendo aceitável **apenas** para esse período de testes, não para produção.
 
+## Sessão de 2026-07-24 — pasta local sem git reconectada ao repositório remoto
+
+Sessão administrativa, sem mudança de código/produto. A sessão anterior (nesta mesma pasta) foi encerrada abruptamente porque o usuário trocou o tema do **Cursor** (o editor, não o cursor do mouse) — isso disparou um reload de janela/extension host que matou o terminal integrado onde o Claude Code CLI rodava. Não foi um bug do Claude Code nem perda de trabalho; confirmado que nenhum código tinha sido alterado antes do encerramento.
+
+- **Achado:** a pasta de trabalho (`~/Downloads/NexGestor-main`) nunca teve `.git` — é um unzip do GitHub (sufixo `-main` no nome), não um `git clone`. Não havia como commitar/dar push a partir daqui, apesar deste `CLAUDE.md` documentar PRs e commits reais feitos em outra cópia do repositório.
+- **Corrigido:** `git init` + `git remote add origin https://github.com/GustavoECocchi/NexGestor.git` + `git fetch`. Antes de tocar em qualquer coisa, comparei o conteúdo local com `origin/main` (checkout num worktree temporário + `diff -rq`): eram **idênticos**, exceto `.claude/settings.local.json` (config local do Claude Code, nunca versionada) e a pasta `knowledge-core/` (projeto completamente à parte — FAQ/skills/vídeos em Node e Python — que não pertence ao NexGestor e não deve ser versionado aqui). Anexei a branch local `main` ao `origin/main` existente (`git symbolic-ref HEAD refs/heads/main` + `git reset --mixed origin/main`) sem reescrever histórico nem sobrescrever nenhum arquivo — a pasta agora é um checkout git normal, com o mesmo histórico do GitHub.
+- **Testes:** `pytest` em `backend/backend-nexgestor-main` → **105 passed, 0 failed**. Sem mudanças no frontend nesta sessão, então `tsc --noEmit` não foi rodado (nada para validar).
+
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **105/105**, sem falhas ambientais (ver sessão de 2026-07-16 parte 3) — os dois testes que dependiam do `.env` local agora isolam o estado explicitamente.
