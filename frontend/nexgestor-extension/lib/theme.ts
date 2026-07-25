@@ -31,10 +31,15 @@ export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => readStored() ?? systemTheme())
 
   useEffect(() => {
-    if (readStored()) return
-    // Sem escolha explícita: acompanha a preferência do sistema ao vivo.
     const mq = window.matchMedia("(prefers-color-scheme: light)")
-    const onChange = () => setTheme(systemTheme())
+    // A checagem precisa ficar DENTRO do handler: se ficasse só aqui fora, um
+    // usuário que abre sem preferência salva e depois usa o toggle continuaria
+    // com o listener ativo, e uma mudança de tema do SO viraria o ícone sem
+    // virar as cores (data-theme já está fixado) — estado e DOM dessincronizados.
+    const onChange = () => {
+      if (readStored()) return // escolha explícita do usuário manda
+      setTheme(systemTheme())
+    }
     mq.addEventListener("change", onChange)
     return () => mq.removeEventListener("change", onChange)
   }, [])

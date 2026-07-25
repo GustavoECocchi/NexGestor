@@ -31,7 +31,7 @@
     color-scheme:light;
     --bg:#f4f7fc; --bg-2:#eaf0fb; --panel:#ffffff; --panel-2:#fbfcff;
     --line:rgba(16,24,56,.08); --line-2:rgba(16,24,56,.14);
-    --txt:#12172c; --txt-2:#5b6478; --txt-3:#8992a6; --muted:#8992a6;
+    --txt:#12172c; --txt-2:#5b6478; --txt-3:#7b8499; --muted:#646f88;
     --accent:#3163e0; --accent-soft:color-mix(in srgb, var(--accent) 10%, transparent);
     --red:#dc2626; --red-bg:color-mix(in srgb, var(--red) 10%, transparent);
     --amber:#b45309; --amber-bg:color-mix(in srgb, var(--amber) 10%, transparent);
@@ -48,7 +48,7 @@
   color-scheme:light;
   --bg:#f4f7fc; --bg-2:#eaf0fb; --panel:#ffffff; --panel-2:#fbfcff;
   --line:rgba(16,24,56,.08); --line-2:rgba(16,24,56,.14);
-  --txt:#12172c; --txt-2:#5b6478; --txt-3:#8992a6; --muted:#8992a6;
+  --txt:#12172c; --txt-2:#5b6478; --txt-3:#7b8499; --muted:#646f88;
   --accent:#3163e0; --accent-soft:color-mix(in srgb, var(--accent) 10%, transparent);
   --red:#dc2626; --red-bg:color-mix(in srgb, var(--red) 10%, transparent);
   --amber:#b45309; --amber-bg:color-mix(in srgb, var(--amber) 10%, transparent);
@@ -395,3 +395,17 @@ body::after{
 .cmdk-tag{font-family:var(--font-mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:6px;flex:none}
 .cmdk-tag.ghost{background:var(--bg);border:1px solid var(--line);color:var(--muted)}
 .cmdk-empty{padding:18px;text-align:center;color:var(--muted);font-size:12px}
+
+/* ===== Movimento reduzido =====
+   Respeita quem pede menos animação no SO. `.card` e `.mtile` nascem com
+   opacity:0 e só aparecem pela animação `rise` — por isso o estado final é
+   forçado aqui: desligar a animação sem isso deixaria os cards invisíveis. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+  }
+  .card,.mtile{opacity:1;transform:none}
+  .detect .pulse::after{display:none}
+}
