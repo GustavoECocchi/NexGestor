@@ -16,7 +16,7 @@ const STEPS = [
 // ── helpers de formulário ────────────────────────────────────────────────────
 
 /** "1.234,56" | "1234.56" | "" → number | undefined (omitido do payload). */
-function num(raw: string): number | undefined {
+export function num(raw: string): number | undefined {
   const s = raw.trim()
   if (!s) return undefined
   const normalized = s.replace(/\./g, "").replace(",", ".")
@@ -70,9 +70,9 @@ const TARGET_KEYS: (keyof Targets)[] = [
   "min_weekly_conversions", "scale_cpa_margin", "scale_frequency_ceiling"
 ]
 
-type ParsedFile = { input: AnalyzeInput; unknownKeys: string[]; invalidTypeKeys: string[] }
+export type ParsedFile = { input: AnalyzeInput; unknownKeys: string[]; invalidTypeKeys: string[] }
 
-function parseFileJSON(raw: string): ParsedFile | { error: string } {
+export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   let obj: unknown
   try {
     obj = JSON.parse(raw)

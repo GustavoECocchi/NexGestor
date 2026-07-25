@@ -7,8 +7,12 @@ A UI abre em um **side panel** ao lado da aba ativa (ex: Meta Ads Manager):
 feed de campanhas com resumo executivo, detalhe com score de saúde, oportunidade
 detectada, diagnóstico por cenário, ações prioritárias, sugestões e copiloto.
 
-> Estado atual: **roda 100% com dados mockados** (`data/mock.ts`). A conexão com
-> o backend FastAPI e a coleta real estão preparadas mas ainda não plugadas.
+> Estado atual: modo manual já plugado no backend FastAPI real (`lib/api.ts` →
+> `lib/adapt.ts`). `data/mock.ts` continua presente como 2 campanhas de
+> exemplo, marcadas visualmente como "exemplo" ao lado das campanhas vivas
+> analisadas pelo usuário. Coleta automática (scraping do Ads Manager) é
+> provisória — ver `CLAUDE.md` na raiz do monorepo pro estado real e
+> detalhado de cada frente.
 
 ## Estrutura
 
@@ -37,6 +41,22 @@ Carregar no Brave/Chrome:
 2. Ative o **Modo de desenvolvedor**
 3. **Carregar sem compactação** → selecione a pasta `build/chrome-mv3-dev`
 4. Clique no ícone do NexGestor na barra → o **painel lateral** abre
+
+## Testes
+
+```bash
+npm test           # roda a suíte uma vez (Vitest)
+npm run test:watch # modo watch
+```
+
+Vitest + `@testing-library/react`, ambiente jsdom. Cobre a lógica pura de
+`lib/` (adapter backend→VM, sanitizador de HTML/XSS, store em localStorage,
+hook de tema) e as funções de roteamento/parsing exportadas de dentro dos
+componentes (`Copilot.buildReply`, `NewCampaignModal.parseFileJSON`), além
+de um teste de regressão de `Summary.tsx` garantindo que o dinheiro das
+campanhas de exemplo nunca entra nos totais financeiros. Alias `~*` do
+Plasmo é resolvido via `vitest.config.ts`; imports de imagem (`~assets/*`)
+são mockados em `test/__mocks__/asset.ts`.
 
 ## Build de produção
 

@@ -15,14 +15,14 @@ const QUICK: { label: string; q: string }[] = [
 // Sem strip de acento — respostas continuam grounded nos dados reais da
 // campanha (nunca texto solto/alucinado), só a pergunta decide qual recorte
 // dos dados mostrar. Não é NLU de verdade: é honesto sobre isso no fallback.
-function norm(s: string) {
+export function norm(s: string) {
   return s
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
 }
 
-function buildReply(question: string, c: CampaignVM): string {
+export function buildReply(question: string, c: CampaignVM): string {
   const q = norm(question)
   const sc = c.scenarios[0]
 
