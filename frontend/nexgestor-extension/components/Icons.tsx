@@ -4,7 +4,6 @@ type P = { className?: string; style?: CSSProperties }
 const S = (props: any) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props} />
 )
-export const IconLogo = (p: P) => (<svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M4 16 L9 10 L13 13 L20 5" /><path d="M15 5 L20 5 L20 10" /></svg>)
 export const IconSearch = (p: P) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>)
 export const IconSpark = (p: P) => (<S {...p}><circle cx="12" cy="12" r="3.2" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /></S>)
 export const IconBolt = (p: P) => (<S {...p}><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" /></S>)

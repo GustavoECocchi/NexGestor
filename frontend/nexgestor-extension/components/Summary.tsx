@@ -1,5 +1,6 @@
 import { brl, dec } from "~lib/format"
 import { STATUS } from "~lib/status"
+import { isLiveId } from "~lib/store"
 import type { CampaignVM, UIStatus } from "~types"
 
 export function Summary({
@@ -11,20 +12,26 @@ export function Summary({
   filter?: UIStatus | null
   onToggle?: (s: UIStatus) => void
 }) {
+  // Contagem por status considera tudo na tela (bate com a lista/filtro abaixo,
+  // que mistura campanhas vivas e exemplos). Já os totais financeiros somam só
+  // campanhas vivas — dinheiro fake dos exemplos não pode inflar o resumo real.
   const a = campaigns.reduce(
     (acc, c) => {
       acc[c.status]++
-      acc.invest += c.invest
-      acc.revenue += c.revenue
-      acc.roas += c.roasNum
-      acc.cpa += c.cpaNum
+      if (isLiveId(c.id)) {
+        acc.invest += c.invest
+        acc.revenue += c.revenue
+        acc.roas += c.roasNum
+        acc.cpa += c.cpaNum
+        acc.liveN++
+      }
       return acc
     },
-    { RED: 0, YELLOW: 0, GREEN: 0, BLUE: 0, invest: 0, revenue: 0, roas: 0, cpa: 0 } as any
+    { RED: 0, YELLOW: 0, GREEN: 0, BLUE: 0, invest: 0, revenue: 0, roas: 0, cpa: 0, liveN: 0 } as any
   )
   const n = campaigns.length
-  const roasMed = n ? a.roas / n : 0
-  const cpaMed = n ? a.cpa / n : 0
+  const roasMed = a.liveN ? a.roas / a.liveN : 0
+  const cpaMed = a.liveN ? a.cpa / a.liveN : 0
 
   const chip = (count: number, label: string, key: UIStatus) => {
     if (!count) return null
