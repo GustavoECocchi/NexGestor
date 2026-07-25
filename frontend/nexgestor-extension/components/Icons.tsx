@@ -17,3 +17,5 @@ export const IconInfo = (p: P) => (<S {...p}><circle cx="12" cy="12" r="9" /><pa
 export const IconSend = (p: P) => (<S {...p}><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" /></S>)
 export const IconRefresh = (p: P) => (<S {...p}><path d="M21 12a9 9 0 1 1-6.2-8.5" /><path d="M21 3v6h-6" /></S>)
 export const IconEdit = (p: P) => (<S {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></S>)
+export const IconSun = (p: P) => (<S {...p}><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" /></S>)
+export const IconMoon = (p: P) => (<S {...p}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" /></S>)

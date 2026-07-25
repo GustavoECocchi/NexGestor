@@ -4,10 +4,10 @@ export const STATUS: Record<
   UIStatus,
   { label: string; color: string; bg: string; stroke: string }
 > = {
-  RED: { label: "Crítico", color: "var(--red)", bg: "var(--red-bg)", stroke: "#ff6b78" },
-  YELLOW: { label: "Atenção", color: "var(--amber)", bg: "var(--amber-bg)", stroke: "#ffc56b" },
-  GREEN: { label: "Saudável", color: "var(--green)", bg: "var(--green-bg)", stroke: "#5fe0a8" },
-  BLUE: { label: "Escalável", color: "var(--blue)", bg: "var(--blue-bg)", stroke: "#5b8cff" }
+  RED: { label: "Crítico", color: "var(--red)", bg: "var(--red-bg)", stroke: "var(--red)" },
+  YELLOW: { label: "Atenção", color: "var(--amber)", bg: "var(--amber-bg)", stroke: "var(--amber)" },
+  GREEN: { label: "Saudável", color: "var(--green)", bg: "var(--green-bg)", stroke: "var(--green)" },
+  BLUE: { label: "Escalável", color: "var(--blue)", bg: "var(--blue-bg)", stroke: "var(--blue)" }
 }
 
 export const PRIO: Record<number, { t: string; c: string; b: string }> = {
