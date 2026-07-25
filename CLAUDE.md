@@ -85,17 +85,55 @@ Ambiente de execução resolvido primeiro: a pasta era um unzip sem `.git` (reco
 - **Acessibilidade de teclado:** card, botão "Voltar" e checkbox de ação viraram focáveis (`tabIndex`, `role`, `onKeyDown` Enter/Espaço) com `:focus-visible`.
 - **Removida affordance de clique falsa** dos cards de Sugestões (tinham hover/cursor mas nenhum `onClick`).
 
-**Assets:** commit `6b8d56c` adicionou o PNG da logo (`ChatGPT Image Jul 24, 2026, 12_32_50 PM.png`) na raiz do frontend — **ainda não integrado** (decisão do usuário: integração depois). Nome com espaços/vírgula: renomear para algo como `assets/logo.png` na hora de integrar.
+**Assets:** commit `6b8d56c` adicionou o PNG da logo (`ChatGPT Image Jul 24, 2026, 12_32_50 PM.png`) na raiz do frontend — **ainda não integrado** (decisão do usuário: integração depois). Nome com espaços/vírgula: renomear para algo como `assets/logo.png` na hora de integrar. *(Resolvido em 2026-07-25 — ver sessão abaixo.)*
 
-**Pendências levantadas nesta sessão (não resolvidas):**
+**Pendências levantadas nesta sessão (não resolvidas):** *(ambas resolvidas em 2026-07-25 — ver sessão abaixo.)*
 - O "Resumo geral" (`Summary.tsx`) soma investimento/receita/ROAS de **todas** as campanhas na tela, incluindo o dinheiro fake dos 2 exemplos. Some quando o mock sair; dá para filtrar por campanhas vivas antes, se o usuário quiser.
 - Integrar a logo (renomeando o arquivo).
+
+## Sessão de 2026-07-25 — logo integrada, tema claro/escuro e correções de revisão
+
+Sessão só de frontend (nenhuma mudança no backend). 4 commits na `main`, todos com push: `c854833`, `77139f3`, `e7164e9`, `ad577bf`.
+
+**Como foi validado:** `tsc --noEmit` + `plasmo build` limpos a cada passo, **e desta vez também com verificação visual ao vivo** — servi o build (`build/chrome-mv3-prod`) num servidor HTTP local e abri o `sidepanel.html` no navegador via automação, conferindo os dois temas em todas as telas (home, resumo, cards, modal de nova campanha, command palette, detalhe de campanha). Isso é mais do que as sessões anteriores conseguiram (que pararam em type-check + build), mas **continua não sendo teste contra o Ads Manager real** (sem conta) e **o projeto segue sem nenhum teste automatizado de frontend**.
+
+### O que foi feito
+
+- **Logo integrada** (`c854833`). Recortei só o símbolo N/G do PNG original (o texto "NEXGESTOR" já é renderizado pelo `Header`), com fundo transparente, salvo em `assets/logo.png`. `Header.tsx` usa a imagem no lugar do `IconLogo` SVG genérico (removido de `Icons.tsx`, não era mais usado em lugar nenhum). Criado `images.d.ts` declarando o módulo `*.png` (o `tsc` reclamava). PNG original de nome esquisito removido.
+- **`Summary.tsx` não soma mais dinheiro fake** (`c854833`). Os totais de Investimento/Receita/ROAS médio/CPA médio agora somam só campanhas com `isLiveId(c.id)` (função que já existia em `lib/store.ts`). **Os chips de status continuam contando tudo na tela de propósito** — eles filtram a lista abaixo, que mistura vivas + exemplos; mudar isso quebraria a relação chip↔lista. Verificado ao vivo: sem campanha viva o resumo mostra R$ 0; injetando uma campanha viva, passa a mostrar exatamente os números dela.
+- **Peso visual nos tiles do Resumo** (`77139f3`). Cada tile financeiro ganhou um ícone em chip colorido (azul/verde/violeta/laranja), valor com mais peso tipográfico, e novas variáveis `--violet`/`--orange`. Puramente visual.
+- **Tema claro/escuro** (`e7164e9`). Referências pesquisadas: Triple Whale (mesmo nicho, analytics de ads) pro tom do claro, Linear pra manter o escuro elegante.
+  - `lib/theme.ts`: hook com persistência em `localStorage` (`nex:theme`), respeita `prefers-color-scheme` até o usuário escolher explicitamente no toggle. Efeito no nível do módulo aplica o tema salvo antes do React montar, pra não piscar o tema errado.
+  - Toggle sol/lua no `Header`, com animação de troca do ícone.
+  - **A mudança estrutural que viabilizou tudo:** ~30 cores que estavam hardcoded em hex espalhadas pelo CSS viraram `color-mix()` sobre as variáveis. Sem isso, o tema não se propagaria sem reescrever componente por componente. `status.ts` também: o `stroke` do score ring virou `var()`.
+
+### Correções da revisão (`ad577bf`)
+
+Revisão crítica do que tinha acabado de ser entregue, com **3 bugs reais encontrados e corrigidos**:
+
+1. **Bug de lógica no `useTheme`** — o listener de `prefers-color-scheme` checava a preferência salva só na montagem. Quem abrisse sem preferência salva e depois usasse o toggle ficava com o listener ativo: uma mudança de tema do SO viraria o **ícone sem virar as cores** (o `data-theme` já estava fixado), dessincronizando estado e DOM e deixando o clique seguinte aparentemente morto. A checagem passou pra dentro do handler.
+2. **Contraste abaixo do WCAG no tema claro** — calculados os ratios de toda a paleta: `--muted` estava em **2,91:1** (mínimo 4,5), e é justamente a cor das labels de 9,5–10,5px em maiúsculas (`RESUMO GERAL`, `INVESTIMENTO`, `CPA`). Corrigido pra `#646f88` (**4,69:1**); `--txt-3` pra `#7b8499`. **O tema escuro passou em todos os tokens**, não foi mexido.
+3. **Franja escura na logo** — o primeiro recorte usou corte binário por limiar e deixou **2,55% dos pixels opacos** como resíduo quase-preto nas bordas: invisível no header escuro, contorno sujo no claro. Refeita a partir do original (recuperado do histórico do git) recuperando a transparência de verdade (un-premultiply sobre fundo preto). Franja final: **0 pixels**.
+
+Mais um ponto de atenção tratado na mesma revisão: as animações adicionadas não respeitavam **`prefers-reduced-motion`**. Adicionado o bloco — com o cuidado de forçar `opacity:1` em `.card`/`.mtile`, que nascem com `opacity:0` e dependem da animação `rise` pra aparecer (desligar animação sem isso deixaria os cards **invisíveis**). Validado que os 3 cards seguem visíveis com animação desligada.
+
+**Bug de percepção investigado e corrigido durante a sessão:** o usuário relatou que textos "piscavam" ao trocar de tema. Medindo `font-size`/`transform` computados quadro a quadro durante o toggle, os valores ficaram idênticos o tempo todo — não era bug de layout. A causa era a regra global de transição incluir `color`: texto bold grande cruzando de quase-branco pra quase-preto passa por um cinza sujo no meio, o que cria ilusão de "inchar". Agora só fundo/borda fazem fade; texto troca de cor instantaneamente.
+
+### Pendências / dívidas conhecidas
+
+- **`data/mock.ts` ainda existe** — as 2 campanhas de exemplo continuam na Home ao lado das vivas. O `Summary` já as ignora nos totais, mas os chips de status ainda as contam (decisão consciente, ver acima).
+- **`.nex-fab` / `.nex-panel` no `style.css` são CSS morto** — nenhum componente usa essas classes (verificado por grep). Sobrou de uma abordagem de sidebar injetada que não é a atual (side panel). Candidato a remoção.
+- **`.collect-btn` e `.nex-fab` usam gradiente hardcoded** (`#5b8cff,#7d6bff`) em vez das variáveis de tema — no tema claro continuam com o azul/violeta escuro. Funciona (texto branco sobre gradiente saturado), mas é inconsistente com o resto da paleta clara.
+- **Sem teste automatizado de frontend** — segue valendo. Toda a validação visual desta sessão foi manual/por automação de navegador, não é regressão-proof.
 
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **105/105**, sem falhas ambientais (ver sessão de 2026-07-16 parte 3) — os dois testes que dependiam do `.env` local agora isolam o estado explicitamente.
 2. ✅ **Integração Gemini validada ao vivo** — modelo corrigido (`gemini-flash-lite-latest`). **A key usada nesse teste já foi revogada** (confirmado em 2026-07-16, retorna 401); pra usar IA de novo é preciso gerar key nova.
-3. ✅ Frontend: UI completa; modo manual já plugado no backend real (ver correção de estado acima). **Polimento de UX feito em 2026-07-24 parte 2** (copiloto responsivo, persistência de checkmarks, atalho de busca visível, estado vazio, acessibilidade de teclado). Mock reduzido a **2 campanhas de exemplo** (marcadas visualmente como "exemplo") ao lado das campanhas vivas. Validado por type-check + build, **não** por render ao vivo nem teste automatizado de frontend (não existe no projeto).
+3. ✅ Frontend: UI completa; modo manual já plugado no backend real (ver correção de estado acima). **Polimento de UX feito em 2026-07-24 parte 2** (copiloto responsivo, persistência de checkmarks, atalho de busca visível, estado vazio, acessibilidade de teclado). Mock reduzido a **2 campanhas de exemplo** (marcadas visualmente como "exemplo") ao lado das campanhas vivas. **Identidade visual e tema fechados em 2026-07-25**: logo integrada, tiles do Resumo com peso visual, **tema claro/escuro com toggle persistido**, contraste do claro conferido contra WCAG, `prefers-reduced-motion` respeitado. Validado por type-check + build **+ verificação visual ao vivo nos dois temas** (servindo o build num HTTP local); **continua sem teste automatizado de frontend** (não existe no projeto) e sem teste contra o Ads Manager real.
 4. 🟡 **Coleta automática — provisória (scraping via content script), aceitável só para o período de testes atual.** Funciona mecanicamente (mensageria + manifest validados), mas não foi testada contra um Ads Manager real. **Migração para Meta Marketing API (OAuth) adiada de propósito** (ver "Decisão de escopo" acima) — não é bloqueante para o período de testes, só para o lançamento real.
 5. ✅ **Key exposta revogada** — confirmado em 2026-07-16 via chamada real à API (401 UNAUTHENTICATED). Falta gerar uma key nova no Google AI Studio e configurar no `.env` local antes de usar a IA de novo.
 6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`.
+7. ⬜ **Sem persistência server-side** — confirmado nesta sessão: o backend é *stateless* (sem banco, sem contas); tudo que "sobrevive" mora no `localStorage` do navegador (`nex:live`, `nex:doneActions`, `nex:screen`, `nex:theme`). O usuário decidiu **não** tratar isso agora — coerente com o período de testes, mas vira bloqueante antes de lançar pra usuários reais (limpar o navegador = perder tudo, sem multi-dispositivo).
+
+> **Próximo passo sugerido para a próxima sessão:** com a UI e o tema fechados, o gargalo volta a ser **dado real**. As duas frentes candidatas, em ordem: (a) gerar uma key nova do Gemini e revalidar a IA ponta a ponta (hoje 401); (b) testar a coleta automática contra um Ads Manager real assim que houver conta disponível — é a peça mais frágil do produto e a única nunca testada de verdade. Só depois disso faz sentido mexer em persistência (item 7) ou na Meta Marketing API.
