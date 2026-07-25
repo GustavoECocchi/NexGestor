@@ -1,3 +1,4 @@
+import { IconBolt, IconCompare, IconSpark, IconTrendUp } from "~components/Icons"
 import { brl, dec } from "~lib/format"
 import { STATUS } from "~lib/status"
 import { isLiveId } from "~lib/store"
@@ -63,10 +64,22 @@ export function Summary({
         {chip(a.BLUE, "escalável", "BLUE")}
       </div>
       <div className="fin-grid">
-        <div className="fin"><div className="fk">Investimento</div><div className="fv">R$ {brl(a.invest)}</div></div>
-        <div className="fin"><div className="fk">Receita</div><div className="fv" style={{ color: "var(--green)" }}>R$ {brl(a.revenue)}</div></div>
-        <div className="fin"><div className="fk">ROAS médio</div><div className="fv">{dec(roasMed)}x</div></div>
-        <div className="fin"><div className="fk">CPA médio</div><div className="fv">R$ {brl(cpaMed)}</div></div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}><IconBolt /></div>
+          <div><div className="fk">Investimento</div><div className="fv">R$ {brl(a.invest)}</div></div>
+        </div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--green-bg)", color: "var(--green)" }}><IconTrendUp /></div>
+          <div><div className="fk">Receita</div><div className="fv" style={{ color: "var(--green)" }}>R$ {brl(a.revenue)}</div></div>
+        </div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--violet-bg)", color: "var(--violet)" }}><IconSpark /></div>
+          <div><div className="fk">ROAS médio</div><div className="fv">{dec(roasMed)}x</div></div>
+        </div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--orange-bg)", color: "var(--orange)" }}><IconCompare /></div>
+          <div><div className="fk">CPA médio</div><div className="fv">R$ {brl(cpaMed)}</div></div>
+        </div>
       </div>
     </div>
   )

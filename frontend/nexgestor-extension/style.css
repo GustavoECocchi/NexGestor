@@ -13,6 +13,8 @@
   --amber:#ffc56b; --amber-bg:rgba(255,197,107,.12);
   --green:#5fe0a8; --green-bg:rgba(95,224,168,.12);
   --blue:#5b8cff; --blue-bg:rgba(91,140,255,.12);
+  --violet:#9c8bff; --violet-bg:rgba(156,139,255,.12);
+  --orange:#ff9a52; --orange-bg:rgba(255,154,82,.12);
   --radius:16px;
   --font-display:'Syne',sans-serif; --font-mono:'DM Mono',monospace; --font-body:'Hanken Grotesk',sans-serif;
 }
@@ -64,7 +66,8 @@ body::after{
 .mini-btn svg{width:12px;height:12px}
 
 .summary{margin:6px 16px 4px;background:linear-gradient(160deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:15px;position:relative;overflow:hidden}
-.summary::before{content:"";position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(91,140,255,.12),transparent 70%)}
+.summary::before{content:"";position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(91,140,255,.14),transparent 70%)}
+.summary::after{content:"";position:absolute;left:-30px;bottom:-50px;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle,rgba(255,154,82,.08),transparent 70%);pointer-events:none}
 .sum-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;position:relative}
 .sum-head h2{font-family:var(--font-display);font-weight:700;font-size:14.5px}
 .sum-head span{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.04em}
@@ -73,9 +76,12 @@ body::after{
 .chip .cdot{width:6px;height:6px;border-radius:50%}
 .chip b{font-family:var(--font-mono);font-weight:500}
 .fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;position:relative}
-.fin{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 11px}
+.fin{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px;display:flex;gap:10px;align-items:flex-start;transition:border-color .18s}
+.fin:hover{border-color:var(--line-2)}
+.fin-ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
+.fin-ico svg{width:13px;height:13px}
 .fin .fk{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-.fin .fv{font-family:var(--font-mono);font-weight:500;font-size:15px}
+.fin .fv{font-family:var(--font-mono);font-weight:600;font-size:16px;letter-spacing:-.01em}
 
 .feed{padding:4px 16px 8px}
 .card{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:15px;margin-bottom:11px;cursor:pointer;position:relative;overflow:hidden;transition:transform .2s cubic-bezier(.2,.7,.3,1),border-color .2s,box-shadow .2s;opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards}
