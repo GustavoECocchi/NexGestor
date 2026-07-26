@@ -357,8 +357,22 @@ def _detect_cold_lead(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if not ((cpa_ok or cpl_ok) and lp_critica):
         return None
 
-    custo_info = f"CPA R${m.cpa:.2f}" if m.cpa else f"CPL R${m.cpl:.2f}"
-    meta_info  = f"teto de R${t.max_cpa:.2f}" if m.cpa else f"teto de R${t.max_cpl:.2f}"
+    # O texto precisa descrever o sinal de custo que REALMENTE qualificou o cenário.
+    # Antes o ramo era escolhido por `if m.cpa` (truthiness), o que causava dois
+    # defeitos distintos:
+    #   1. CPA=0 é falsy mas é um valor válido — caía no ramo do CPL e estourava
+    #      TypeError quando m.cpl/t.max_cpl eram None (virava HTTP 500).
+    #   2. Um CPA ACIMA do teto (que portanto não qualificou; quem qualificou foi o
+    #      CPL) era descrito como "dentro do teto" — afirmação factualmente falsa
+    #      dentro do diagnóstico que o gestor lê.
+    # `cpa_ok or cpl_ok` é garantido acima, então o else implica cpl_ok, o que por
+    # sua vez garante m.cpl e t.max_cpl não-nulos.
+    if cpa_ok:
+        custo_info = f"CPA R${m.cpa:.2f}"
+        meta_info  = f"teto de R${t.max_cpa:.2f}"
+    else:
+        custo_info = f"CPL R${m.cpl:.2f}"
+        meta_info  = f"teto de R${t.max_cpl:.2f}"
 
     return ScenarioDetail(
         code=ScenarioCode.COLD_LEAD,
@@ -637,8 +651,13 @@ def _evaluate_one(field: str, label: str, target_attr: str, fator_red,
     if value is None or target is None:
         return None
 
-    # Hold Rate usa threshold absoluto de 10% para RED em vez de proporção.
-    threshold_red = (target * fator_red) if fator_red is not None else 10.0
+    # Hold Rate usa um piso absoluto de 10% para RED em vez de proporção ao target.
+    # O `min` com 70% do target é o que mantém as faixas ordenadas: com um piso fixo
+    # de 10, um gestor que baixasse min_hold_rate para menos de 10 teria o limiar de
+    # RED ACIMA da própria meta, invertendo o semáforo — um valor que SUPERA a meta
+    # saía RED com score 100 (métrica "crítica" e "perfeita" na mesma tela).
+    # Com o default (target 15) o resultado continua exatamente 10.0.
+    threshold_red = (target * fator_red) if fator_red is not None else min(10.0, target * 0.7)
     st = _status(value, threshold_red, target, inverted=inverted)
     note = notas[st.value].format(meta=target, value=value)
     score = _calc_score(value, target, inverted=inverted)
@@ -1039,16 +1058,22 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT ASYNC — engine + IA em paralelo
+# ENTRY POINT ASYNC — engine primeiro, IA em cima do resultado dele
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def analyze_campaign_async(data: AnalyzeInput) -> CampaignAnalysisResponse:
     """
-    Versão assíncrona que roda engine e IA em paralelo.
+    Versão assíncrona: roda o engine e, em seguida, a IA sobre o resultado dele.
+
+    Os dois NÃO rodam em paralelo — a IA depende dos cenários do engine para o
+    "modo complementar", então a ordem é sequencial por necessidade. O ganho do
+    async aqui é não bloquear o event loop (engine vai para executor, IA aguarda
+    I/O de rede), não sobrepor as duas etapas. A latência total é engine + IA,
+    mas o engine roda em <50ms, então quem domina o tempo é a IA.
 
     Garantias:
       • Engine sempre roda (rápido, determinístico)
-      • IA roda em paralelo se disponível (não bloqueia engine)
+      • Nenhuma das duas etapas bloqueia o event loop
       • Se IA falhar/timeout, response.ai_insights = None — não afeta o resto
       • Se engine não detectar cenários E IA falhar, gera fallback mínimo
         para garantir que NUNCA retornamos análise vazia
@@ -1064,10 +1089,9 @@ async def analyze_campaign_async(data: AnalyzeInput) -> CampaignAnalysisResponse
 
     engine_task = loop.run_in_executor(None, run_engine)
 
-    # ── Preparar a tarefa da IA (se disponível) ──
-    # A IA precisa do resultado do engine para o "modo complementar",
-    # então rodamos engine primeiro em executor, depois disparamos IA em paralelo
-    # com pré-processamento mínimo (engine roda muito rápido, <50ms).
+    # ── Aguarda o engine ──
+    # A IA precisa dos cenários do engine para o "modo complementar", então esta
+    # espera é obrigatória, não uma escolha de implementação.
     engine_response = await engine_task
 
     # Se IA não está disponível, retorna resposta do engine direta

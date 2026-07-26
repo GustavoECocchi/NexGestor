@@ -925,3 +925,60 @@ class TestAIServiceHelpers:
         finally:
             ai._client = None
             ai._client_key = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REGRESSÃO — bugs encontrados na revisão de 2026-07-26
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRegressaoRevisao20260726:
+    """
+    Protege duas correções no engine. Ambos os bugs eram alcançáveis por payload
+    válido (aceito pelo schema), não por input malformado.
+    """
+
+    def test_cold_lead_nao_quebra_com_cpa_zero(self):
+        """
+        CPA=0 é valor válido (schema usa ge=0) mas é falsy em Python. O texto do
+        Cenário F escolhia o ramo CPA/CPL com `if m.cpa`, então CPA=0 caía no ramo
+        do CPL e formatava None → TypeError → HTTP 500.
+        """
+        m = Metrics(cpa=0.0, lp_conversion_rate=0.0)   # sem cpl/max_cpl
+        result, codes = run(m, make_targets(max_cpa=10.0))
+        assert ScenarioCode.COLD_LEAD in codes
+        cenario = next(s for s in result.scenarios if s.code == ScenarioCode.COLD_LEAD)
+        assert "CPA R$0.00" in cenario.root_cause
+
+    def test_cold_lead_descreve_o_sinal_que_realmente_qualificou(self):
+        """
+        Quando o CPA está ACIMA do teto e quem qualifica o cenário é o CPL, o texto
+        precisa falar do CPL. Antes dizia "CPA R$100.00 dentro do teto de R$10.00" —
+        afirmação factualmente falsa dentro do diagnóstico.
+        """
+        m = Metrics(cpa=100.0, cpl=5.0, lp_conversion_rate=0.1)
+        t = make_targets(max_cpa=10.0, max_cpl=20.0, min_lp_conversion_rate=1.0)
+        result, codes = run(m, t)
+        assert ScenarioCode.COLD_LEAD in codes
+        causa = next(s for s in result.scenarios if s.code == ScenarioCode.COLD_LEAD).root_cause
+        assert "CPL R$5.00" in causa
+        assert "CPA R$100.00 dentro do teto" not in causa
+
+    def test_hold_rate_acima_da_meta_nunca_e_red(self):
+        """
+        O limiar de RED do Hold Rate era fixo em 10. Com min_hold_rate abaixo de 10,
+        o RED ficava ACIMA da meta e invertia o semáforo: um valor que SUPERA a meta
+        do gestor saía RED com score 100 (crítico e perfeito ao mesmo tempo).
+        """
+        result, _ = run(Metrics(hold_rate=7.0), make_targets(min_hold_rate=5.0))
+        ev = next(e for e in result.metric_evaluations if e.metric == "Hold Rate")
+        assert ev.status != CampaignStatus.RED, "valor acima da meta não pode ser RED"
+        assert ev.score == 100
+
+    def test_hold_rate_mantem_piso_de_10_no_default(self):
+        """Não-regressão: com a meta default (15), o limiar de RED continua em 10."""
+        vermelho, _ = run(Metrics(hold_rate=9.9), make_targets())
+        amarelo, _ = run(Metrics(hold_rate=10.1), make_targets())
+        assert next(e for e in vermelho.metric_evaluations
+                    if e.metric == "Hold Rate").status == CampaignStatus.RED
+        assert next(e for e in amarelo.metric_evaluations
+                    if e.metric == "Hold Rate").status == CampaignStatus.YELLOW
