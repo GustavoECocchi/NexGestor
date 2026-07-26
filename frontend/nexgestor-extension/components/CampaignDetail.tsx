@@ -40,7 +40,7 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
         </div>
 
         <div className="score-wrap">
-          <div className="ring">
+          <div className="score-ring">
             <svg width={74} height={74}>
               <circle cx={37} cy={37} r={32} fill="none" stroke="var(--line)" strokeWidth={6} />
               <circle
