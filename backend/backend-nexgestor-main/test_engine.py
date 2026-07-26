@@ -894,9 +894,9 @@ class TestAIServiceHelpers:
     def test_redact_key_mascara_api_key(self):
         """Item 6: _redact_key remove API keys do Google de mensagens."""
         from app.service.ai_service import _redact_key
-        texto = "erro na URL ?key=AIzaSyA1bcDeFgHiJkLmNoPqRsTuVwXyZ0123456 ao chamar"
+        texto = "erro na URL ?key=AIzaFAKE_CHAVE_SINTETICA_DE_TESTE_000006 ao chamar"
         red = _redact_key(texto)
-        assert "AIzaSyA1bcDeFgHiJkLmNoPqRsTuVwXyZ0123456" not in red
+        assert "AIzaFAKE_CHAVE_SINTETICA_DE_TESTE_000006" not in red
         assert "REDACTED" in red
 
     def test_get_client_recria_ao_mudar_key(self):
