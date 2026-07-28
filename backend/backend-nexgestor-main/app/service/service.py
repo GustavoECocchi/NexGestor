@@ -1,3 +1,5 @@
+import math
+
 from app.schema.schema import (
     AnalyzeInput,
     CampaignAnalysisResponse,
@@ -14,6 +16,20 @@ from app.enum.campaign import CampaignStatus, ScenarioCode
 # Calcula métricas derivadas se os dados brutos foram enviados mas a taxa não.
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _derivado(valor: float) -> float | None:
+    """
+    Devolve o valor derivado só se ele for um número utilizável.
+
+    O schema já garante que a ENTRADA é finita, mas a derivação multiplica e
+    divide: `spend=1e308` com `impressions=1` produz um CPM infinito a partir de
+    dois números perfeitamente válidos. O infinito atravessava o engine, virava
+    `"value": null` na resposta (JSON não tem infinito) e a UI exibia uma métrica
+    com status RED e nenhum número — pior que não avaliar, porque afirma ter
+    avaliado. Não conseguindo calcular, o honesto é não registrar a métrica.
+    """
+    return valor if math.isfinite(valor) else None
+
+
 def _preprocess(m: Metrics) -> Metrics:
     """
     Calcula métricas derivadas a partir dos dados brutos quando o usuário
@@ -21,12 +37,18 @@ def _preprocess(m: Metrics) -> Metrics:
     `video_views_3s=12000` e `impressions=50000`, calcula `hook_rate=24.0`.
 
     Não sobrescreve métricas que o usuário já enviou prontas.
+
+    Todos os guards usam `is not None` (e nunca truthiness): gasto 0, alcance 0
+    ou cliques 0 são medições válidas. Com `if data.spend`, uma campanha recém
+    ligada com spend=0 simplesmente não ganhava CPM/CPC/CPA — perdia cobertura
+    de score sem que nada avisasse. É a mesma armadilha que já tinha causado o
+    HTTP 500 do Cenário F em 2026-07-26.
     """
     data = m.model_copy()
 
     # Derivações que dependem de impressions > 0 — agrupadas para um único guard.
     # Cada tupla: (campo destino, valor numerador, fator multiplicador)
-    if data.impressions and data.impressions > 0:
+    if data.impressions is not None and data.impressions > 0:
         rate_derivations = [
             ("hook_rate", data.video_views_3s, 100),
             ("hold_rate", data.thruplays, 100),
@@ -35,24 +57,26 @@ def _preprocess(m: Metrics) -> Metrics:
         ]
         for field, numerator, factor in rate_derivations:
             if getattr(data, field) is None and numerator is not None:
-                setattr(data, field, round(numerator / data.impressions * factor, 2))
+                setattr(data, field, _derivado(round(numerator / data.impressions * factor, 2)))
 
-        if data.frequency is None and data.reach and data.reach > 0:
-            data.frequency = round(data.impressions / data.reach, 2)
+        if data.frequency is None and data.reach is not None and data.reach > 0:
+            data.frequency = _derivado(round(data.impressions / data.reach, 2))
 
-        if data.cpm is None and data.spend:
-            data.cpm = round(data.spend / data.impressions * 1000, 2)
+        if data.cpm is None and data.spend is not None:
+            data.cpm = _derivado(round(data.spend / data.impressions * 1000, 2))
 
     # Derivações independentes de impressions.
     if data.lp_conversion_rate is None and data.conversions is not None \
-            and data.landing_page_views and data.landing_page_views > 0:
-        data.lp_conversion_rate = round(data.conversions / data.landing_page_views * 100, 2)
+            and data.landing_page_views is not None and data.landing_page_views > 0:
+        data.lp_conversion_rate = _derivado(round(data.conversions / data.landing_page_views * 100, 2))
 
-    if data.cpc is None and data.spend and data.link_clicks and data.link_clicks > 0:
-        data.cpc = round(data.spend / data.link_clicks, 2)
+    if data.cpc is None and data.spend is not None \
+            and data.link_clicks is not None and data.link_clicks > 0:
+        data.cpc = _derivado(round(data.spend / data.link_clicks, 2))
 
-    if data.cpa is None and data.spend and data.conversions and data.conversions > 0:
-        data.cpa = round(data.spend / data.conversions, 2)
+    if data.cpa is None and data.spend is not None \
+            and data.conversions is not None and data.conversions > 0:
+        data.cpa = _derivado(round(data.spend / data.conversions, 2))
 
     return data
 
@@ -396,22 +420,84 @@ def _detect_cold_lead(m: Metrics, t: Targets) -> ScenarioDetail | None:
     )
 
 
+def _cpa_com_folga(m: Metrics, t: Targets) -> bool:
+    """CPA presente e abaixo da margem de escala — o gatilho de custo do Cenário G."""
+    return (
+        m.cpa is not None
+        and t.max_cpa is not None
+        and m.cpa <= t.max_cpa * t.scale_cpa_margin
+    )
+
+
+def _evidencia_faltante_para_escala(m: Metrics, t: Targets) -> list[str]:
+    """
+    Dados que faltam para AFIRMAR que a janela de escala está aberta.
+    Lista vazia = evidência completa; qualquer item = não dá para recomendar
+    aumento de orçamento.
+
+    Por que isto existe (achado em 2026-07-28): o Cenário G tratava dado ausente
+    como condição favorável (`m.frequency is None or ...`). Só CPA + meta de CPA
+    já abria "Janela de Escala Vertical" com cobertura de 25% e ação primária
+    "aumentar orçamento agora" — uma recomendação financeira sem nenhuma
+    evidência de que a audiência não está saturando ou de que o algoritmo saiu
+    do aprendizado. As três regras de supressão que existiriam para barrar isso
+    (I→G por aprendizado, K→G por canibalização) dependem justamente dos dados
+    que faltavam, então também ficavam inertes.
+
+    G é o único detector que recomenda GASTAR MAIS. Nos outros dez, o gatilho é
+    dano já observado num número presente; aqui o gatilho é ausência de alarme —
+    e ausência de dado não é ausência de alarme.
+    """
+    faltando: list[str] = []
+    if m.frequency is None:
+        faltando.append("frequência (ou impressões + alcance)")
+    if m.learning_phase is None and m.weekly_conversions is None:
+        faltando.append("fase de aprendizado (learning_phase) ou conversões da semana")
+    # ROAS só é exigido quando o gestor definiu meta de ROAS: sem meta, não há
+    # como afirmar que o retorno "está adequado" nem que deixou de estar.
+    if t.min_roas is not None and m.roas is None:
+        faltando.append("ROAS")
+    if m.conversions is not None and m.conversions < _MIN_CONVERSOES_CONFIAVEL:
+        # Volume de resultado é evidência tanto quanto frequência ou aprendizado:
+        # um CPA ótimo apurado sobre 2 conversões não é um CPA ótimo, é um acaso
+        # com duas casas decimais. (Cenário M também suprime G — este guard
+        # cobre o caso em que M não dispara por falta de `spend`.)
+        faltando.append(f"volume de conversões (mínimo {_MIN_CONVERSOES_CONFIAVEL} para apurar CPA)")
+    return faltando
+
+
 def _detect_vertical_scale(m: Metrics, t: Targets) -> ScenarioDetail | None:
     """Cenário G — Performance excelente com folga: janela para aumentar orçamento."""
     if m.cpa is None or t.max_cpa is None:
         return None
 
-    cpa_otimo       = m.cpa <= t.max_cpa * t.scale_cpa_margin
-    freq_controlada = m.frequency is None or m.frequency < t.scale_frequency_ceiling
-    roas_ok         = m.roas is None or t.min_roas is None or m.roas >= t.min_roas
-    nao_aprendendo  = not m.learning_phase if m.learning_phase is not None else True
+    # Evidência mínima obrigatória — sem ela o cenário não dispara (ver docstring
+    # de _evidencia_faltante_para_escala). O gestor não fica no escuro: o summary
+    # informa quais dados destravam a análise (ver _nota_escala_bloqueada).
+    if _evidencia_faltante_para_escala(m, t):
+        return None
 
-    if not (cpa_otimo and freq_controlada and roas_ok and nao_aprendendo):
+    cpa_otimo       = m.cpa <= t.max_cpa * t.scale_cpa_margin
+    freq_controlada = m.frequency < t.scale_frequency_ceiling
+    roas_ok         = t.min_roas is None or m.roas is None or m.roas >= t.min_roas
+    # Leilão caro é contraindicação de escala: injetar orçamento num CPM já
+    # acima do teto compra impressão mais cara ainda. Reproduzido em 2026-07-28:
+    # CPM 3x o teto com CPA ainda ok abria janela de escala.
+    leilao_ok       = m.cpm is None or m.cpm <= t.max_cpm
+    nao_aprendendo  = (
+        m.learning_phase is False
+        if m.learning_phase is not None
+        else m.weekly_conversions >= t.min_weekly_conversions
+    )
+
+    if not (cpa_otimo and freq_controlada and roas_ok and nao_aprendendo and leilao_ok):
         return None
 
     margem_pct = round((1 - m.cpa / t.max_cpa) * 100, 1)
-    roas_info  = f" ROAS {m.roas:.1f}x acima da meta de {t.min_roas:.1f}x." if (m.roas and t.min_roas) else ""
-    freq_info  = f" Frequência {m.frequency:.1f} — audiência ainda fresca." if m.frequency else ""
+    # `is not None` e não truthiness: ROAS 0.0 e frequência 0.0 são valores
+    # medidos, não ausência de medição.
+    roas_info  = f" ROAS {m.roas:.1f}x acima da meta de {t.min_roas:.1f}x." if (m.roas is not None and t.min_roas is not None) else ""
+    freq_info  = f" Frequência {m.frequency:.1f} — audiência ainda fresca." if m.frequency is not None else ""
 
     return ScenarioDetail(
         code=ScenarioCode.VERTICAL_SCALE,
@@ -447,7 +533,7 @@ def _detect_horizontal_scale(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if not (freq_subindo and cpa_ok and nao_fadiga):
         return None
 
-    cpm_info = f" CPM R${m.cpm:.2f} subindo — leilão ficando mais caro." if m.cpm and m.cpm > t.max_cpm else ""
+    cpm_info = f" CPM R${m.cpm:.2f} subindo — leilão ficando mais caro." if (m.cpm is not None and m.cpm > t.max_cpm) else ""
     estimativa = round((t.max_frequency_fatigue - m.frequency) / 0.3)
     prazo = f" Estimativa: {estimativa} dia(s) antes do colapso se não agir." if estimativa > 0 else ""
 
@@ -489,7 +575,7 @@ def _detect_learning_phase(m: Metrics, t: Targets) -> ScenarioDetail | None:
             f"(meta: {t.min_weekly_conversions}+ — deficit de {deficit})."
         )
 
-    gasto_info = f" Gasto R${m.spend:.2f} com CPA instável de R${m.cpa:.2f}." if m.spend and m.cpa else ""
+    gasto_info = f" Gasto R${m.spend:.2f} com CPA instável de R${m.cpa:.2f}." if (m.spend is not None and m.cpa is not None) else ""
 
     return ScenarioDetail(
         code=ScenarioCode.LEARNING_PHASE,
@@ -528,7 +614,7 @@ def _detect_overspending(m: Metrics, t: Targets) -> ScenarioDetail | None:
         return None
 
     economia = ""
-    if m.spend and m.conversions and m.conversions > 0:
+    if m.spend is not None and m.conversions is not None and m.conversions > 0:
         cpa_estimado = (m.spend * 0.85) / m.conversions
         economia = f" Com redução de 15% do orçamento, CPA estimado: R${cpa_estimado:.2f}."
 
@@ -553,6 +639,238 @@ def _detect_overspending(m: Metrics, t: Targets) -> ScenarioDetail | None:
             "4. Monitorar CPM e CPA nas 72h seguintes."
         ),
         priority=2,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CENÁRIOS L–O — lacunas fechadas em 2026-07-28
+#
+# Levantadas rodando situações comuns de tráfego pago contra o engine e vendo
+# o que ele respondia. As cinco piores respostas eram todas variações de
+# "Manter campanha ativa. Monitorar métricas nas próximas 48h." em cima de
+# problema real. Nenhum campo novo de schema: os dados já chegavam.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Abaixo disto, a média de custo é ruído: um resultado a mais ou a menos muda o
+# CPA em dezenas de por cento. Não é um limiar estatístico formal — é o piso a
+# partir do qual faz sentido conversar sobre CPA sem enganar o gestor.
+_MIN_CONVERSOES_CONFIAVEL = 10
+_MIN_CONVERSOES_ESTAVEL = 30
+
+
+def _detect_no_return(m: Metrics, t: Targets) -> ScenarioDetail | None:
+    """
+    Cenário L — Gasto relevante sem NENHUMA conversão.
+
+    O buraco mais grave que o engine tinha: com `conversions=0` o CPA não é
+    derivável (divisão por zero), então nenhum detector de custo disparava e a
+    campanha que mais sangra dinheiro recebia "manter ativa, monitorar 48h".
+    Reproduzido: R$ 2.000 gastos, 1.600 cliques, zero conversão → score 84,
+    nenhum cenário.
+
+    `conversions == 0` precisa ser explícito (não `None`): campanha de tráfego
+    ou awareness que nem envia conversões não deve ser acusada de nada.
+    """
+    if m.conversions is None or m.conversions != 0 or m.spend is None or m.spend <= 0:
+        return None
+
+    # "Gasto relevante" = já passou do ponto em que uma conversão na meta
+    # deveria ter acontecido. Sem meta de CPA, exige volume de clique real,
+    # para não acusar campanha que mal começou a rodar.
+    if t.max_cpa is not None:
+        relevante = m.spend >= t.max_cpa
+        referencia = f"o teto de CPA (R${t.max_cpa:.2f})"
+    else:
+        relevante = (m.link_clicks or 0) >= 100
+        referencia = "volume de cliques suficiente para esperar resultado"
+    if not relevante:
+        return None
+
+    perdido = f"R${m.spend:.2f}"
+    sinais = []
+    if m.link_clicks is not None:
+        sinais.append(f"{m.link_clicks} cliques no link")
+    if m.landing_page_views is not None:
+        sinais.append(f"{m.landing_page_views} visitas à página")
+    trafego = f" Tráfego entregue: {', '.join(sinais)}." if sinais else ""
+
+    return ScenarioDetail(
+        code=ScenarioCode.NO_RETURN,
+        title="Cenário L — Gasto sem Retorno (Zero Conversão)",
+        root_cause=(
+            f"{perdido} investidos e NENHUMA conversão registrada — o gasto já passou "
+            f"{referencia}.{trafego} Quando há tráfego mas nenhuma conversão, o problema "
+            "está depois do clique: rastreamento quebrado, página fora do ar/lenta, "
+            "formulário com erro ou oferta sem aderência ao público."
+        ),
+        funnel_impact=(
+            "Cada real a mais é perda direta: não existe CPA para otimizar porque não "
+            "existe conversão. O algoritmo também não aprende — sem evento de conversão "
+            "ele não tem sinal para otimizar entrega."
+        ),
+        action="Pausar a veiculação e validar rastreamento e página antes de gastar mais.",
+        execution_rule=(
+            "1. Conferir se o pixel/evento de conversão está disparando (Gerenciador de Eventos / teste ao vivo). "
+            "2. Abrir a página do anúncio no celular, em rede móvel, e completar a conversão manualmente. "
+            "3. Se a conversão manual funciona, o problema é rastreamento; se não funciona, é a página. "
+            "4. Só religar a campanha depois de uma conversão de teste registrada de ponta a ponta."
+        ),
+        priority=1,
+    )
+
+
+def _detect_low_sample(m: Metrics, t: Targets) -> ScenarioDetail | None:
+    """
+    Cenário M — Poucas conversões: a amostra não sustenta conclusão.
+
+    Reproduzido: 2 conversões, todas as métricas "ótimas" → score 100, status
+    Escalável, ação "aumentar orçamento agora". Duas conversões não sustentam
+    afirmação nenhuma sobre CPA — a próxima conversão (ou a falta dela) muda o
+    número em 50%. Este cenário existe para o produto dizer "ainda não sei",
+    que é diferente de "está tudo bem".
+
+    Prioridade 3 (monitorar) de propósito: não é um problema da campanha, é um
+    limite do que dá para afirmar sobre ela. Quem barra a escala é a regra de
+    supressão M→G, não a severidade.
+    """
+    if m.conversions is None or m.spend is None or m.spend <= 0:
+        return None
+    # Zero conversão é o Cenário L, que é mais grave e tem outra ação.
+    if m.conversions == 0 or m.conversions >= _MIN_CONVERSOES_CONFIAVEL:
+        return None
+
+    cpa_info = ""
+    if m.cpa is not None:
+        variacao = m.spend / (m.conversions + 1)
+        cpa_info = (
+            f" O CPA de R${m.cpa:.2f} vem de {m.conversions} resultado(s): "
+            f"uma única conversão a mais já o levaria para R${variacao:.2f}."
+        )
+
+    return ScenarioDetail(
+        code=ScenarioCode.LOW_SAMPLE,
+        title="Cenário M — Amostra Insuficiente para Conclusão",
+        root_cause=(
+            f"Apenas {m.conversions} conversão(ões) registrada(s) com R${m.spend:.2f} investidos."
+            f"{cpa_info} Com esse volume, qualquer leitura de CPA, ROAS ou eficiência é ruído — "
+            "não há dados para separar acerto de sorte."
+        ),
+        funnel_impact=(
+            "Decidir escala, pausa ou troca de criativo agora é apostar, não otimizar. "
+            "O algoritmo do Meta também precisa de volume de evento para sair do aprendizado."
+        ),
+        action="Acumular volume antes de tomar decisão de orçamento ou de criativo.",
+        execution_rule=(
+            f"1. Manter a campanha rodando estável até somar pelo menos {_MIN_CONVERSOES_ESTAVEL} conversões "
+            "(ou 7 dias completos, o que vier primeiro) — sem mexer em público, criativo ou orçamento. "
+            "2. Se o volume não vier no prazo, mudar o evento de otimização para um passo anterior do funil "
+            "(Compra → Início de Checkout → Lead). "
+            "3. Só comparar criativos ou escalar depois desse volume."
+        ),
+        priority=3,
+    )
+
+
+def _detect_click_leak(m: Metrics, t: Targets) -> ScenarioDetail | None:
+    """
+    Cenário N — O clique não vira visita.
+
+    Reproduzido: 1.600 cliques no link → 300 visitas à LP (81% evaporou) →
+    status Saudável, nenhum cenário. É o vazamento mais caro e mais invisível
+    do funil: paga-se o clique e o usuário some antes de a página carregar.
+    Alguma perda é normal (10–20%: cliques duplos, desistência no carregamento);
+    acima de 30% é sintoma.
+    """
+    if m.link_clicks is None or m.landing_page_views is None:
+        return None
+    if m.link_clicks < 50:   # abaixo disso a proporção é ruído
+        return None
+
+    aproveitamento = m.landing_page_views / m.link_clicks
+    if aproveitamento >= 0.7:
+        return None
+
+    perdidos = m.link_clicks - m.landing_page_views
+    perda_pct = (1 - aproveitamento) * 100
+    custo_info = ""
+    if m.spend is not None and m.link_clicks > 0:
+        custo_clique = m.spend / m.link_clicks
+        custo_info = f" A perda equivale a R${perdidos * custo_clique:.2f} do investimento."
+
+    return ScenarioDetail(
+        code=ScenarioCode.CLICK_LEAK,
+        title="Cenário N — Vazamento entre o Clique e a Página",
+        root_cause=(
+            f"{m.link_clicks} cliques no link geraram apenas {m.landing_page_views} visitas à página "
+            f"— {perda_pct:.0f}% se perderam no caminho ({perdidos} cliques pagos sem chegada)."
+            f"{custo_info} Perda normal fica entre 10% e 20%; acima disso o padrão é página lenta no "
+            "celular, redirecionamento na chegada ou pixel de visita não disparando."
+        ),
+        funnel_impact=(
+            "O anúncio funciona e o dinheiro é gasto, mas o funil começa vazio. "
+            "Toda métrica abaixo deste ponto (conversão da LP, CPA) fica distorcida para pior "
+            "sem que a causa esteja no anúncio nem na oferta."
+        ),
+        action="Medir o tempo de carregamento no celular e conferir o disparo do evento de visita.",
+        execution_rule=(
+            "1. Testar a página no PageSpeed Insights em modo celular — alvo abaixo de 3s. "
+            "2. Abrir o anúncio pelo próprio app (Instagram/Facebook) e cronometrar até a página aparecer. "
+            "3. Conferir no Gerenciador de Eventos se o evento de visita dispara em todo carregamento. "
+            "4. Eliminar redirecionamentos e parâmetros de rastreio que atrasem a primeira renderização."
+        ),
+        priority=1 if aproveitamento < 0.5 else 2,
+    )
+
+
+def _detect_low_revenue(m: Metrics, t: Targets) -> ScenarioDetail | None:
+    """
+    Cenário O — Vende, mas não lucra.
+
+    Reproduzido: ROAS 1,2x contra meta de 3,0x, CPA dentro do teto → nenhum
+    cenário, "monitorar". O ROAS aparecia vermelho no semáforo e nada explicava
+    a causa. Quando o custo de aquisição está sob controle mas o retorno não
+    fecha, o gargalo não é mídia: é ticket médio, mix de produto ou margem.
+    """
+    if m.roas is None or t.min_roas is None or m.cpa is None or t.max_cpa is None:
+        return None
+
+    roas_baixo = m.roas < t.min_roas
+    custo_ok = m.cpa <= t.max_cpa
+    if not (roas_baixo and custo_ok):
+        return None
+
+    critico = m.roas < t.min_roas * 0.5
+    ticket_info = ""
+    if m.conversions is not None and m.conversions > 0 and m.spend is not None:
+        ticket_atual = (m.spend * m.roas) / m.conversions
+        ticket_alvo = (m.spend * t.min_roas) / m.conversions
+        ticket_info = (
+            f" Ticket médio atual: R${ticket_atual:.2f}; para bater a meta seria preciso "
+            f"R${ticket_alvo:.2f} por conversão."
+        )
+
+    return ScenarioDetail(
+        code=ScenarioCode.LOW_REVENUE,
+        title="Cenário O — Receita Abaixo da Meta com Custo sob Controle",
+        root_cause=(
+            f"ROAS {m.roas:.1f}x {'criticamente ' if critico else ''}abaixo da meta de {t.min_roas:.1f}x, "
+            f"mas o CPA de R${m.cpa:.2f} está dentro do teto de R${t.max_cpa:.2f} — a campanha compra "
+            f"conversão pelo preço combinado.{ticket_info} O gargalo não está na mídia: está no valor "
+            "de cada conversão (ticket, mix de produtos ou desconto)."
+        ),
+        funnel_impact=(
+            "Baixar mais o CPA tem pouco espaço para resolver — mesmo comprando mais barato, "
+            "a conta não fecha se cada venda vale pouco. Escalar assim multiplica o prejuízo "
+            "em vez do lucro."
+        ),
+        action="Atacar o valor por conversão em vez do custo por conversão.",
+        execution_rule=(
+            "1. Conferir se o valor de conversão enviado ao Meta é o real (frete/imposto/desconto). "
+            "2. Subir ticket com order bump, upsell no checkout ou kit/combo na oferta principal. "
+            "3. Direcionar a campanha para o produto de maior margem, não para o mais vendido. "
+            f"4. Recalcular: com o ticket atual, o CPA que fecha a meta de {t.min_roas:.1f}x é menor que o teto vigente."
+        ),
+        priority=1 if critico else 2,
     )
 
 
@@ -792,13 +1110,39 @@ def _calc_overall_score(metric_evals: list) -> tuple[int, int]:
     return round(total_score / total_peso), coverage
 
 
-def _score_confidence(coverage: int) -> str:
-    """Deriva a confiança no score a partir do coverage (% de peso avaliado)."""
+def _score_confidence(coverage: int, m: Metrics | None = None) -> str:
+    """
+    Confiança no score — combina COBERTURA (quantas métricas) com AMOSTRA
+    (quantos resultados sustentam as métricas de custo).
+
+    Eram eixos separados e só o primeiro era medido, o que produzia o absurdo
+    reproduzido em 2026-07-28: campanha com 2 conversões e todas as métricas
+    preenchidas saía com cobertura 57% e confiança suficiente para ser rotulada
+    "Escalável". Cobertura responde "quantos ângulos eu vi"; amostra responde
+    "quantas vezes isso aconteceu". Um CPA apurado sobre 2 eventos não fica
+    confiável só porque veio acompanhado de Hook Rate e CTR.
+
+    A confiança é o TETO das duas leituras — a mais fraca manda.
+    """
     if coverage >= 70:
-        return "high"
-    if coverage >= 40:
-        return "medium"
-    return "low"
+        por_cobertura = "high"
+    elif coverage >= 40:
+        por_cobertura = "medium"
+    else:
+        por_cobertura = "low"
+
+    if m is None or m.conversions is None:
+        return por_cobertura
+
+    if m.conversions < _MIN_CONVERSOES_CONFIAVEL:
+        por_amostra = "low"
+    elif m.conversions < _MIN_CONVERSOES_ESTAVEL:
+        por_amostra = "medium"
+    else:
+        por_amostra = "high"
+
+    ordem = {"low": 0, "medium": 1, "high": 2}
+    return min(por_cobertura, por_amostra, key=lambda c: ordem[c])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -839,6 +1183,13 @@ def _apply_conflict_rules(scenarios: list[ScenarioDetail]) -> list[ScenarioDetai
         (ScenarioCode.RETARGETING_CANNIBAL, {ScenarioCode.VERTICAL_SCALE}),
         # G (Escala Vertical) → suprime H: escalas vertical e horizontal são excludentes
         (ScenarioCode.VERTICAL_SCALE, {ScenarioCode.HORIZONTAL_SCALE}),
+        # M (Amostra Insuficiente) → suprime G e H: com menos de 10 conversões não
+        # há base para afirmar que a campanha suporta MAIS orçamento. Mesmo
+        # princípio de I→G, mas por volume de resultado em vez de fase do algoritmo.
+        (ScenarioCode.LOW_SAMPLE, {ScenarioCode.VERTICAL_SCALE, ScenarioCode.HORIZONTAL_SCALE}),
+        # L (Gasto sem Retorno) → suprime M: zero conversão já é o diagnóstico;
+        # dizer "amostra pequena" ao lado seria suavizar o que é crítico.
+        (ScenarioCode.NO_RETURN, {ScenarioCode.LOW_SAMPLE}),
     ]
 
     for parent, children in suppression_rules:
@@ -956,17 +1307,41 @@ def _partial_diagnosis_note(
     )
 
 
+def _nota_escala_bloqueada(m: Metrics, t: Targets, scenarios: list[ScenarioDetail]) -> str:
+    """
+    CPA com folga mas sem evidência para confirmar a janela de escala.
+
+    Sem esta nota o gestor veria apenas "campanha dentro dos parâmetros" e não
+    saberia que existe um CPA folgado nem o que enviar para destravar a análise
+    de escala. A diferença em relação ao comportamento antigo é o verbo: aqui o
+    engine diz "não posso afirmar", em vez de recomendar aumento de orçamento.
+    """
+    if scenarios or not _cpa_com_folga(m, t):
+        return ""
+    faltando = _evidencia_faltante_para_escala(m, t)
+    if not faltando:
+        return ""
+    return (
+        f" CPA com folga em relação à meta, mas sem evidência suficiente para "
+        f"confirmar janela de escala — envie {'; '.join(faltando)} "
+        "para avaliar aumento de orçamento com segurança."
+    )
+
+
 def _build_summary(
     scenarios: list[ScenarioDetail],
     status: CampaignStatus,
     metric_evals: list | None = None,
     m: Metrics | None = None,
     coverage: int = 100,
+    t: Targets | None = None,
 ) -> str:
     """Monta o resumo textual da análise — achados principais + ressalva de cobertura."""
     nota_parcial = ""
     if metric_evals is not None and m is not None:
         nota_parcial = _partial_diagnosis_note(m, metric_evals, coverage, scenarios)
+    if m is not None and t is not None:
+        nota_parcial += _nota_escala_bloqueada(m, t, scenarios)
 
     if not scenarios:
         base = (
@@ -1017,6 +1392,10 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
         _detect_horizontal_scale,      # H — expansão de audiência
         _detect_overspending,          # J — eficiência de orçamento
         _detect_retargeting_cannibal,  # K — canibalização
+        _detect_no_return,             # L — gasto sem nenhuma conversão
+        _detect_low_sample,            # M — amostra insuficiente
+        _detect_click_leak,            # N — clique que não vira visita
+        _detect_low_revenue,           # O — receita abaixo da meta
     ]
 
     scenarios = []
@@ -1038,9 +1417,9 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
     # Ordem importa: score e cobertura primeiro (o status agora depende deles),
     # depois status (pior entre cenários e evidência métrica), depois summary.
     overall_score, score_coverage = _calc_overall_score(metric_evals)
-    score_confidence = _score_confidence(score_coverage)
+    score_confidence = _score_confidence(score_coverage, m)
     final_status   = _resolve_final_status(scenarios, metric_evals, overall_score)
-    summary        = _build_summary(scenarios, final_status, metric_evals, m, score_coverage)
+    summary        = _build_summary(scenarios, final_status, metric_evals, m, score_coverage, t)
     primary_action = scenarios[0].action if scenarios else "Manter campanha ativa. Monitorar métricas nas próximas 48h."
 
     return CampaignAnalysisResponse(
@@ -1111,6 +1490,8 @@ async def analyze_campaign_async(data: AnalyzeInput) -> CampaignAnalysisResponse
             campaign=data.campaign,
             engine_scenarios=engine_response.scenarios,
             metric_evaluations=engine_response.metric_evaluations,
+            coverage=engine_response.score_coverage,
+            confidence=engine_response.score_confidence,
         )
     except Exception:
         import logging
@@ -1202,9 +1583,20 @@ def _apply_minimal_fallback(response: CampaignAnalysisResponse, data: AnalyzeInp
             f"Atenção: {pior.metric} (score {pior.score}/100). {pior.note}"
         )
     else:
-        response.primary_action = (
-            "Métricas dentro do esperado. Continuar monitorando e considerar "
-            "expansão de orçamento ou novos públicos para escalar."
-        )
+        # Mesmo princípio do Cenário G: só sugerir expansão de orçamento quando
+        # existe evidência para tanto. "Nenhuma métrica ruim entre as poucas que
+        # recebi" não é o mesmo que "pode escalar".
+        faltando = _evidencia_faltante_para_escala(_preprocess(data.metrics), data.targets)
+        if faltando:
+            response.primary_action = (
+                "Métricas recebidas dentro do esperado. Antes de considerar aumento de "
+                f"orçamento, envie {'; '.join(faltando)} — sem esses dados não é possível "
+                "confirmar que a campanha suporta escala."
+            )
+        else:
+            response.primary_action = (
+                "Métricas dentro do esperado. Continuar monitorando e considerar "
+                "expansão de orçamento ou novos públicos para escalar."
+            )
 
     return response

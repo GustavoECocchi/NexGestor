@@ -7,8 +7,9 @@ Organizado em 3 blocos:
   3. OUTPUT da IA — análise complementar (AIScenario, AIInsight, AIRisk, AIInsights)
   4. RESPONSE final — agregação dos itens acima (CampaignAnalysisResponse)
 """
+import math
 from typing import Optional, Literal
-from pydantic import Field, BaseModel
+from pydantic import Field, BaseModel, field_validator
 
 from app.enum.campaign import CampaignStatus, ScenarioCode
 
@@ -17,16 +18,52 @@ from app.enum.campaign import CampaignStatus, ScenarioCode
 # 1. INPUT — o que o backend recebe via POST /api/v1/campaign/analyze
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Valores aceitos nos campos de contexto. Eram `str` livre com a lista só na
+# descrição — um typo ("googel_ads") passava com 200 e o frontend, que só
+# reconhece "google_ads", exibia a campanha como Meta Ads. Erro silencioso de
+# atribuição de plataforma num relatório que o gestor lê como fato.
+CampaignObjective = Literal["conversion", "lead", "traffic"]
+CampaignPlatform = Literal["meta_ads", "google_ads"]
+
+
+class _FinitosApenas(BaseModel):
+    """
+    Rejeita NaN / Infinity / -Infinity em qualquer campo numérico.
+
+    Motivo (achado em 2026-07-28): o JSON do Python aceita os literais `NaN`,
+    `Infinity` e `-Infinity` na entrada, e daí saíam dois defeitos distintos:
+
+      1. `NaN`/`-Infinity` → HTTP 500 sem corpo. O `ge=0` reprovava o valor,
+         mas o handler de validação do FastAPI devolve o input recebido dentro
+         do 422 — e `json.dumps` recusa NaN. O próprio erro de validação
+         estourava, virando 500 e escondendo a causa real do cliente.
+      2. `Infinity` → HTTP 200 com o número perdido. Passava pelo `ge=0`,
+         contaminava as métricas derivadas (CPM = spend/impressions) e era
+         serializado como `"value": null` — a resposta jurava ter avaliado a
+         métrica, com status RED, mas sem número nenhum.
+
+    Aplicado como validador `"*"` (e não campo a campo) de propósito: qualquer
+    métrica futura já nasce protegida, sem depender de lembrar do parâmetro.
+    """
+
+    @field_validator("*", mode="after")
+    @classmethod
+    def _rejeita_nao_finito(cls, v):
+        if isinstance(v, float) and not math.isfinite(v):
+            raise ValueError("valor numérico deve ser finito — NaN e Infinity não são aceitos")
+        return v
+
+
 class Campaign(BaseModel):
     """Identificação e contexto da campanha sendo analisada."""
     id: int
     name: str = Field(min_length=1, max_length=200, description="Nome da campanha (1–200 chars)")
-    objective: Optional[str] = Field(default="conversion", description="conversion | lead | traffic")
-    platform: Optional[str] = Field(default="meta_ads", description="meta_ads | google_ads")
-    niche: Optional[str] = Field(default=None, description="Ex: SaaS, ecommerce, infoproduto")
+    objective: Optional[CampaignObjective] = Field(default="conversion", description="conversion | lead | traffic")
+    platform: Optional[CampaignPlatform] = Field(default="meta_ads", description="meta_ads | google_ads")
+    niche: Optional[str] = Field(default=None, max_length=100, description="Ex: SaaS, ecommerce, infoproduto")
 
 
-class Metrics(BaseModel):
+class Metrics(_FinitosApenas):
     """
     Métricas brutas da campanha. Todas opcionais — o engine analisa o que receber.
     Métricas derivadas (hook_rate, hold_rate, ctr_link, ctr_all, cpm, cpc, cpa,
@@ -72,7 +109,7 @@ class Metrics(BaseModel):
     learning_phase: Optional[bool] = Field(default=None, description="True = conjunto em Aprendizado Limitado")
 
 
-class Targets(BaseModel):
+class Targets(_FinitosApenas):
     """
     Metas/thresholds que o gestor define para a campanha.
     Defaults são baseados nos benchmarks do PDF de referência.

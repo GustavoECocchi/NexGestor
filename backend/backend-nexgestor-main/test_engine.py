@@ -797,14 +797,31 @@ class TestAPI:
         assert r.status_code == 422
 
     def test_get_scenarios_retorna_11_cenarios(self):
-        """GET /scenarios retorna os 11 cenários catalogados"""
+        """
+        GET /scenarios retorna o catálogo completo de cenários.
+
+        Nasceu (2026) fixando o número 11. Em 2026-07-28 entraram os cenários
+        L–O (gasto sem retorno, amostra insuficiente, vazamento de clique,
+        receita abaixo da meta), então o número mudou — o teste não foi
+        removido, foi tornado mais exigente: em vez de um total fixo que
+        envelhece a cada cenário novo, ele agora exige que o catálogo cubra
+        TODOS os códigos do enum. Assim, um detector adicionado sem entrada no
+        catálogo quebra o teste, que é a regressão que interessa de verdade.
+        """
         r = client.get("/api/v1/campaign/scenarios")
         assert r.status_code == 200
         body = r.json()
-        assert body["total"] == 11
         codigos = [s["code"] for s in body["scenarios"]]
+
         for expected in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]:
             assert expected in codigos, f"Cenário {expected} ausente no catálogo"
+
+        do_enum = {c.value for c in ScenarioCode if c != ScenarioCode.HEALTHY}
+        assert set(codigos) == do_enum, (
+            f"catálogo fora de sincronia com o enum — só no enum: {do_enum - set(codigos)}; "
+            f"só no catálogo: {set(codigos) - do_enum}"
+        )
+        assert body["total"] == len(codigos) == len(do_enum)
 
     def test_health_check_retorna_ok(self):
         """GET / retorna status ok"""

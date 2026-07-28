@@ -138,13 +138,41 @@ _SCENARIO_CATALOG: list[dict] = [
         "metrics": ["roas", "frequency", "ctr_link"],
         "priority": "1 crítico",
     },
+    {
+        "code": ScenarioCode.NO_RETURN,
+        "title": "Cenário L — Gasto sem Retorno",
+        "trigger": "conversions = 0 E gasto acima do teto de CPA (ou 100+ cliques)",
+        "metrics": ["conversions", "spend", "link_clicks", "landing_page_views"],
+        "priority": "1 crítico",
+    },
+    {
+        "code": ScenarioCode.LOW_SAMPLE,
+        "title": "Cenário M — Amostra Insuficiente",
+        "trigger": "0 < conversions < 10 — volume não sustenta leitura de CPA/ROAS",
+        "metrics": ["conversions", "spend", "cpa"],
+        "priority": "3 monitorar",
+    },
+    {
+        "code": ScenarioCode.CLICK_LEAK,
+        "title": "Cenário N — Vazamento entre Clique e Página",
+        "trigger": "LP views < 70% dos cliques no link (mínimo 50 cliques)",
+        "metrics": ["link_clicks", "landing_page_views", "spend"],
+        "priority": "1 crítico se <50% | 2 urgente caso contrário",
+    },
+    {
+        "code": ScenarioCode.LOW_REVENUE,
+        "title": "Cenário O — Receita Abaixo da Meta com Custo sob Controle",
+        "trigger": "ROAS < min_roas E CPA <= max_cpa",
+        "metrics": ["roas", "cpa", "conversions", "spend"],
+        "priority": "1 crítico se ROAS < metade da meta | 2 urgente caso contrário",
+    },
 ]
 
 
 @router.get(
     "/scenarios",
     summary="Listar cenários detectáveis",
-    description="Catálogo dos 11 cenários do engine com condições de disparo.",
+    description="Catálogo dos cenários do engine com condições de disparo.",
 )
 async def list_scenarios():
     """Devolve o catálogo de cenários — útil para frontend documentar a UI."""

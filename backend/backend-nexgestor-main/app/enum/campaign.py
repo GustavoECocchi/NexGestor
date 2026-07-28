@@ -40,5 +40,14 @@ class ScenarioCode(str, Enum):
     OVERSPENDING = "J"          # Orçamento além do ponto de eficiência
     RETARGETING_CANNIBAL = "K"  # Retargeting "roubando" vendas orgânicas
 
+    # ── Lacunas fechadas em 2026-07-28 ──
+    # Situações comuns que o engine deixava passar em silêncio: cada uma foi
+    # reproduzida contra o engine antes de virar detector (ver
+    # test_cenarios_novos.py). Todas usam campos que o schema já recebia.
+    NO_RETURN = "L"             # Gasto relevante com ZERO conversão
+    LOW_SAMPLE = "M"            # Poucas conversões — amostra não sustenta conclusão
+    CLICK_LEAK = "N"            # Clique não vira visita (LP lenta / pixel quebrado)
+    LOW_REVENUE = "O"           # ROAS abaixo da meta com custo de aquisição sob controle
+
     # ── Estado saudável (uso futuro) ──
     HEALTHY = "HEALTHY"

@@ -209,6 +209,8 @@ async def analyze_with_ai(
     campaign: Any,
     engine_scenarios: Optional[list] = None,
     metric_evaluations: Optional[list] = None,
+    coverage: Optional[int] = None,
+    confidence: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Roda análise da IA — opera em 2 modos automaticamente:
@@ -238,6 +240,8 @@ async def analyze_with_ai(
         campaign=campaign,
         engine_scenarios=engine_scenarios,
         metric_evaluations=metric_evaluations,
+        coverage=coverage,
+        confidence=confidence,
     )
 
     # Gemini não tem role "system" nativo — concatenamos com separador claro.
