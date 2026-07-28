@@ -58,7 +58,13 @@ function findEval(evals: MetricEvaluation[], metric: string) {
 
 function resolveUIStatus(res: CampaignAnalysisResponse): UIStatus {
   const hasScaleWindow = res.scenarios.some((s) => s.code === "G")
-  if (res.final_status === "GREEN" && hasScaleWindow) return "BLUE"
+  // "Escalável" é um convite a gastar mais: exige janela de escala E confiança
+  // que não seja baixa. O engine já não abre a janela sem evidência (ver
+  // _evidencia_faltante_para_escala no backend); esta é a segunda barreira, no
+  // lugar onde o rótulo vira decisão de verba — as duas camadas caem juntas
+  // só se ambas falharem.
+  const confiavel = res.score_confidence !== "low"
+  if (res.final_status === "GREEN" && hasScaleWindow && confiavel) return "BLUE"
   if (res.final_status === "PAUSED") return "YELLOW"
   return res.final_status
 }
@@ -72,13 +78,14 @@ export function responseToVM(
   const m = input.metrics
   const evals = res.metric_evaluations
 
-  // Números-base: preferir o que o gestor enviou; cair para o avaliado.
-  const roasNum = m.roas ?? findEval(evals, "ROAS")?.value ?? 0
-  const cpaNum = m.cpa ?? findEval(evals, "CPA")?.value ?? 0
-  const ctrNum = m.ctr_link ?? findEval(evals, "CTR Link")?.value ?? 0
-  const freqNum = m.frequency ?? findEval(evals, "Frequência")?.value ?? 0
+  // Números-base: preferir o que o gestor enviou; cair para o avaliado; se não
+  // existe em lugar nenhum, fica `null` — ausência é ausência, não zero.
+  const roasNum = m.roas ?? findEval(evals, "ROAS")?.value ?? null
+  const cpaNum = m.cpa ?? findEval(evals, "CPA")?.value ?? null
+  const ctrNum = m.ctr_link ?? findEval(evals, "CTR Link")?.value ?? null
+  const freqNum = m.frequency ?? findEval(evals, "Frequência")?.value ?? null
   const invest = m.spend ?? 0
-  const revenue = invest && roasNum ? Math.round(invest * roasNum) : 0
+  const revenue = invest > 0 && roasNum != null ? Math.round(invest * roasNum) : 0
 
   // Destaques do card: CPA e CTR quando existem; senão, os 2 primeiros avaliados.
   const cpaEval = findEval(evals, "CPA")
@@ -133,7 +140,10 @@ export function responseToVM(
     if (sugg.length >= 5) break
     sugg.push({
       name: extra.title,
-      impact: extra.recommended_action,
+      // Mesmo corte aplicado à sugestão vinda do engine (execution_rule acima).
+      // Sem ele, uma ação longa da IA estourava o card — o schema da IA não tem
+      // limite de tamanho, então o controle tem que ser aqui.
+      impact: extra.recommended_action.slice(0, 60),
       effort: "IA",
       urgency: extra.confidence === "high" ? "Alta" : extra.confidence === "medium" ? "Média" : "Baixa"
     })
@@ -177,6 +187,9 @@ export function responseToVM(
     actions,
     sugg,
     coverage: res.score_coverage,
-    confidence: res.score_confidence
+    confidence: res.score_confidence,
+    // Só é "IA" o que veio da camada de IA. Sem isso a UI chamava de
+    // "Diagnóstico IA" um texto do engine determinístico.
+    hasAI: res.ai_insights != null
   }
 }

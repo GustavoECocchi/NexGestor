@@ -15,20 +15,53 @@ function Row({ label, fa, fb, wa, wb }: { label: string; fa: string; fb: string;
   )
 }
 
+/**
+ * Comparação só existe quando os DOIS lados têm o número.
+ *
+ * Com o antigo fallback `?? 0` do adapter, uma campanha sem CPA entrava na
+ * tabela como "R$ 0,00" e ganhava o confronto de "CPA menor" — o veredito
+ * elegia como mais eficiente justamente a campanha sobre a qual não havia dado.
+ * Comparar contra ausência não é comparar.
+ */
+function melhor(x: number | null, y: number | null, menorVence: boolean): boolean {
+  if (x == null || y == null) return false
+  return menorVence ? x < y : x > y
+}
+
+/** Formata um número comparável; ausência vira travessão, nunca zero. */
+function cmpFmt(v: number | null, render: (n: number) => string): string {
+  return v == null ? "—" : render(v)
+}
+
 function verdict(a: CampaignVM, b: CampaignVM) {
   const w = a.score >= b.score ? a : b
   const l = w === a ? b : a
   const r: string[] = []
-  if (w.cpaNum < l.cpaNum) r.push("CPA menor")
-  if (w.roasNum > l.roasNum) r.push("ROAS superior")
-  if (w.ctrNum > l.ctrNum) r.push("CTR Link mais alto")
+  if (melhor(w.cpaNum, l.cpaNum, true)) r.push("CPA menor")
+  if (melhor(w.roasNum, l.roasNum, false)) r.push("ROAS superior")
+  if (melhor(w.ctrNum, l.ctrNum, false)) r.push("CTR Link mais alto")
   const reason = r.length ? r.join(", ") : "melhor score de saúde geral"
-  // Guarda: campanha sem cenário crítico.
-  const weak = l.scenarios[0]?.title
-  const tail = weak
-    ? ` Já <b>${l.name}</b> mostra sinais de <b>${weak}</b> e merece atenção antes de receber mais verba.`
+
+  // O cenário G é OPORTUNIDADE, não problema. Pegar `scenarios[0]` às cegas
+  // produzia o oposto do diagnóstico: uma campanha cuja ação primária é
+  // "aumentar orçamento agora" era descrita como tendo "sinais de Janela de
+  // Escala Vertical" que "merecem atenção antes de receber mais verba".
+  // Só cenário de problema entra nesta frase.
+  const problema = l.scenarios.find((s) => s.code !== "G")
+  const tail = problema
+    ? ` Já <b>${l.name}</b> mostra sinais de <b>${problema.title}</b> e merece atenção antes de receber mais verba.`
     : ` <b>${l.name}</b> está saudável, mas com margem menor de eficiência.`
-  return `<b>${w.name}</b> está mais eficiente: ${reason}.${tail}`
+
+  // O score é comparável; a CONFIANÇA nele não. Uma campanha avaliada com 25%
+  // de cobertura pode marcar 100 e "vencer" outra medida de ponta a ponta —
+  // vencer por falta de dado, não por performance. A ressalva vai junto do
+  // veredito, não escondida numa outra tela.
+  const ressalva =
+    w.confidence === "low"
+      ? ` <b>Ressalva:</b> o diagnóstico de ${w.name} cobriu apenas ${w.coverage ?? 0}% das métricas — comparação indicativa, não conclusiva.`
+      : ""
+
+  return `<b>${w.name}</b> está mais eficiente: ${reason}.${tail}${ressalva}`
 }
 
 const short = (n: string) => n.split("—")[0].trim()
@@ -48,7 +81,9 @@ export function CompareModal({ campaigns, onClose }: { campaigns: CampaignVM[]; 
       <div className="modal">
         <div className="modal-grab" />
         <h2>Comparar campanhas</h2>
-        <p className="sub">Veja lado a lado e receba o veredito da IA.</p>
+        {/* Era "veredito da IA": o veredito é a função local `verdict()`, que
+            compara score/CPA/ROAS/CTR. Nenhuma IA participa desta tela. */}
+        <p className="sub">Veja lado a lado e receba o veredito comparativo.</p>
 
         {!enough ? (
           <p className="sub" style={{ textAlign: "center", margin: "14px 0" }}>
@@ -71,10 +106,10 @@ export function CompareModal({ campaigns, onClose }: { campaigns: CampaignVM[]; 
               <>
                 <div className="cmp-table">
                   <div className="cmp-row head"><div className="cmp-k">Métrica</div><div className="cmp-v">{short(a.name)}</div><div className="cmp-v">{short(b.name)}</div></div>
-                  <Row label="CPA" fa={`R$ ${brl(a.cpaNum)}`} fb={`R$ ${brl(b.cpaNum)}`} wa={a.cpaNum < b.cpaNum} wb={b.cpaNum < a.cpaNum} />
-                  <Row label="ROAS" fa={`${dec(a.roasNum)}x`} fb={`${dec(b.roasNum)}x`} wa={a.roasNum > b.roasNum} wb={b.roasNum > a.roasNum} />
-                  <Row label="CTR Link" fa={`${dec(a.ctrNum)}%`} fb={`${dec(b.ctrNum)}%`} wa={a.ctrNum > b.ctrNum} wb={b.ctrNum > a.ctrNum} />
-                  <Row label="Frequência" fa={dec(a.freqNum)} fb={dec(b.freqNum)} wa={a.freqNum < b.freqNum} wb={b.freqNum < a.freqNum} />
+                  <Row label="CPA" fa={cmpFmt(a.cpaNum, (n) => `R$ ${brl(n)}`)} fb={cmpFmt(b.cpaNum, (n) => `R$ ${brl(n)}`)} wa={melhor(a.cpaNum, b.cpaNum, true)} wb={melhor(b.cpaNum, a.cpaNum, true)} />
+                  <Row label="ROAS" fa={cmpFmt(a.roasNum, (n) => `${dec(n)}x`)} fb={cmpFmt(b.roasNum, (n) => `${dec(n)}x`)} wa={melhor(a.roasNum, b.roasNum, false)} wb={melhor(b.roasNum, a.roasNum, false)} />
+                  <Row label="CTR Link" fa={cmpFmt(a.ctrNum, (n) => `${dec(n)}%`)} fb={cmpFmt(b.ctrNum, (n) => `${dec(n)}%`)} wa={melhor(a.ctrNum, b.ctrNum, false)} wb={melhor(b.ctrNum, a.ctrNum, false)} />
+                  <Row label="Frequência" fa={cmpFmt(a.freqNum, dec)} fb={cmpFmt(b.freqNum, dec)} wa={melhor(a.freqNum, b.freqNum, true)} wb={melhor(b.freqNum, a.freqNum, true)} />
                   <Row label="Investimento" fa={`R$ ${brl(a.invest)}`} fb={`R$ ${brl(b.invest)}`} wa={false} wb={false} />
                   <Row label="Receita" fa={`R$ ${brl(a.revenue)}`} fb={`R$ ${brl(b.revenue)}`} wa={a.revenue > b.revenue} wb={b.revenue > a.revenue} />
                   <Row label="Score" fa={`${a.score}`} fb={`${b.score}`} wa={a.score > b.score} wb={b.score > a.score} />

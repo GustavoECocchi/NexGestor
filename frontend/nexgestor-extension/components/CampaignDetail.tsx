@@ -1,3 +1,4 @@
+import { AnimatedNumber } from "~components/AnimatedNumber"
 import { Copilot } from "~components/Copilot"
 import {
   DiagnosisCards,
@@ -49,7 +50,8 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
                 style={{ transition: "stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)" }}
               />
             </svg>
-            <div className="num">{c.score}<small>/100</small></div>
+            {/* Conta junto com o anel, que já anima o stroke-dashoffset em 1s. */}
+            <div className="num"><AnimatedNumber value={String(c.score)} /><small>/100</small></div>
           </div>
           <div className="score-txt">
             <h3>Score de saúde</h3>
@@ -68,10 +70,20 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
         <div className="sec-label">Métricas <span className="ln" /></div>
         <MetricTiles c={c} />
 
-        <div className="sec-label">Diagnóstico IA <span className="ln" /></div>
+        {/* O diagnóstico é do engine determinístico. Chamá-lo de "Diagnóstico
+            IA" quando `ai_insights` veio nulo (IA desligada, sem key ou falha)
+            atribuía à IA um texto que ela não escreveu. O selo só aparece
+            quando a camada de IA realmente participou. */}
+        <div className="sec-label">
+          Diagnóstico
+          {c.hasAI && <span className="ai-badge">complementado por IA</span>}
+          <span className="ln" />
+        </div>
         <div className="sec-cap">
           <IconInfo />
-          Gerado pelo cruzamento entre métricas, metas e padrões de comportamento — não pela leitura de números isolados.
+          {c.hasAI
+            ? "Cruzamento entre métricas, metas e padrões de comportamento pelo engine de regras, complementado pela camada de IA."
+            : "Gerado pelo engine de regras, cruzando métricas, metas e padrões de comportamento — não pela leitura de números isolados."}
         </div>
         <DiagnosisCards c={c} />
 

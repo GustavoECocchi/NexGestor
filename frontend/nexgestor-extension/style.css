@@ -121,6 +121,10 @@ body::after{
 
 .sec-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:0 20px;margin:16px 0 10px;display:flex;align-items:center;gap:10px}
 .sec-label .ln{flex:1;height:1px;background:var(--line)}
+/* Selo de IA — só renderizado quando a resposta trouxe ai_insights de verdade
+   (ver CampaignVM.hasAI). Não é decoração: é a distinção entre o engine
+   determinístico e a camada de IA. */
+.ai-badge{font-size:9px;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--violet-bg);color:var(--violet);border:1px solid color-mix(in srgb, var(--violet) 22%, transparent);text-transform:uppercase;flex:none}
 .sec-cap{font-size:11px;color:var(--txt-3);padding:0 20px;margin:-4px 0 10px;line-height:1.45;display:flex;gap:6px;align-items:flex-start}
 .sec-cap svg{width:12px;height:12px;flex:none;margin-top:2px;color:var(--accent)}
 .mini-btn{font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb, var(--accent) 20%, transparent);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px}

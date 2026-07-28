@@ -41,7 +41,13 @@ const FIELDS_CREATIVE: Field[] = [
   { label: "CTR link (%)", key: "ctr_link", ph: "0" },
   { label: "CTR todos (%)", key: "ctr_all", ph: "0" },
   { label: "Frequência", key: "frequency", ph: "0" },
-  { label: "Conversões", key: "conversions", ph: "0" }
+  { label: "Conversões", key: "conversions", ph: "0" },
+  // Conversões/semana e fase de aprendizado entraram aqui porque o engine passou
+  // a EXIGIR estado de aprendizado para abrir a janela de escala vertical (ver
+  // _evidencia_faltante_para_escala no backend). Sem estes campos o formulário
+  // manual não conseguia satisfazer a regra: nem a campanha mais saudável
+  // recebia a análise de escala — o critério ficaria inalcançável por construção.
+  { label: "Conversões/semana", key: "weekly_conversions", ph: "0" }
 ]
 const FIELDS_TARGETS: Field[] = [
   { label: "CPA máx.", key: "max_cpa", ph: "0" },
@@ -70,7 +76,32 @@ const TARGET_KEYS: (keyof Targets)[] = [
   "min_weekly_conversions", "scale_cpa_margin", "scale_frequency_ceiling"
 ]
 
-export type ParsedFile = { input: AnalyzeInput; unknownKeys: string[]; invalidTypeKeys: string[] }
+// Espelham os Literal do backend (app/schema/schema.py). Manter em sincronia:
+// um valor fora daqui é 422 do outro lado.
+const OBJECTIVE_VALUES = ["conversion", "lead", "traffic"] as const
+const PLATFORM_VALUES = ["meta_ads", "google_ads"] as const
+
+/** Aceita só valores da lista fechada; registra o inválido e usa o default. */
+function pickEnum<T extends string>(
+  v: unknown,
+  permitidos: readonly T[],
+  padrao: T,
+  campo: string,
+  invalidos: string[]
+): T {
+  if (v === undefined || v === null) return padrao
+  if (typeof v === "string" && (permitidos as readonly string[]).includes(v)) return v as T
+  invalidos.push(`${campo} ("${String(v)}" → usando "${padrao}")`)
+  return padrao
+}
+
+export type ParsedFile = {
+  input: AnalyzeInput
+  unknownKeys: string[]
+  invalidTypeKeys: string[]
+  /** Campos de lista fechada com valor fora da lista (ex: plataforma com typo). */
+  invalidValueKeys: string[]
+}
 
 export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   let obj: unknown
@@ -79,7 +110,9 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   } catch {
     return { error: "JSON inválido — confira vírgulas e chaves. Use o formato de campaign/metrics/targets do CONTRATO_API_FRONTEND.md." }
   }
-  if (typeof obj !== "object" || obj === null) {
+  // `typeof [] === "object"`: sem o Array.isArray, um JSON de lista na raiz
+  // passava como "objeto sem campos" e caía nos defaults sem nenhum aviso.
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
     return { error: "O arquivo precisa ser um objeto JSON com os blocos 'campaign', 'metrics' e/ou 'targets'." }
   }
 
@@ -92,6 +125,7 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   const targets: Targets = {}
   const unknownKeys: string[] = []
   const invalidTypeKeys: string[] = []
+  const invalidValueKeys: string[] = []
 
   for (const [k, v] of Object.entries(rawMetrics)) {
     if (!METRIC_KEYS.includes(k as keyof Metrics)) { unknownKeys.push(`metrics.${k}`); continue }
@@ -111,8 +145,13 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   }
 
   const nameFromFile = typeof rawCampaign.name === "string" ? rawCampaign.name.trim() : ""
-  const objectiveFromFile = typeof rawCampaign.objective === "string" ? rawCampaign.objective : "conversion"
-  const platformFromFile = typeof rawCampaign.platform === "string" ? rawCampaign.platform : "meta_ads"
+  // Plataforma e objetivo são fechados. Antes qualquer string passava: um typo
+  // como "googel_ads" era aceito, o backend devolvia 200 e o adapter — que só
+  // reconhece "google_ads" — exibia a campanha como **Meta Ads**. O usuário lia
+  // a plataforma errada como se fosse fato. Agora o valor inválido é listado na
+  // pré-visualização e cai no default explicitamente, nunca em silêncio.
+  const objectiveFromFile = pickEnum(rawCampaign.objective, OBJECTIVE_VALUES, "conversion", "campaign.objective", invalidValueKeys)
+  const platformFromFile = pickEnum(rawCampaign.platform, PLATFORM_VALUES, "meta_ads", "campaign.platform", invalidValueKeys)
   const nicheFromFile = typeof rawCampaign.niche === "string" ? rawCampaign.niche : null
 
   const input: AnalyzeInput = {
@@ -127,7 +166,7 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
     targets
   }
 
-  return { input, unknownKeys, invalidTypeKeys }
+  return { input, unknownKeys, invalidTypeKeys, invalidValueKeys }
 }
 
 export function NewCampaignModal({
@@ -141,6 +180,8 @@ export function NewCampaignModal({
   const [step, setStep] = useState(-1) // -1 = idle
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
+  // "" = não informado. Nunca vira `false` sozinho — ver comentário no <select>.
+  const [learningPhase, setLearningPhase] = useState("")
   const [objective, setObjective] = useState("conversion")
   const [platform, setPlatform] = useState("meta_ads")
   const [values, setValues] = useState<Record<string, string>>({})
@@ -201,6 +242,7 @@ export function NewCampaignModal({
       const n = num(values[f.key] ?? "")
       if (n !== undefined) (metrics as Record<string, number>)[f.key] = n
     }
+    if (learningPhase !== "") metrics.learning_phase = learningPhase === "true"
     const targets: Targets = {}
     for (const f of FIELDS_TARGETS) {
       const n = num(values[f.key] ?? "")
@@ -377,6 +419,11 @@ export function NewCampaignModal({
                     Valores com tipo inválido ignorados (não enviados): {filePreview.invalidTypeKeys.join(", ")}
                   </div>
                 )}
+                {filePreview.invalidValueKeys.length > 0 && (
+                  <div style={{ color: "var(--red)", fontSize: 11.5, marginTop: 6 }}>
+                    Valor fora da lista aceita — revise antes de analisar: {filePreview.invalidValueKeys.join(", ")}
+                  </div>
+                )}
 
                 <button className="submit" style={{ marginTop: 12 }} onClick={() => runAnalyze(filePreview.input)}>
                   Analisar campanha
@@ -476,6 +523,18 @@ export function NewCampaignModal({
                     <input inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)} />
                   </div>
                 ))}
+                {/* Tri-estado de propósito, não checkbox. Um checkbox desmarcado
+                    afirmaria "não está em aprendizado" para quem simplesmente
+                    não sabe — inventar evidência favorável é exatamente o
+                    defeito que o gate do Cenário G existe para impedir. */}
+                <div className="fld" style={{ gridColumn: "1/3" }}>
+                  <label>Aprendizado limitado</label>
+                  <select value={learningPhase} onChange={(e) => setLearningPhase(e.target.value)}>
+                    <option value="">Não informado</option>
+                    <option value="false">Não — conjunto já saiu do aprendizado</option>
+                    <option value="true">Sim — conjunto em aprendizado limitado</option>
+                  </select>
+                </div>
               </div>
             </div>
 

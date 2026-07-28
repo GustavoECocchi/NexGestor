@@ -89,12 +89,17 @@ describe("responseToVM — números-base: gestor tem prioridade sobre o avaliado
     expect(vm.roasNum).toBe(3.5)
   })
 
-  it("vira 0 (nunca undefined) quando não há nem gestor nem avaliação", () => {
+  it("vira null (não 0) quando não há nem gestor nem avaliação", () => {
+    // Histórico: este teste exigia `0` (2026-07-25) — a asserção codificava o
+    // defeito. O zero fabricado vazava como fato pela UI: o Copiloto dizia "o
+    // CPA atual desta campanha é R$ 0,00" e o comparador dava vitória de "CPA
+    // menor" à campanha que não tinha CPA nenhum. `null` é a única resposta
+    // honesta para "não foi medido"; quem exibe trata a ausência.
     const vm = responseToVM(baseResponse({ metric_evaluations: [] }), baseInput())
-    expect(vm.roasNum).toBe(0)
-    expect(vm.cpaNum).toBe(0)
-    expect(vm.ctrNum).toBe(0)
-    expect(vm.freqNum).toBe(0)
+    expect(vm.roasNum).toBeNull()
+    expect(vm.cpaNum).toBeNull()
+    expect(vm.ctrNum).toBeNull()
+    expect(vm.freqNum).toBeNull()
   })
 })
 

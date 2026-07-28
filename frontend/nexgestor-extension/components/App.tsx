@@ -70,8 +70,16 @@ export function App() {
     <div className="app">
       <Header onSearch={() => setPalette(true)} />
 
+      {/* `key` distinto por tela é obrigatório, não cosmético: Home e
+          CampaignDetail renderizam ambos um `<div className="scroll">` na mesma
+          posição da árvore, então o React reaproveita o MESMO nó do DOM ao
+          trocar de tela — e o nó carrega junto o `scrollTop` da tela anterior.
+          Quem tinha rolado a lista da Home via o detalhe abrir no meio da
+          página e só depois saltar para o topo (medido: 531 → 0 em ~0,5s).
+          Com keys diferentes o nó é recriado e já nasce no topo. */}
       {screen.name === "home" || !detail ? (
         <Home
+          key="home"
           campaigns={campaigns}
           liveCount={live.length}
           onOpenCampaign={openCampaign}
@@ -79,7 +87,7 @@ export function App() {
           onCompare={() => setModal("compare")}
         />
       ) : (
-        <CampaignDetail c={detail} onBack={goHome} />
+        <CampaignDetail key={`detail-${detail.id}`} c={detail} onBack={goHome} />
       )}
 
       {modal === "new" && (

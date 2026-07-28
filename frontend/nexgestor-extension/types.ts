@@ -8,6 +8,10 @@
 export type CampaignStatus = "GREEN" | "YELLOW" | "RED" | "PAUSED"
 export type ScenarioCode =
   | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K"
+  // L–O entraram em 2026-07-28 fechando lacunas reproduzidas contra o engine:
+  // gasto sem retorno, amostra insuficiente, vazamento clique→página e receita
+  // abaixo da meta com custo sob controle.
+  | "L" | "M" | "N" | "O"
 
 // ---- INPUT (POST /campaign/analyze) ----
 export interface Campaign {
@@ -165,10 +169,15 @@ export interface CampaignVM {
   score: number
   invest: number
   revenue: number
-  roasNum: number
-  cpaNum: number
-  ctrNum: number
-  freqNum: number
+  // `null` = métrica NÃO enviada/avaliada. Não confundir com 0, que é um valor
+  // medido. Eram `number` com fallback `?? 0` no adapter, e o zero fabricado
+  // vazava como fato pela UI: o Copiloto respondia "o CPA atual é R$ 0,00" e o
+  // comparador dava vitória de "CPA menor" à campanha que simplesmente não
+  // tinha CPA. Quem consome precisa tratar o `null` explicitamente.
+  roasNum: number | null
+  cpaNum: number | null
+  ctrNum: number | null
+  freqNum: number | null
   m1: { k: string; v: string }
   m2: { k: string; v: string }
   spark: number[]
@@ -183,4 +192,10 @@ export interface CampaignVM {
   /** Presentes apenas em campanhas analisadas ao vivo pelo backend. */
   coverage?: number
   confidence?: ScoreConfidence
+  /**
+   * `true` só quando a resposta trouxe `ai_insights` de verdade. Campanhas
+   * antigas no localStorage não têm o campo — ausente vale como `false`,
+   * que é o lado seguro (não promete IA que não houve).
+   */
+  hasAI?: boolean
 }

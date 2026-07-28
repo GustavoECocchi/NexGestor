@@ -39,13 +39,15 @@ describe("parseFileJSON — a whitelist é a garantia de segurança aqui", () =>
     expect("error" in parseFileJSON('"texto"')).toBe(true)
   })
 
-  it("array na raiz não quebra — typeof array é 'object' em JS, então cai como 'sem campos' (defaults)", () => {
-    // Achado ao escrever este teste: não é um bug de segurança (nenhum dado
-    // errado é aceito — Object.entries de um array sem os blocos esperados
-    // não produz nada pra copiar), só uma validação mais frouxa do que o
-    // esperado. Documentado aqui em vez de silenciosamente assumido.
+  it("array na raiz é rejeitado com erro — não vira 'objeto sem campos'", () => {
+    // Histórico: este teste nasceu (2026-07-25) documentando o oposto — array
+    // na raiz passava, porque `typeof [] === "object"`, e caía nos defaults sem
+    // avisar nada. Não era falha de segurança (nenhum dado errado era aceito),
+    // mas era uma validação frouxa que devolvia "campanha analisada" para um
+    // arquivo que o usuário claramente errou. Corrigido em 2026-07-28 com
+    // Array.isArray; a asserção foi invertida junto, não removida.
     const result = parseFileJSON("[1,2,3]")
-    expect("error" in result).toBe(false)
+    expect("error" in result).toBe(true)
   })
 
   it("campo com nome exato na whitelist vai pro campo certo — nunca por posição", () => {

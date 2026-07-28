@@ -22,17 +22,26 @@ export function Summary({
       if (isLiveId(c.id)) {
         acc.invest += c.invest
         acc.revenue += c.revenue
-        acc.roas += c.roasNum
-        acc.cpa += c.cpaNum
+        // Média só entre quem TEM a métrica. Somar campanha sem ROAS/CPA como
+        // se valesse 0 e dividir pelo total puxava a média para baixo — o CPA
+        // médio ficava artificialmente ótimo justamente por falta de dado.
+        if (c.roasNum != null) {
+          acc.roas += c.roasNum
+          acc.roasN++
+        }
+        if (c.cpaNum != null) {
+          acc.cpa += c.cpaNum
+          acc.cpaN++
+        }
         acc.liveN++
       }
       return acc
     },
-    { RED: 0, YELLOW: 0, GREEN: 0, BLUE: 0, invest: 0, revenue: 0, roas: 0, cpa: 0, liveN: 0 } as any
+    { RED: 0, YELLOW: 0, GREEN: 0, BLUE: 0, invest: 0, revenue: 0, roas: 0, cpa: 0, liveN: 0, roasN: 0, cpaN: 0 } as any
   )
   const n = campaigns.length
-  const roasMed = a.liveN ? a.roas / a.liveN : 0
-  const cpaMed = a.liveN ? a.cpa / a.liveN : 0
+  const roasMed = a.roasN ? a.roas / a.roasN : 0
+  const cpaMed = a.cpaN ? a.cpa / a.cpaN : 0
 
   const chip = (count: number, label: string, key: UIStatus) => {
     if (!count) return null
