@@ -23,7 +23,7 @@ from app.enum.campaign import CampaignStatus, ScenarioCode
 # reconhece "google_ads", exibia a campanha como Meta Ads. Erro silencioso de
 # atribuição de plataforma num relatório que o gestor lê como fato.
 CampaignObjective = Literal["conversion", "lead", "traffic"]
-CampaignPlatform = Literal["meta_ads", "google_ads"]
+CampaignPlatform = Literal["meta_ads", "google_ads", "tiktok_ads", "linkedin_ads"]
 
 
 class _FinitosApenas(BaseModel):
@@ -59,7 +59,7 @@ class Campaign(BaseModel):
     id: int
     name: str = Field(min_length=1, max_length=200, description="Nome da campanha (1–200 chars)")
     objective: Optional[CampaignObjective] = Field(default="conversion", description="conversion | lead | traffic")
-    platform: Optional[CampaignPlatform] = Field(default="meta_ads", description="meta_ads | google_ads")
+    platform: Optional[CampaignPlatform] = Field(default="meta_ads", description="meta_ads | google_ads | tiktok_ads | linkedin_ads")
     niche: Optional[str] = Field(default=None, max_length=100, description="Ex: SaaS, ecommerce, infoproduto")
 
 

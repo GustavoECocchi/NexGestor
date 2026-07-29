@@ -18,7 +18,7 @@ export interface Campaign {
   id: number
   name: string
   objective?: string // conversion | lead | traffic
-  platform?: string // meta_ads | google_ads
+  platform?: string // meta_ads | google_ads | tiktok_ads | linkedin_ads
   niche?: string | null
 }
 

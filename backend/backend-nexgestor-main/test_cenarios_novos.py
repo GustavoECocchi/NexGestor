@@ -361,6 +361,16 @@ class TestPromptRevisado:
         p = self._prompt(campaign=Campaign(id=1, name="X", platform="meta_ads"))
         assert "Não recomende recursos exclusivos do Meta" not in p
 
+    def test_tiktok_ads_recebe_aviso_de_plataforma(self):
+        p = self._prompt(campaign=Campaign(id=1, name="X", platform="tiktok_ads"))
+        assert "TikTok Ads" in p
+        assert "Advantage+" in p
+
+    def test_linkedin_ads_recebe_aviso_de_plataforma(self):
+        p = self._prompt(campaign=Campaign(id=1, name="X", platform="linkedin_ads"))
+        assert "LinkedIn Ads" in p
+        assert "Advantage+" in p
+
     def test_cenarios_novos_estao_no_vocabulario_da_ia(self):
         from app.service.prompts import SYSTEM_PROMPT
         for termo in ["Gasto sem Retorno", "Amostra Insuficiente",

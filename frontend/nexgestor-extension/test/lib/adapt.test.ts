@@ -254,8 +254,24 @@ describe("responseToVM — plataforma", () => {
     expect(vm.platform).toBe("Google Ads")
   })
 
-  it("qualquer outra coisa (incluindo meta_ads) vira Meta Ads", () => {
+  it("meta_ads mapeia pro rótulo em português", () => {
     const vm = responseToVM(baseResponse(), baseInput({ campaign: { id: 1, name: "x", platform: "meta_ads" } }))
     expect(vm.platform).toBe("Meta Ads")
+  })
+
+  it("mapeia tiktok_ads e linkedin_ads pros rótulos corretos", () => {
+    const tiktok = responseToVM(baseResponse(), baseInput({ campaign: { id: 1, name: "x", platform: "tiktok_ads" } }))
+    expect(tiktok.platform).toBe("TikTok Ads")
+
+    const linkedin = responseToVM(baseResponse(), baseInput({ campaign: { id: 1, name: "x", platform: "linkedin_ads" } }))
+    expect(linkedin.platform).toBe("LinkedIn Ads")
+  })
+
+  it("plataforma desconhecida ou ausente cai em Meta Ads (fallback, não invenção)", () => {
+    const desconhecida = responseToVM(baseResponse(), baseInput({ campaign: { id: 1, name: "x", platform: "snapchat_ads" } }))
+    expect(desconhecida.platform).toBe("Meta Ads")
+
+    const ausente = responseToVM(baseResponse(), baseInput({ campaign: { id: 1, name: "x" } }))
+    expect(ausente.platform).toBe("Meta Ads")
   })
 })

@@ -8,6 +8,14 @@ a profundidade ou o foco da IA, edite SYSTEM_PROMPT abaixo.
 from __future__ import annotations
 from typing import Any, Optional
 
+# Espelha CampaignPlatform em app/schema/schema.py — manter em sincronia.
+_PLATFORM_LABELS = {
+    "meta_ads": "Meta Ads",
+    "google_ads": "Google Ads",
+    "tiktok_ads": "TikTok Ads",
+    "linkedin_ads": "LinkedIn Ads",
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Persona da IA — instruções fixas enviadas em todas as chamadas
@@ -111,19 +119,21 @@ def build_user_prompt(
     baseado se engine_scenarios está vazio ou não.
     """
     plataforma = campaign.platform or "meta_ads"
+    label_plataforma = _PLATFORM_LABELS.get(plataforma, plataforma)
     # Todo o vocabulário do engine (Hook Rate, ThruPlays, Advantage+, LAL) é do
-    # Meta. Numa campanha de Google Ads a IA recomendava recurso que não existe
-    # naquela plataforma; a nota abaixo evita a transposição automática.
+    # Meta. Numa campanha de outra plataforma a IA recomendava recurso que não
+    # existe ali; a nota abaixo evita a transposição automática para qualquer
+    # plataforma que não seja Meta (não só Google Ads).
     nota_plataforma = (
-        "\nATENÇÃO: campanha de Google Ads. Não recomende recursos exclusivos do Meta "
+        f"\nATENÇÃO: campanha de {label_plataforma}. Não recomende recursos exclusivos do Meta "
         "(Advantage+, Públicos Semelhantes/LAL, Gerenciador de Eventos do Facebook). "
         "Traduza o raciocínio para os equivalentes da plataforma correta."
-        if plataforma == "google_ads"
+        if plataforma != "meta_ads"
         else ""
     )
     contexto = (
         f"Campanha: {campaign.name}\n"
-        f"Plataforma: {plataforma}\n"
+        f"Plataforma: {label_plataforma}\n"
         f"Objetivo: {campaign.objective or 'conversion'}\n"
         f"Nicho: {campaign.niche or 'não informado'}{nota_plataforma}"
     )

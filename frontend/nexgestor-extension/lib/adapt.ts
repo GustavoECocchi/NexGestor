@@ -28,6 +28,14 @@ import { brl, dec } from "~lib/format"
 
 const PRIO_LABEL: Record<number, Priority> = { 1: "Alta", 2: "Média", 3: "Baixa" }
 
+// Espelha CampaignPlatform em app/schema/schema.py — manter em sincronia.
+const PLATFORM_LABELS: Record<string, string> = {
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
+  tiktok_ads: "TikTok Ads",
+  linkedin_ads: "LinkedIn Ads"
+}
+
 const STATUS_COLOR: Record<string, string> = {
   GREEN: "var(--green)",
   YELLOW: "var(--amber)",
@@ -166,7 +174,7 @@ export function responseToVM(
   return {
     id: res.campaign_id,
     name: res.campaign_name,
-    platform: input.campaign.platform === "google_ads" ? "Google Ads" : "Meta Ads",
+    platform: PLATFORM_LABELS[input.campaign.platform ?? "meta_ads"] ?? "Meta Ads",
     status: resolveUIStatus(res),
     score: res.overall_score,
     invest,

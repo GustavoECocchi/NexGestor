@@ -305,7 +305,7 @@ class TestValoresNaoFinitos:
 class TestEnumsDeContexto:
     @pytest.mark.parametrize("campo,valor", [
         ("platform", "googel_ads"),
-        ("platform", "tiktok_ads"),
+        ("platform", "pinterest_ads"),
         ("objective", "banana"),
         ("objective", "conversions"),
     ])
@@ -317,7 +317,7 @@ class TestEnumsDeContexto:
         assert r.status_code == 422
         assert campo in str(r.json()["detail"])
 
-    @pytest.mark.parametrize("platform", ["meta_ads", "google_ads"])
+    @pytest.mark.parametrize("platform", ["meta_ads", "google_ads", "tiktok_ads", "linkedin_ads"])
     def test_plataformas_validas_aceitas(self, platform):
         r = post({
             "campaign": {"id": 1, "name": "X", "platform": platform},

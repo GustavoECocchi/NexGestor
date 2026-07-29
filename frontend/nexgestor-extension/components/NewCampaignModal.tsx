@@ -79,7 +79,7 @@ const TARGET_KEYS: (keyof Targets)[] = [
 // Espelham os Literal do backend (app/schema/schema.py). Manter em sincronia:
 // um valor fora daqui é 422 do outro lado.
 const OBJECTIVE_VALUES = ["conversion", "lead", "traffic"] as const
-const PLATFORM_VALUES = ["meta_ads", "google_ads"] as const
+const PLATFORM_VALUES = ["meta_ads", "google_ads", "tiktok_ads", "linkedin_ads"] as const
 
 /** Aceita só valores da lista fechada; registra o inválido e usa o default. */
 function pickEnum<T extends string>(
@@ -497,6 +497,8 @@ export function NewCampaignModal({
                   <select value={platform} onChange={(e) => setPlatform(e.target.value)}>
                     <option value="meta_ads">Meta Ads</option>
                     <option value="google_ads">Google Ads</option>
+                    <option value="tiktok_ads">TikTok Ads</option>
+                    <option value="linkedin_ads">LinkedIn Ads</option>
                   </select>
                 </div>
               </div>
