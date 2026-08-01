@@ -1225,6 +1225,26 @@ def _weighted_yellows(metric_evals: list) -> list:
     ]
 
 
+# Peso acumulado de métricas em RED que já caracteriza campanha crítica.
+#
+# Contar métricas trata como iguais coisas que não são: CPC+CPM em vermelho
+# somam 0.08 do diagnóstico (custo intermediário), enquanto CPA sozinho vale
+# 0.25 e ROAS 0.20 — as duas métricas de resultado. Com o critério antigo (só
+# 3+ métricas vermelhas), CPA estourado sozinho saía "Atenção" enquanto o texto
+# do próprio card dizia "campanha no vermelho", e ROAS crítico saía "Atenção"
+# com o card dizendo "campanha destruindo caixa".
+#
+# 0.20 = um quinto do peso do diagnóstico em estado crítico. Faz CPA ou ROAS
+# sozinho bastar, e mantém em "Atenção" o conjunto de custos secundários
+# (CPC+CPL+CPM = 0.10), que é o comportamento correto hoje.
+_RED_WEIGHT_CRITICO = 0.20
+
+
+def _peso_dos_reds(metric_evals: list) -> float:
+    """Soma o peso no score das métricas em RED."""
+    return sum(_METRIC_WEIGHTS.get(e.metric, 0.0) for e in _weighted_reds(metric_evals))
+
+
 def _resolve_final_status(
     scenarios: list[ScenarioDetail],
     metric_evals: list | None = None,
@@ -1258,9 +1278,17 @@ def _resolve_final_status(
         return scenario_status
 
     # ── Fonte 2: status por evidência métrica ──
+    # Três gatilhos de crítico, propositalmente redundantes: score afundado,
+    # muitas métricas ruins, ou poucas métricas ruins mas de peso decisivo
+    # (ver _RED_WEIGHT_CRITICO — é o que impede CPA/ROAS estourado de sair
+    # como mero "Atenção").
     reds = _weighted_reds(metric_evals)
     yellows = _weighted_yellows(metric_evals)
-    if overall_score < 40 or len(reds) >= 3:
+    if (
+        overall_score < 40
+        or len(reds) >= 3
+        or _peso_dos_reds(metric_evals) >= _RED_WEIGHT_CRITICO
+    ):
         metric_status = CampaignStatus.RED
     elif overall_score < 60 or reds or yellows:
         metric_status = CampaignStatus.YELLOW

@@ -1065,3 +1065,74 @@ class TestRegressaoSimulacaoTestador20260801:
         )
         assert result.final_status == CampaignStatus.GREEN
         assert ScenarioCode.VERTICAL_SCALE in codes
+
+
+class TestPesoDosRedsDefineCritico20260801:
+    """
+    Calibração do status final: o critério de "crítico" contava métricas
+    vermelhas e ignorava o peso delas. CPC+CPM em vermelho somam 0.08 do
+    diagnóstico; CPA sozinho vale 0.25 e ROAS 0.20. Contando, os dois casos
+    eram iguais — e CPA estourado saía "Atenção" enquanto o texto do próprio
+    card dizia "campanha no vermelho".
+    """
+
+    # Os valores abaixo são escolhidos na faixa em que a métrica JÁ está em RED
+    # mas o score geral ainda é >= 40 — a única faixa em que este critério muda
+    # o resultado. Com valores mais extremos os testes passariam mesmo sem ele
+    # (o score afundado já dispara o gatilho antigo) e não provariam nada.
+
+    def test_cpa_vermelho_sozinho_e_critico(self):
+        """CPA 31% acima da meta: métrica em RED, score 56 — antes saía 'Atenção'."""
+        result, _ = run(Metrics(cpa=65.5), make_targets(max_cpa=50.0))
+        cpa = next(e for e in result.metric_evaluations if e.metric == "CPA")
+        assert cpa.status == CampaignStatus.RED
+        assert result.overall_score >= 40, "fora da faixa que este critério cobre"
+        # O texto do card afirma criticidade — o selo não pode dizer menos.
+        assert "vermelho" in cpa.note
+        assert result.final_status == CampaignStatus.RED
+
+    def test_roas_vermelho_sozinho_e_critico(self):
+        """ROAS 2.07x contra meta 3.0x: métrica em RED, score 56."""
+        result, _ = run(Metrics(roas=2.07), Targets(min_roas=3.0))
+        roas = next(e for e in result.metric_evaluations if e.metric == "ROAS")
+        assert roas.status == CampaignStatus.RED
+        assert result.overall_score >= 40, "fora da faixa que este critério cobre"
+        assert "destruindo caixa" in roas.note
+        assert result.final_status == CampaignStatus.RED
+
+    def test_falha_dupla_de_criativo_e_critica_pela_via_de_cenario(self):
+        """
+        CTR Link (0.12) + Hook Rate (0.10) = 0.22 de peso, mas quem torna este
+        caso crítico é o Cenário A (prioridade 1), não o critério de peso —
+        varrendo as combinações de duas métricas, TODA falha dupla com peso
+        >= 0.20 fora CPA/ROAS já dispara um cenário de prioridade 1.
+
+        O teste fica como coerência (o selo não pode ficar abaixo do card), mas
+        não serve de prova do critério de peso: passa com ele e sem ele.
+        """
+        result, codes = run(
+            Metrics(ctr_link=0.49, hook_rate=17.4),
+            Targets(min_ctr_link=1.0, min_hook_rate=25.0),
+        )
+        assert ScenarioCode.WEAK_HOOK in codes
+        assert result.final_status == CampaignStatus.RED
+
+    def test_custos_secundarios_sozinhos_seguem_atencao(self):
+        """
+        Não-regressão da calibração: CPC (0.03) + CPM (0.05) = 0.08 não
+        caracteriza campanha crítica. Escalar isso inflacionaria o "Crítico"
+        e o rótulo perderia significado.
+        """
+        result, _ = run(
+            Metrics(cpc=2.0, cpm=40.0),
+            Targets(max_cpc=1.5, max_cpm=30.0),
+        )
+        vermelhas = [e.metric for e in result.metric_evaluations
+                     if e.status == CampaignStatus.RED]
+        assert set(vermelhas) == {"CPC", "CPM"}, "o cenário precisa ter as 2 em RED"
+        assert result.final_status == CampaignStatus.YELLOW
+
+    def test_metrica_na_meta_continua_saudavel(self):
+        """Não-regressão: a calibração não pode pintar de vermelho quem está na meta."""
+        result, _ = run(Metrics(cpa=50.0), make_targets(max_cpa=50.0))
+        assert result.final_status == CampaignStatus.GREEN
