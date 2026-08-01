@@ -18,6 +18,10 @@ iniciar-backend.bat / .sh          Sobe o backend com um clique (Windows / Linux
 
 ## Caminho rápido — só testar a ferramenta
 
+> 👉 **Vai apenas usar a ferramenta, sem mexer no código?**
+> Siga o **[COMO-USAR.md](COMO-USAR.md)** — é o mesmo caminho descrito abaixo,
+> porém passo a passo, sem jargão e com a seção de problemas comuns.
+
 Se você quer **usar** o NexGestor (não desenvolver), este é o caminho. Não
 precisa de Node, npm nem build: a extensão já vem compilada no repositório, na
 pasta `extensao-pronta/`.
@@ -172,6 +176,7 @@ explicitamente (há exemplos em `test_ai_integration.py`).
 
 | Arquivo | Conteúdo |
 |---|---|
+| `COMO-USAR.md` (raiz) | Tutorial passo a passo para quem só vai usar a ferramenta |
 | `CLAUDE.md` (raiz) | Estado do projeto, decisões de arquitetura e histórico das sessões |
 | `backend/.../CONTRATO_API_FRONTEND.md` | Contrato completo da API — payloads de entrada e resposta |
 | `backend/.../AUDITORIA.md` | Auditoria de segurança e qualidade do backend |
