@@ -4,7 +4,7 @@
 // seria exibido sem animação. Estes testes travam a ida e a volta do formato.
 
 import { act, renderHook } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { formatarPtBR, parseFormatado, useContagem } from "~lib/countup"
 
@@ -162,5 +162,73 @@ describe("formatarPtBR", () => {
     // entre "39,9" e "39,90" de um quadro para o outro.
     expect(formatarPtBR(39.987654, 2)).toBe("39,99")
     expect(formatarPtBR(39.1, 2)).toBe("39,10")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regressão 2026-08-01 — número congelado quando `rAF` não roda
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Finge o estado de visibilidade do documento. */
+function comDocumentoOculto(oculto: boolean) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => (oculto ? "hidden" : "visible")
+  })
+}
+
+describe("useContagem — nunca deixa número parcial congelado na tela", () => {
+  afterEach(() => {
+    comDocumentoOculto(false)
+    vi.useRealTimers()
+  })
+
+  it("documento oculto mostra o valor final, não zero", () => {
+    // Medido no navegador: com a aba em segundo plano, `requestAnimationFrame`
+    // não é agendado nenhuma vez e a contagem ficava parada em 0 — a tela
+    // exibia score 4/100, "R$ 0" de CPA e frequência "0,0", enquanto o texto
+    // do diagnóstico logo abaixo citava os números reais. Zero fabricado é
+    // exatamente o defeito que o projeto passou 2026-07-28 corrigindo.
+    comMovimentoReduzido(false)
+    comDocumentoOculto(true)
+    const { result } = renderHook(() => useContagem(92))
+    expect(result.current).toBe(92)
+  })
+
+  it("temporizador crava o valor real mesmo se nenhum quadro rodar", () => {
+    comMovimentoReduzido(false)
+    comDocumentoOculto(false)
+    vi.useFakeTimers()
+    // rAF que nunca chama de volta — simula aba limitada pelo navegador.
+    const original = globalThis.requestAnimationFrame
+    globalThis.requestAnimationFrame = (() => 1) as typeof globalThis.requestAnimationFrame
+
+    try {
+      const { result } = renderHook(() => useContagem(92, 100, 900))
+      expect(result.current).toBe(0) // ainda contando
+      act(() => { vi.advanceTimersByTime(100 + 900 + 200 + 1) })
+      expect(result.current).toBe(92) // a rede de segurança fechou o valor
+    } finally {
+      globalThis.requestAnimationFrame = original
+    }
+  })
+
+  it("ocultar a aba durante a contagem fecha no valor real", () => {
+    comMovimentoReduzido(false)
+    comDocumentoOculto(false)
+    const original = globalThis.requestAnimationFrame
+    globalThis.requestAnimationFrame = (() => 1) as typeof globalThis.requestAnimationFrame
+
+    try {
+      const { result } = renderHook(() => useContagem(3.4))
+      expect(result.current).toBe(0)
+      act(() => {
+        comDocumentoOculto(true)
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+      expect(result.current).toBe(3.4)
+    } finally {
+      globalThis.requestAnimationFrame = original
+    }
   })
 })

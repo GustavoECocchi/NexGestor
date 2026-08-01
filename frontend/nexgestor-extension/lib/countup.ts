@@ -76,20 +76,41 @@ function easeOutCubic(t: number): number {
  * Anima de 0 até `alvo`. Retorna o valor corrente a cada quadro.
  * `atraso` escalona tiles vizinhos para não contarem em bloco.
  */
+export function documentoOculto(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden"
+}
+
 export function useContagem(alvo: number, atraso = 0, duracao = DURACAO_PADRAO): number {
-  const [valor, setValor] = useState(() => (prefereMenosMovimento() ? alvo : 0))
+  const [valor, setValor] = useState(() =>
+    prefereMenosMovimento() || documentoOculto() ? alvo : 0
+  )
   const frame = useRef<number>()
 
   useEffect(() => {
-    if (prefereMenosMovimento()) {
+    // Documento oculto entra aqui junto com movimento reduzido: `rAF` não é
+    // agendado em documento oculto, então a contagem ficaria parada no valor
+    // inicial. Medido no side panel servido em aba de segundo plano: score
+    // congelado em 4/100, CPA "R$ 0", frequência "0,0" — enquanto o texto do
+    // diagnóstico logo abaixo citava 3,4 de frequência e R$ 2.300 de perda.
+    // Número inventado é pior que animação ausente.
+    if (prefereMenosMovimento() || documentoOculto()) {
       setValor(alvo)
       return
     }
 
     let inicio: number | null = null
+    let encerrado = false
     setValor(0)
 
+    const finalizar = () => {
+      if (encerrado) return
+      encerrado = true
+      if (frame.current !== undefined) cancelAnimationFrame(frame.current)
+      setValor(alvo)
+    }
+
     const passo = (agora: number) => {
+      if (encerrado) return
       if (inicio === null) inicio = agora
       const decorrido = agora - inicio - atraso
       if (decorrido < 0) {
@@ -101,11 +122,23 @@ export function useContagem(alvo: number, atraso = 0, duracao = DURACAO_PADRAO):
       // O último quadro grava o alvo exato: interpolação em ponto flutuante
       // pode parar em 39,999… e exibir "R$ 39,99" para sempre.
       if (progresso < 1) frame.current = requestAnimationFrame(passo)
-      else setValor(alvo)
+      else finalizar()
     }
+
+    // Rede de segurança independente de `rAF`: se a aba for ocultada, o
+    // navegador limitar os quadros ou a máquina engasgar no meio da contagem,
+    // o temporizador crava o valor real. `setTimeout` continua disparando em
+    // aba de segundo plano (só é limitado), `rAF` não dispara nenhuma vez.
+    const rede = setTimeout(finalizar, atraso + duracao + 200)
+    // Ocultar a aba durante a contagem também encerra: melhor o número certo
+    // sem animação do que um número parcial congelado na tela.
+    document.addEventListener("visibilitychange", finalizar)
 
     frame.current = requestAnimationFrame(passo)
     return () => {
+      encerrado = true
+      clearTimeout(rede)
+      document.removeEventListener("visibilitychange", finalizar)
       if (frame.current !== undefined) cancelAnimationFrame(frame.current)
     }
   }, [alvo, atraso, duracao])
