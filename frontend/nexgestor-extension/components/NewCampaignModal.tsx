@@ -25,14 +25,34 @@ export function num(raw: string): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
-type Field = { label: string; key: string; ph?: string }
+/** Arredonda os campos que o backend tipa como int; os demais passam intactos. */
+export function normalizaCampo(chave: string, valor: number): number {
+  return CAMPOS_INTEIROS.has(chave) ? Math.round(valor) : valor
+}
+
+type Field = { label: string; key: string; ph?: string; inteiro?: boolean }
+
+// Campos que o backend tipa como int (app/schema/schema.py). Enviar decimal
+// neles devolve 422 "int_from_float", que chegava ao gestor como "A análise
+// falhou: Falha na análise: 422" — sem dizer qual campo nem o que corrigir.
+// Meia impressão não existe, então arredondar é normalizar entrada inválida,
+// não inventar dado; o valor arredondado é escrito de volta no formulário para
+// o gestor ver exatamente o que foi enviado.
+const CAMPOS_INTEIROS = new Set([
+  "impressions", "reach", "link_clicks", "all_clicks", "landing_page_views",
+  "conversions", "weekly_conversions", "video_views_3s", "video_views_50pct",
+  "thruplays", "min_weekly_conversions"
+])
 
 const FIELDS_DELIVERY: Field[] = [
-  { label: "Impressões", key: "impressions", ph: "0" },
+  { label: "Impressões", key: "impressions", ph: "0", inteiro: true },
   { label: "Gasto (R$)", key: "spend", ph: "0" },
   { label: "CPM", key: "cpm", ph: "0" },
   { label: "CPC", key: "cpc", ph: "0" },
   { label: "CPA", key: "cpa", ph: "0" },
+  // CPL destrava o Cenário F (Lead Frio), inalcançável pelo formulário até
+  // 2026-08-01: o engine lê `cpl`, mas não havia onde informá-lo.
+  { label: "CPL", key: "cpl", ph: "0" },
   { label: "ROAS", key: "roas", ph: "0" }
 ]
 const FIELDS_CREATIVE: Field[] = [
@@ -41,20 +61,42 @@ const FIELDS_CREATIVE: Field[] = [
   { label: "CTR link (%)", key: "ctr_link", ph: "0" },
   { label: "CTR todos (%)", key: "ctr_all", ph: "0" },
   { label: "Frequência", key: "frequency", ph: "0" },
-  { label: "Conversões", key: "conversions", ph: "0" },
+  { label: "Conversões", key: "conversions", ph: "0", inteiro: true },
+  // Cliques no link + visitas à página destravam os Cenários D (desalinhamento
+  // com a landing page) e N (vazamento entre o clique e a página) — dois dos
+  // quatro diagnósticos que o formulário manual não conseguia produzir.
+  { label: "Cliques no link", key: "link_clicks", ph: "0", inteiro: true },
+  { label: "Visitas à página", key: "landing_page_views", ph: "0", inteiro: true },
   // Conversões/semana e fase de aprendizado entraram aqui porque o engine passou
   // a EXIGIR estado de aprendizado para abrir a janela de escala vertical (ver
   // _evidencia_faltante_para_escala no backend). Sem estes campos o formulário
   // manual não conseguia satisfazer a regra: nem a campanha mais saudável
   // recebia a análise de escala — o critério ficaria inalcançável por construção.
-  { label: "Conversões/semana", key: "weekly_conversions", ph: "0" }
+  { label: "Conversões/semana", key: "weekly_conversions", ph: "0", inteiro: true }
 ]
 const FIELDS_TARGETS: Field[] = [
   { label: "CPA máx.", key: "max_cpa", ph: "0" },
+  // CPL máx. acompanha o CPL acima (Cenário F). CPM máx. destrava o Cenário J
+  // (leilão caro) e é o teto que o Cenário G consulta para NÃO recomendar
+  // escala num leilão já acima do limite.
+  { label: "CPL máx.", key: "max_cpl", ph: "0" },
+  { label: "CPM máx.", key: "max_cpm", ph: "25" },
   { label: "ROAS mín.", key: "min_roas", ph: "0" },
   { label: "CTR link mín. (%)", key: "min_ctr_link", ph: "1.5" },
   { label: "Hook rate mín. (%)", key: "min_hook_rate", ph: "35" }
 ]
+
+/**
+ * Chaves que o formulário MANUAL expõe. Exportado para teste: até 2026-08-01
+ * faltavam `cpl`, `link_clicks`, `landing_page_views`, `max_cpl` e `max_cpm`,
+ * e sem eles quatro dos quinze cenários do engine (D, F, J e N) eram
+ * inalcançáveis por quem preenchesse o formulário — diagnósticos existentes no
+ * backend que nenhum gestor conseguiria produzir. Medido por varredura de
+ * 60.000 combinações antes e depois.
+ */
+export function chavesDoFormularioManual(): string[] {
+  return [...FIELDS_DELIVERY, ...FIELDS_CREATIVE, ...FIELDS_TARGETS].map((f) => f.key)
+}
 
 // ── importação de arquivo (.json) ───────────────────────────────────────────
 // Lista fechada dos campos aceitos, com o MESMO nome usado em Metrics/Targets
@@ -133,14 +175,14 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
       if (typeof v === "boolean") (metrics as Record<string, unknown>)[k] = v
       else invalidTypeKeys.push(`metrics.${k}`)
     } else if (typeof v === "number" && Number.isFinite(v)) {
-      (metrics as Record<string, number>)[k] = v
+      (metrics as Record<string, number>)[k] = normalizaCampo(k, v)
     } else {
       invalidTypeKeys.push(`metrics.${k}`)
     }
   }
   for (const [k, v] of Object.entries(rawTargets)) {
     if (!TARGET_KEYS.includes(k as keyof Targets)) { unknownKeys.push(`targets.${k}`); continue }
-    if (typeof v === "number" && Number.isFinite(v)) (targets as Record<string, number>)[k] = v
+    if (typeof v === "number" && Number.isFinite(v)) (targets as Record<string, number>)[k] = normalizaCampo(k, v)
     else invalidTypeKeys.push(`targets.${k}`)
   }
 
@@ -240,13 +282,13 @@ export function NewCampaignModal({
     const metrics: Metrics = {}
     for (const f of [...FIELDS_DELIVERY, ...FIELDS_CREATIVE]) {
       const n = num(values[f.key] ?? "")
-      if (n !== undefined) (metrics as Record<string, number>)[f.key] = n
+      if (n !== undefined) (metrics as Record<string, number>)[f.key] = normalizaCampo(f.key, n)
     }
     if (learningPhase !== "") metrics.learning_phase = learningPhase === "true"
     const targets: Targets = {}
     for (const f of FIELDS_TARGETS) {
       const n = num(values[f.key] ?? "")
-      if (n !== undefined) (targets as Record<string, number>)[f.key] = n
+      if (n !== undefined) (targets as Record<string, number>)[f.key] = normalizaCampo(f.key, n)
     }
     return {
       campaign: {
@@ -262,6 +304,20 @@ export function NewCampaignModal({
 
   async function runAnalyze(overrideInput?: AnalyzeInput) {
     setError(null)
+    if (!overrideInput) {
+      // Sem isto o formulário continuaria exibindo "120000,5" depois de enviar
+      // 120000 — o gestor leria um número que não foi o analisado.
+      setValues((atual) => {
+        const ajustado = { ...atual }
+        for (const f of [...FIELDS_DELIVERY, ...FIELDS_CREATIVE, ...FIELDS_TARGETS]) {
+          const n = num(atual[f.key] ?? "")
+          if (n === undefined) continue
+          const norm = normalizaCampo(f.key, n)
+          if (norm !== n) ajustado[f.key] = String(norm)
+        }
+        return ajustado
+      })
+    }
     const input = overrideInput ?? buildInput()
 
     if (Object.keys(input.metrics).length === 0) {

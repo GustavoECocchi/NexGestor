@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest"
-import { num, parseFileJSON } from "~components/NewCampaignModal"
+import { chavesDoFormularioManual, normalizaCampo, num, parseFileJSON } from "~components/NewCampaignModal"
 
 beforeEach(() => {
   localStorage.clear() // parseFileJSON chama nextLiveId(), que lê localStorage
@@ -120,5 +120,73 @@ describe("parseFileJSON — a whitelist é a garantia de segurança aqui", () =>
   it("sem nenhum bloco, ainda retorna um input válido com defaults (não é erro)", () => {
     const result = parseFileJSON("{}")
     expect("error" in result).toBe(false)
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regressão 2026-08-01 — campos que faltavam no formulário manual
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formulário manual — expõe tudo que o engine precisa", () => {
+  // Varredura de 60.000 combinações usando só os campos do formulário mostrou
+  // que os Cenários D (desalinhamento com a LP), F (lead frio), J (leilão caro)
+  // e N (vazamento clique→página) eram INALCANÇÁVEIS: o engine sabia
+  // diagnosticá-los, mas não havia onde informar os dados. Mesma armadilha de
+  // 2026-07-28 com os campos de aprendizado.
+  const chaves = chavesDoFormularioManual()
+
+  it("coleta o que o Cenário N (vazamento clique→página) exige", () => {
+    expect(chaves).toContain("link_clicks")
+    expect(chaves).toContain("landing_page_views")
+  })
+
+  it("coleta o que o Cenário F (lead frio) exige", () => {
+    expect(chaves).toContain("cpl")
+    expect(chaves).toContain("max_cpl")
+  })
+
+  it("coleta o teto de CPM (Cenário J e trava de escala do G)", () => {
+    expect(chaves).toContain("max_cpm")
+  })
+
+  it("não perdeu nenhum campo que já existia", () => {
+    for (const k of ["impressions", "spend", "cpm", "cpc", "cpa", "roas", "hook_rate",
+                     "hold_rate", "ctr_link", "ctr_all", "frequency", "conversions",
+                     "weekly_conversions", "max_cpa", "min_roas", "min_ctr_link",
+                     "min_hook_rate"]) {
+      expect(chaves, `campo ${k} sumiu do formulário`).toContain(k)
+    }
+  })
+})
+
+describe("normalizaCampo — campo inteiro não pode virar 422", () => {
+  // O backend tipa impressões, cliques, visitas e conversões como int. Um
+  // decimal ali devolvia 422 "int_from_float", que chegava ao gestor como
+  // "A análise falhou: Falha na análise: 422" — sem dizer qual campo.
+  it("arredonda os campos que o backend tipa como inteiro", () => {
+    expect(normalizaCampo("impressions", 120000.5)).toBe(120001)
+    expect(normalizaCampo("link_clicks", 1600.4)).toBe(1600)
+    expect(normalizaCampo("landing_page_views", 300.6)).toBe(301)
+    expect(normalizaCampo("conversions", 21.5)).toBe(22)
+    expect(normalizaCampo("weekly_conversions", 20.2)).toBe(20)
+  })
+
+  it("não mexe em métrica decimal legítima", () => {
+    expect(normalizaCampo("cpa", 95.37)).toBe(95.37)
+    expect(normalizaCampo("roas", 1.25)).toBe(1.25)
+    expect(normalizaCampo("frequency", 3.4)).toBe(3.4)
+    expect(normalizaCampo("spend", 2000.99)).toBe(2000.99)
+  })
+
+  it("a importação de JSON recebe o mesmo tratamento", () => {
+    const r = parseFileJSON(JSON.stringify({
+      metrics: { impressions: 50000.7, link_clicks: 900.2, cpa: 49.99 }
+    }))
+    expect("error" in r).toBe(false)
+    if ("error" in r) return
+    expect(r.input.metrics.impressions).toBe(50001)
+    expect(r.input.metrics.link_clicks).toBe(900)
+    expect(r.input.metrics.cpa).toBe(49.99)
   })
 })
