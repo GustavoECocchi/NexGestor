@@ -1,23 +1,64 @@
 # NexGestor
 
-Copiloto de diagnóstico para tráfego pago (Meta Ads / Google Ads). Recebe as
-métricas de uma campanha e devolve diagnóstico com causa raiz, score de saúde e
-ação executável — combinando um engine de regras determinístico com uma camada
-opcional de IA.
+Copiloto de diagnóstico para tráfego pago (Meta Ads / Google Ads / TikTok Ads /
+LinkedIn Ads). Recebe as métricas de uma campanha e devolve diagnóstico com
+causa raiz, score de saúde e ação executável — combinando um engine de regras
+determinístico com uma camada opcional de IA.
 
 O repositório é um monorepo:
 
 ```
 backend/backend-nexgestor-main/    API FastAPI — engine de análise + integração Gemini
 frontend/nexgestor-extension/      Extensão Chrome (side panel) — Plasmo + React + TypeScript
+extensao-pronta/                   Extensão já compilada — carregue esta se só quer testar
+iniciar-backend.bat / .sh          Sobe o backend com um clique (Windows / Linux-macOS)
 ```
 
 ---
 
-## Rodando na sua máquina
+## Caminho rápido — só testar a ferramenta
 
-Você precisa das duas partes no ar: o backend serve a análise, a extensão é a
-interface. Comece pelo backend.
+Se você quer **usar** o NexGestor (não desenvolver), este é o caminho. Não
+precisa de Node, npm nem build: a extensão já vem compilada no repositório, na
+pasta `extensao-pronta/`.
+
+**Pré-requisitos:** Python 3.11+ e um navegador Chromium (Chrome, Brave, Edge).
+
+**1. Suba o backend.** Na raiz do projeto, dê duplo clique em:
+
+- **Windows:** `iniciar-backend.bat`
+- **Linux / macOS:** `iniciar-backend.sh`
+
+O script cria o ambiente virtual, instala as dependências e sobe o servidor
+sozinho. Na primeira vez demora alguns minutos; nas seguintes é quase imediato.
+**Deixe essa janela aberta** enquanto usar a extensão — é ela que serve a
+análise.
+
+**2. Carregue a extensão** (passo manual, uma vez só):
+
+1. Abra `chrome://extensions` (ou `brave://extensions`).
+2. Ative o **Modo do desenvolvedor** no canto superior direito.
+3. Clique em **Carregar sem compactação**.
+4. Selecione a pasta **`extensao-pronta`** — a que fica na raiz do projeto.
+
+> Ao escolher a pasta, deixe `extensao-pronta` **selecionada** e clique em
+> "Selecionar pasta". Se você entrar nela e a barra mostrar o conteúdo, o
+> navegador pode receber a pasta errada e reclamar que o *manifest* está
+> faltando.
+
+**3. Abra o side panel** da extensão e clique em **Nova campanha**. Com o
+backend no ar, a análise é real — não é mock.
+
+A IA vem **desligada** por padrão, e isso não limita nada: o engine de regras
+entrega o diagnóstico completo e o campo `ai_insights` volta `null`. Para
+ligá-la, veja "Configurando a chave da IA".
+
+---
+
+## Rodando na sua máquina (desenvolvimento)
+
+Use este caminho se for **alterar o código**. Você precisa das duas partes no
+ar: o backend serve a análise, a extensão é a interface. Comece pelo backend.
 
 ### Pré-requisitos
 
@@ -61,9 +102,26 @@ Depois carregue a extensão no navegador (passo manual, uma vez só):
 Abra o side panel da extensão e clique em **Nova campanha**. Com o backend no ar,
 a análise é feita de verdade — não é mock.
 
+> **`chrome-mv3-prod` e não `chrome-mv3-dev`.** O `npm run dev` gera a pasta
+> `chrome-mv3-dev`, que depende do servidor do Plasmo rodando e quebra quando
+> você fecha o terminal. Para uso normal, carregue sempre a `chrome-mv3-prod`,
+> gerada pelo `npm run build`.
+
 > A extensão aponta para `http://localhost:8000` por padrão. Para usar outro
 > endereço, defina `PLASMO_PUBLIC_API_BASE` no `.env` do frontend e rode o build
 > de novo.
+
+### Atualizando a `extensao-pronta/`
+
+A pasta `extensao-pronta/` da raiz é uma **cópia versionada** do build de
+produção, para que quem só quer testar não precise instalar Node. Ela **não se
+atualiza sozinha**: depois de mexer no frontend, regenere-a, senão a equipe
+continua testando a versão antiga.
+
+```bash
+cd frontend/nexgestor-extension && npm run build && cd ../..
+rm -rf extensao-pronta && cp -r frontend/nexgestor-extension/build/chrome-mv3-prod extensao-pronta
+```
 
 ---
 
@@ -96,10 +154,10 @@ Modelo em uso: `gemini-flash-lite-latest`. Modelos mais antigos como
 ## Testes
 
 ```bash
-# Backend — 109 testes
+# Backend — 1354 testes
 cd backend/backend-nexgestor-main && pytest
 
-# Frontend — 99 testes
+# Frontend — 167 testes
 cd frontend/nexgestor-extension && npm test
 ```
 
