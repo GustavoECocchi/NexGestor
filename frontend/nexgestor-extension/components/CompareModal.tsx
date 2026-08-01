@@ -1,7 +1,7 @@
 import { useState } from "react"
 
 import { IconSpark } from "~components/Icons"
-import { brl, dec } from "~lib/format"
+import { brl, brlCents, dec } from "~lib/format"
 import { sanitizeHtml } from "~lib/sanitize"
 import type { CampaignVM } from "~types"
 
@@ -106,7 +106,7 @@ export function CompareModal({ campaigns, onClose }: { campaigns: CampaignVM[]; 
               <>
                 <div className="cmp-table">
                   <div className="cmp-row head"><div className="cmp-k">Métrica</div><div className="cmp-v">{short(a.name)}</div><div className="cmp-v">{short(b.name)}</div></div>
-                  <Row label="CPA" fa={cmpFmt(a.cpaNum, (n) => `R$ ${brl(n)}`)} fb={cmpFmt(b.cpaNum, (n) => `R$ ${brl(n)}`)} wa={melhor(a.cpaNum, b.cpaNum, true)} wb={melhor(b.cpaNum, a.cpaNum, true)} />
+                  <Row label="CPA" fa={cmpFmt(a.cpaNum, (n) => `R$ ${brlCents(n)}`)} fb={cmpFmt(b.cpaNum, (n) => `R$ ${brlCents(n)}`)} wa={melhor(a.cpaNum, b.cpaNum, true)} wb={melhor(b.cpaNum, a.cpaNum, true)} />
                   <Row label="ROAS" fa={cmpFmt(a.roasNum, (n) => `${dec(n)}x`)} fb={cmpFmt(b.roasNum, (n) => `${dec(n)}x`)} wa={melhor(a.roasNum, b.roasNum, false)} wb={melhor(b.roasNum, a.roasNum, false)} />
                   <Row label="CTR Link" fa={cmpFmt(a.ctrNum, (n) => `${dec(n)}%`)} fb={cmpFmt(b.ctrNum, (n) => `${dec(n)}%`)} wa={melhor(a.ctrNum, b.ctrNum, false)} wb={melhor(b.ctrNum, a.ctrNum, false)} />
                   <Row label="Frequência" fa={cmpFmt(a.freqNum, dec)} fb={cmpFmt(b.freqNum, dec)} wa={melhor(a.freqNum, b.freqNum, true)} wb={melhor(b.freqNum, a.freqNum, true)} />

@@ -131,7 +131,7 @@ describe("responseToVM — tiles", () => {
     )
     expect(vm.tiles).toHaveLength(2)
     expect(vm.tiles[0][0]).toBe("CPA")
-    expect(vm.tiles[0][1]).toBe("R$ 50")
+    expect(vm.tiles[0][1]).toBe("R$ 50,00")
     expect(vm.tiles[1][1]).toBe("4,0x")
   })
 
@@ -273,5 +273,77 @@ describe("responseToVM — plataforma", () => {
 
     const ausente = responseToVM(baseResponse(), baseInput({ campaign: { id: 1, name: "x" } }))
     expect(ausente.platform).toBe("Meta Ads")
+  })
+})
+
+describe("responseToVM — legenda do tile não pode truncar número decimal", () => {
+  // Regressão (2026-08-01): a legenda cortava a nota no primeiro ".", e ponto
+  // decimal é o mesmo caractere que encerra frase. A meta que o gestor definiu
+  // aparecia errada na tela: R$39,90 virava "meta <R$39".
+  function tileDe(metric: string, note: string): string {
+    const vm = responseToVM(
+      baseResponse({ metric_evaluations: [{ metric, value: 30, status: "GREEN", score: 100, note }] }),
+      baseInput()
+    )
+    const tile = vm.tiles.find((t) => t[0] === metric)
+    expect(tile, `tile de ${metric} deveria existir`).toBeTruthy()
+    return tile![3]
+  }
+
+  it("preserva os centavos da meta de CPA", () => {
+    expect(tileDe("CPA", "Meta: <R$39.90. ✓ CPA 25% abaixo da meta.")).toBe("meta <R$39.90")
+  })
+
+  it("preserva os centavos de CPC e CPL", () => {
+    expect(tileDe("CPC", "Meta: <R$1.50. ✓ Custo por clique dentro do teto.")).toBe("meta <R$1.50")
+    expect(tileDe("CPL", "Meta: <R$19.90. ✓ Custo por lead dentro da meta.")).toBe("meta <R$19.90")
+  })
+
+  it("preserva a casa decimal do limite de fadiga", () => {
+    expect(tileDe("Frequência", "Limite de fadiga: 2.8. ✓ Audiência fresca.")).toBe("Limite de fadiga: 2.8")
+  })
+
+  it("preserva a unidade de ROAS e das porcentagens", () => {
+    expect(tileDe("ROAS", "Meta: >3.0x. ✓ ROAS 4.0x — retorno saudável.")).toBe("meta >3.0x")
+    expect(tileDe("CTR Link", "Meta: >1.0%. ✓ Intenção de clique saudável.")).toBe("meta >1.0%")
+  })
+
+  it("continua cortando na primeira frase de verdade e respeitando o limite", () => {
+    expect(tileDe("Hook Rate", "Meta: >25%. ✓ Criativo capta atenção no feed.")).toBe("meta >25%")
+    const longo = tileDe("CPM", "Referência: <R$25.00. ✗ CPM crítico — público exaurido ou anúncio penalizado.")
+    expect(longo).toBe("Referência: <R$25.00")
+    expect(longo.length).toBeLessThanOrEqual(28)
+  })
+})
+
+describe("responseToVM — custo unitário exibido com centavos", () => {
+  // Regressão (2026-08-01): ver brlCents em lib/format.ts.
+  function tileValor(metric: string, value: number): string {
+    const vm = responseToVM(
+      baseResponse({ metric_evaluations: [{ metric, value, status: "GREEN", score: 100, note: "Meta: ok. resto." }] }),
+      baseInput()
+    )
+    return vm.tiles.find((t) => t[0] === metric)![1]
+  }
+
+  it("CPC de R$0,45 não aparece como R$ 0", () => {
+    expect(tileValor("CPC", 0.45)).toBe("R$ 0,45")
+  })
+
+  it("CPA de R$39,90 não aparece como R$ 40", () => {
+    expect(tileValor("CPA", 39.9)).toBe("R$ 39,90")
+  })
+
+  it("CPL e CPM também levam centavos", () => {
+    expect(tileValor("CPL", 19.9)).toBe("R$ 19,90")
+    expect(tileValor("CPM", 8.05)).toBe("R$ 8,05")
+  })
+
+  it("investimento e receita seguem sem centavos (total, não custo unitário)", () => {
+    const vm = responseToVM(
+      baseResponse(),
+      baseInput({ metrics: { spend: 8420.37, roas: 1.1 } })
+    )
+    expect(vm.tiles.find((t) => t[0] === "Investimento")![1]).toBe("R$ 8.420")
   })
 })

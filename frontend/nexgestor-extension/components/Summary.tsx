@@ -1,5 +1,5 @@
 import { IconBolt, IconCompare, IconSpark, IconTrendUp } from "~components/Icons"
-import { brl, dec } from "~lib/format"
+import { brl, brlCents, dec } from "~lib/format"
 import { STATUS } from "~lib/status"
 import { isLiveId } from "~lib/store"
 import type { CampaignVM, UIStatus } from "~types"
@@ -87,7 +87,7 @@ export function Summary({
         </div>
         <div className="fin">
           <div className="fin-ico" style={{ background: "var(--orange-bg)", color: "var(--orange)" }}><IconCompare /></div>
-          <div><div className="fk">CPA médio</div><div className="fv">R$ {brl(cpaMed)}</div></div>
+          <div><div className="fk">CPA médio</div><div className="fv">R$ {brlCents(cpaMed)}</div></div>
         </div>
       </div>
     </div>

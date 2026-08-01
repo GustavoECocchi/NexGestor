@@ -22,7 +22,7 @@ import type {
   Tile,
   UIStatus
 } from "~types"
-import { brl, dec } from "~lib/format"
+import { brl, brlCents, dec } from "~lib/format"
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ function fmtMetric(ev: MetricEvaluation): string {
   const v = ev.value
   if (v == null) return "—"
   const m = ev.metric
-  if (m === "CPA" || m === "CPC" || m === "CPL" || m === "CPM") return `R$ ${brl(v)}`
+  if (m === "CPA" || m === "CPC" || m === "CPL" || m === "CPM") return `R$ ${brlCents(v)}`
   if (m === "ROAS") return `${dec(v)}x`
   if (m === "Frequência") return dec(v)
   if (m === "Conversões/semana") return String(Math.round(v))
@@ -62,6 +62,22 @@ function fmtMetric(ev: MetricEvaluation): string {
 
 function findEval(evals: MetricEvaluation[], metric: string) {
   return evals.find((e) => e.metric === metric)
+}
+
+/**
+ * Legenda curta do tile: primeira frase da nota do engine.
+ *
+ * Cortar em `.` seco quebra número decimal — o ponto de "R$39.90" é o mesmo
+ * caractere que encerra a frase. Isso exibia a meta do gestor errada na tela:
+ * `Meta: <R$39.90.` virava "meta <R$39", e `Limite de fadiga: 2.8.` virava
+ * "Limite de fadiga: 2". Só encerra frase o ponto seguido de espaço (ou de
+ * fim de string), então é isso que separa.
+ */
+function tileNote(note: string): string {
+  return note
+    .replace(/^Meta:\s*/i, "meta ")
+    .split(/\.(?=\s|$)/)[0]
+    .slice(0, 28)
 }
 
 function resolveUIStatus(res: CampaignAnalysisResponse): UIStatus {
@@ -114,7 +130,7 @@ export function responseToVM(
     ev.metric,
     fmtMetric(ev),
     STATUS_COLOR[ev.status] ?? "var(--txt)",
-    ev.note.replace(/^Meta:\s*/i, "meta ").split(".")[0].slice(0, 28)
+    tileNote(ev.note)
   ])
   if (invest) tiles.push(["Investimento", `R$ ${brl(invest)}`, "var(--txt)", "período informado"])
   if (revenue) tiles.push(["Receita", `R$ ${brl(revenue)}`, "var(--txt)", "spend × ROAS"])

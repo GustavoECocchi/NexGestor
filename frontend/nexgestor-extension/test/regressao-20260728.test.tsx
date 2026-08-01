@@ -269,20 +269,20 @@ describe("Resumo — média não é diluída por campanha sem a métrica", () =>
     const { container } = render(
       <Summary campaigns={[vm(1000, { cpaNum: 40, roasNum: 4 }), vm(1001)]} />
     )
-    // Média entre {40}, e não entre {40, 0} — que daria R$ 20.
-    expect(cpaMedio(container)).toBe("R$ 40")
+    // Média entre {40}, e não entre {40, 0} — que daria R$ 20,00.
+    expect(cpaMedio(container)).toBe("R$ 40,00")
   })
 
   it("nenhuma campanha com a métrica → média zerada, sem divisão por zero", () => {
     const { container } = render(<Summary campaigns={[vm(1000), vm(1001)]} />)
-    expect(cpaMedio(container)).toBe("R$ 0")
+    expect(cpaMedio(container)).toBe("R$ 0,00")
   })
 
   it("zero medido entra na média normalmente", () => {
     const { container } = render(
       <Summary campaigns={[vm(1000, { cpaNum: 0 }), vm(1001, { cpaNum: 40 })]} />
     )
-    expect(cpaMedio(container)).toBe("R$ 20")
+    expect(cpaMedio(container)).toBe("R$ 20,00")
   })
 })
 
