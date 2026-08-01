@@ -1217,6 +1217,14 @@ def _weighted_reds(metric_evals: list) -> list:
     ]
 
 
+def _weighted_yellows(metric_evals: list) -> list:
+    """Métricas em YELLOW que têm peso no score (informativas ficam de fora)."""
+    return [
+        e for e in metric_evals
+        if e.status == CampaignStatus.YELLOW and _METRIC_WEIGHTS.get(e.metric, 0.0) > 0
+    ]
+
+
 def _resolve_final_status(
     scenarios: list[ScenarioDetail],
     metric_evals: list | None = None,
@@ -1251,9 +1259,10 @@ def _resolve_final_status(
 
     # ── Fonte 2: status por evidência métrica ──
     reds = _weighted_reds(metric_evals)
+    yellows = _weighted_yellows(metric_evals)
     if overall_score < 40 or len(reds) >= 3:
         metric_status = CampaignStatus.RED
-    elif overall_score < 60 or reds:
+    elif overall_score < 60 or reds or yellows:
         metric_status = CampaignStatus.YELLOW
     else:
         metric_status = CampaignStatus.GREEN

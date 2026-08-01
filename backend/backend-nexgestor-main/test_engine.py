@@ -1006,3 +1006,62 @@ class TestRegressaoRevisao20260726:
                     if e.metric == "Hold Rate").status == CampaignStatus.RED
         assert next(e for e in amarelo.metric_evaluations
                     if e.metric == "Hold Rate").status == CampaignStatus.YELLOW
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REGRESSÃO — simulação do fluxo do testador (2026-08-01)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestRegressaoSimulacaoTestador20260801:
+    """
+    Achado ao simular o preenchimento típico de um gestor: só gasto, conversões
+    e CPA, com meta de CPA definida.
+    """
+
+    def test_metrica_amarela_nunca_sai_como_saudavel(self):
+        """
+        `_resolve_final_status` só escalava o status por métricas RED ou por score
+        abaixo de 60. Uma métrica YELLOW isolada com score >= 60 não escalava nada,
+        então a campanha voltava GREEN — rotulada "Saudável" na UI — enquanto o card
+        da métrica ficava amarelo dizendo "⚠ CPA 25% acima da meta".
+
+        Contradição visível na mesma tela: o veredito diz saudável, a evidência diz
+        que a meta do gestor foi estourada. Medido antes da correção: CPA até 25%
+        acima da meta (score 64) saía "Saudável".
+        """
+        for cpa, pct in [(44.0, 10), (48.0, 20), (50.0, 25)]:
+            result, _ = run(
+                Metrics(spend=500.0, conversions=10, cpa=cpa),
+                make_targets(max_cpa=40.0),
+            )
+            ev = next(e for e in result.metric_evaluations if e.metric == "CPA")
+            assert ev.status == CampaignStatus.YELLOW, f"CPA {pct}% acima deveria ser YELLOW"
+            assert result.final_status != CampaignStatus.GREEN, (
+                f"CPA {pct}% acima da meta não pode sair como 'Saudável' "
+                f"(status={result.final_status}, score={result.overall_score})"
+            )
+
+    def test_metrica_dentro_da_meta_continua_saudavel(self):
+        """Não-regressão: a correção não pode pintar de amarelo quem está na meta."""
+        result, _ = run(
+            Metrics(spend=500.0, conversions=10, cpa=40.0),
+            make_targets(max_cpa=40.0),
+        )
+        assert result.final_status == CampaignStatus.GREEN
+        assert result.overall_score == 100
+
+    def test_campanha_saudavel_completa_segue_verde_e_escalavel(self):
+        """
+        Não-regressão da janela de escala: campanha com todas as métricas saudáveis
+        continua GREEN (a UI depende disso para exibir o estado "escalável").
+        """
+        result, codes = run(
+            Metrics(
+                impressions=200000, reach=90000, spend=3000.0, link_clicks=4000,
+                landing_page_views=3600, ctr_link=2.0, cpa=35.0, roas=4.2,
+                conversions=86, weekly_conversions=86, frequency=1.5,
+                learning_phase=False, hook_rate=42.0, hold_rate=22.0, cpm=15.0,
+            ),
+            make_targets(max_cpa=60.0, min_roas=3.0, max_cpm=30.0),
+        )
+        assert result.final_status == CampaignStatus.GREEN
+        assert ScenarioCode.VERTICAL_SCALE in codes
