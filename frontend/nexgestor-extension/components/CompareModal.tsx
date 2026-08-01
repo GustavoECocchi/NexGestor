@@ -66,6 +66,17 @@ function verdict(a: CampaignVM, b: CampaignVM) {
 
 const short = (n: string) => n.split("—")[0].trim()
 
+/**
+ * Cabeçalho das colunas. Encurtar no travessão ajuda a caber, mas numa tabela
+ * de comparação isso pode fazer duas campanhas diferentes ("Verão — A" e
+ * "Verão — B") virarem colunas de nome idêntico, sem como saber qual é qual.
+ * Quando o encurtamento colide, os dois nomes voltam inteiros.
+ */
+function headers(a: string, b: string): [string, string] {
+  const [ca, cb] = [short(a), short(b)]
+  return ca === cb && a !== b ? [a, b] : [ca, cb]
+}
+
 export function CompareModal({ campaigns, onClose }: { campaigns: CampaignVM[]; onClose: () => void }) {
   // Guarda: comparar exige pelo menos 2 campanhas.
   const enough = campaigns.length >= 2
@@ -105,7 +116,7 @@ export function CompareModal({ campaigns, onClose }: { campaigns: CampaignVM[]; 
             ) : (
               <>
                 <div className="cmp-table">
-                  <div className="cmp-row head"><div className="cmp-k">Métrica</div><div className="cmp-v">{short(a.name)}</div><div className="cmp-v">{short(b.name)}</div></div>
+                  <div className="cmp-row head"><div className="cmp-k">Métrica</div><div className="cmp-v">{headers(a.name, b.name)[0]}</div><div className="cmp-v">{headers(a.name, b.name)[1]}</div></div>
                   <Row label="CPA" fa={cmpFmt(a.cpaNum, (n) => `R$ ${brlCents(n)}`)} fb={cmpFmt(b.cpaNum, (n) => `R$ ${brlCents(n)}`)} wa={melhor(a.cpaNum, b.cpaNum, true)} wb={melhor(b.cpaNum, a.cpaNum, true)} />
                   <Row label="ROAS" fa={cmpFmt(a.roasNum, (n) => `${dec(n)}x`)} fb={cmpFmt(b.roasNum, (n) => `${dec(n)}x`)} wa={melhor(a.roasNum, b.roasNum, false)} wb={melhor(b.roasNum, a.roasNum, false)} />
                   <Row label="CTR Link" fa={cmpFmt(a.ctrNum, (n) => `${dec(n)}%`)} fb={cmpFmt(b.ctrNum, (n) => `${dec(n)}%`)} wa={melhor(a.ctrNum, b.ctrNum, false)} wb={melhor(b.ctrNum, a.ctrNum, false)} />

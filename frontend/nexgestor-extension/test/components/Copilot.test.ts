@@ -55,12 +55,36 @@ describe("buildReply — roteia pra dados reais da campanha, nunca texto solto",
     expect(reply).toContain("2.34%")
   })
 
-  it("pergunta sobre frequência sinaliza fadiga acima de 3x", () => {
-    const semFadiga = buildReply("tem risco de fadiga?", vm({ freqNum: 1.5 }))
-    expect(semFadiga).toContain("faixa saudável")
+  // ASSERÇÃO INVERTIDA em 2026-08-01: o teste antigo ("sinaliza fadiga acima de
+  // 3x") registrava o defeito. O limiar de fadiga é do gestor
+  // (max_frequency_fatigue, padrão 2.8) e vem do engine — com o `>= 3` fixo,
+  // frequência 2.85 fazia o Copiloto dizer "faixa saudável" enquanto o card da
+  // métrica estava vermelho e o Cenário E (Fadiga) já tinha disparado.
+  it("veredito de fadiga vem do engine, não de um limiar fixo no frontend", () => {
+    const tileVermelho = vm({
+      freqNum: 2.85,
+      tiles: [["Frequência", "2,9", "var(--red)", "Limite de fadiga: 2.8"]]
+    })
+    const critica = buildReply("tem risco de fadiga?", tileVermelho)
+    expect(critica).not.toContain("faixa saudável")
+    expect(critica).toContain("2.8") // cita o limite real do gestor
 
-    const comFadiga = buildReply("tem risco de fadiga?", vm({ freqNum: 3.4 }))
-    expect(comFadiga).toContain("fadiga de criativo")
+    const comCenarioE = vm({
+      freqNum: 2.85,
+      scenarios: [{
+        code: "E", title: "Fadiga de Criativo", root_cause: "r",
+        funnel_impact: "i", action: "Trocar o criativo agora.", priority: 1
+      }]
+    })
+    expect(buildReply("tem risco de fadiga?", comCenarioE)).toContain("Trocar o criativo agora.")
+  })
+
+  it("frequência saudável segundo o engine continua sendo reportada como saudável", () => {
+    const ok = vm({
+      freqNum: 1.5,
+      tiles: [["Frequência", "1,5", "var(--green)", "Limite de fadiga: 2.8"]]
+    })
+    expect(buildReply("tem risco de fadiga?", ok)).toContain("saudável")
   })
 
   it("pergunta sobre escalar responde conforme o status", () => {

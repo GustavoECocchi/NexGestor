@@ -55,9 +55,25 @@ export function buildReply(question: string, c: CampaignVM): string {
   }
   if (/frequ|fadiga|satura/.test(q)) {
     if (c.freqNum == null) return semDado("frequência", "a frequência (ou impressões + alcance)")
-    return `A frequência atual é <b>${c.freqNum.toFixed(1)}x</b> por pessoa. ${
-      c.freqNum >= 3 ? "Isso já é sinal de possível fadiga de criativo — vale revisar o criativo em uso." : "Ainda dentro de uma faixa saudável."
-    }`
+    // O limiar de fadiga é do gestor (max_frequency_fatigue, padrão 2.8), não
+    // um número fixo aqui. Com o `>= 3` que existia antes, frequência 2.85
+    // fazia o Copiloto responder "ainda dentro de uma faixa saudável" enquanto
+    // o card da métrica estava VERMELHO ("saturação — criativo esgotado") e o
+    // Cenário E já tinha disparado. O veredito vem do engine.
+    const tile = c.tiles.find((t) => t[0] === "Frequência")
+    const fadiga = c.scenarios.find((s) => s.code === "E")
+    const iminente = c.scenarios.find((s) => s.code === "H")
+
+    let veredito: string
+    if (fadiga) veredito = `O engine classificou como saturação — ${fadiga.action}`
+    else if (tile?.[2] === "var(--red)")
+      veredito = "O engine marcou a frequência como crítica: criativo esgotado no público atual."
+    else if (iminente || tile?.[2] === "var(--amber)")
+      veredito = "Frequência subindo — fadiga iminente. Vale ampliar o público antes de saturar."
+    else veredito = "Dentro da faixa que o engine considera saudável."
+
+    const limite = tile?.[3] ? ` (${tile[3]})` : ""
+    return `A frequência atual é <b>${c.freqNum.toFixed(1)}x</b> por pessoa${limite}. ${veredito}`
   }
   if (/escalar|aumentar.*verba|subir.*orcamento/.test(q)) {
     if (c.status === "BLUE") {
