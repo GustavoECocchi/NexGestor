@@ -1245,6 +1245,59 @@ def _peso_dos_reds(metric_evals: list) -> float:
     return sum(_METRIC_WEIGHTS.get(e.metric, 0.0) for e in _weighted_reds(metric_evals))
 
 
+def _lista_metricas(evals: list, limite: int = 4) -> str:
+    """
+    Nomes das métricas, truncando de forma declarada.
+
+    Listar 4 de 6 em silêncio (o comportamento anterior) faz a frase parecer
+    completa quando não é — e num texto que já anuncia a contagem ("6 métricas
+    críticas: A, B, C") o número e a lista se contradizem na mesma linha.
+    """
+    nomes = [e.metric for e in evals[:limite]]
+    resto = len(evals) - len(nomes)
+    return ", ".join(nomes) + (f" e mais {resto}" if resto > 0 else "")
+
+
+def _resumo_sem_cenario(metric_evals: list | None) -> tuple[str, str]:
+    """
+    Resumo e ação principal quando NENHUM cenário de causa raiz disparou.
+    Devolve (summary, primary_action).
+
+    Não detectar cenário não é o mesmo que estar tudo bem: os detectores cobrem
+    causas conhecidas, não o espaço inteiro de problemas. O texto fixo antigo
+    ("Campanha operando dentro dos parâmetros esperados. Nenhum gargalo crítico
+    identificado.") era emitido mesmo com CPC, CPL e CPM em vermelho e cobertura
+    de 100% — a campanha saía com selo "Crítico" e ação "Manter campanha ativa",
+    enquanto o resumo afirmava que estava tudo dentro do esperado.
+
+    A ressalva de cobertura (_partial_diagnosis_note) não cobria esse caso: ela
+    só é emitida com cobertura abaixo de 100%.
+    """
+    reds = _weighted_reds(metric_evals or [])
+    yellows = _weighted_yellows(metric_evals or [])
+
+    if reds:
+        return (
+            f"Nenhum cenário de causa raiz identificado, mas {len(reds)} métrica(s) "
+            f"em nível crítico: {_lista_metricas(reds)}. O engine não isolou a causa — "
+            "revisar essas métricas antes de mexer em orçamento.",
+            f"Investigar {reds[0].metric}: está em nível crítico sem causa raiz confirmada.",
+        )
+
+    if yellows:
+        return (
+            f"Nenhum gargalo crítico identificado, mas {len(yellows)} métrica(s) "
+            f"fora da meta definida: {_lista_metricas(yellows)}. Monitorar de perto.",
+            f"Acompanhar {yellows[0].metric}: está fora da meta definida.",
+        )
+
+    return (
+        "Campanha operando dentro dos parâmetros esperados. "
+        "Nenhum gargalo crítico identificado. Manter monitoramento regular.",
+        "Manter campanha ativa. Monitorar métricas nas próximas 48h.",
+    )
+
+
 def _resolve_final_status(
     scenarios: list[ScenarioDetail],
     metric_evals: list | None = None,
@@ -1334,7 +1387,7 @@ def _partial_diagnosis_note(
     if not reds:
         return ""
 
-    nomes_red = ", ".join(e.metric for e in reds[:4])
+    nomes_red = _lista_metricas(reds)
     faltantes = [hint for field, hint in _MISSING_DATA_HINTS if getattr(m, field, None) is None]
     orientacao = f" Envie {'; '.join(faltantes[:3])} para diagnóstico completo." if faltantes else ""
 
@@ -1381,10 +1434,7 @@ def _build_summary(
         nota_parcial += _nota_escala_bloqueada(m, t, scenarios)
 
     if not scenarios:
-        base = (
-            "Campanha operando dentro dos parâmetros esperados. "
-            "Nenhum gargalo crítico identificado. Manter monitoramento regular."
-        )
+        base, _ = _resumo_sem_cenario(metric_evals)
         return base + nota_parcial
 
     criticos = [s for s in scenarios if s.priority == 1 and s.code != ScenarioCode.VERTICAL_SCALE]
@@ -1457,7 +1507,12 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
     score_confidence = _score_confidence(score_coverage, m)
     final_status   = _resolve_final_status(scenarios, metric_evals, overall_score)
     summary        = _build_summary(scenarios, final_status, metric_evals, m, score_coverage, t)
-    primary_action = scenarios[0].action if scenarios else "Manter campanha ativa. Monitorar métricas nas próximas 48h."
+    if scenarios:
+        primary_action = scenarios[0].action
+    else:
+        # Sem cenário, a ação tem de refletir o estado das métricas: mandar
+        # "manter campanha ativa" com métrica em vermelho contradiz o selo.
+        _, primary_action = _resumo_sem_cenario(metric_evals)
 
     return CampaignAnalysisResponse(
         campaign_id=data.campaign.id,
@@ -1595,11 +1650,9 @@ def _apply_minimal_fallback(response: CampaignAnalysisResponse, data: AnalyzeInp
 
     partes = []
     if criticos:
-        nomes = ", ".join(e.metric for e in criticos[:3])
-        partes.append(f"{len(criticos)} métrica(s) crítica(s): {nomes}")
+        partes.append(f"{len(criticos)} métrica(s) crítica(s): {_lista_metricas(criticos, 3)}")
     if atencao:
-        nomes = ", ".join(e.metric for e in atencao[:3])
-        partes.append(f"{len(atencao)} em atenção: {nomes}")
+        partes.append(f"{len(atencao)} em atenção: {_lista_metricas(atencao, 3)}")
     if saudaveis and not criticos and not atencao:
         partes.append(f"{len(saudaveis)} métrica(s) saudável(eis)")
 

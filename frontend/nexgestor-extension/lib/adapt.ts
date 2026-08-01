@@ -80,6 +80,33 @@ function tileNote(note: string): string {
     .slice(0, 28)
 }
 
+/**
+ * Primeira frase de um texto longo do engine ou da IA, para caber num card.
+ *
+ * Três armadilhas, todas observadas em texto real:
+ *
+ *  1. Metade das `execution_rule` do engine é lista numerada ("1. Conferir o
+ *     pixel. 2. Abrir..."). Cortar no primeiro ponto devolvia literalmente
+ *     `"1"` — e o card exibia "Impacto 1", o Copiloto dizia "impacto 1".
+ *     O marcador de lista é removido antes de procurar o fim da frase.
+ *  2. Ponto decimal não encerra frase (mesma questão de `tileNote`).
+ *  3. Cortar no caractere 60 partia palavra e número no meio ("headline
+ *     visual ag", "reduzir em 3" onde o texto dizia 30%). Agora corta na
+ *     última palavra inteira e marca com reticências, para o corte ficar
+ *     evidente em vez de passar por texto completo.
+ */
+function primeiraFrase(texto: string, limite: number): string {
+  const semMarcador = texto.replace(/^\s*\d+\s*[.)]\s*/, "")
+  const frase = semMarcador.split(/\.(?=\s|$)/)[0].trim()
+  if (frase.length <= limite) return frase
+
+  const corte = frase.slice(0, limite)
+  const ultimoEspaco = corte.lastIndexOf(" ")
+  // Só volta até a palavra anterior se isso não jogar fora quase todo o texto.
+  const base = ultimoEspaco > limite * 0.6 ? corte.slice(0, ultimoEspaco) : corte
+  return base.replace(/[\s,;:—-]+$/, "") + "…"
+}
+
 function resolveUIStatus(res: CampaignAnalysisResponse): UIStatus {
   const hasScaleWindow = res.scenarios.some((s) => s.code === "G")
   // "Escalável" é um convite a gastar mais: exige janela de escala E confiança
@@ -156,7 +183,7 @@ export function responseToVM(
   // Sugestões: execution_rule dos cenários + extras da IA (se houver).
   const sugg: SuggestionVM[] = res.scenarios.slice(0, 3).map((s: ScenarioDetail) => ({
     name: shortTitle(s.title),
-    impact: s.execution_rule.split(".")[0].slice(0, 60),
+    impact: primeiraFrase(s.execution_rule, 60),
     effort: s.priority === 1 ? "Imediato" : "Planejado",
     urgency: PRIO_LABEL[s.priority] ?? "Baixa"
   }))
@@ -167,7 +194,7 @@ export function responseToVM(
       // Mesmo corte aplicado à sugestão vinda do engine (execution_rule acima).
       // Sem ele, uma ação longa da IA estourava o card — o schema da IA não tem
       // limite de tamanho, então o controle tem que ser aqui.
-      impact: extra.recommended_action.slice(0, 60),
+      impact: primeiraFrase(extra.recommended_action, 60),
       effort: "IA",
       urgency: extra.confidence === "high" ? "Alta" : extra.confidence === "medium" ? "Média" : "Baixa"
     })

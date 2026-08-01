@@ -347,3 +347,81 @@ describe("responseToVM — custo unitário exibido com centavos", () => {
     expect(vm.tiles.find((t) => t[0] === "Investimento")![1]).toBe("R$ 8.420")
   })
 })
+
+describe("responseToVM — sugestão nunca exibe só o número da lista", () => {
+  // Regressão (2026-08-01): metade das `execution_rule` do engine é lista
+  // numerada ("1. Conferir o pixel. 2. Abrir..."). O corte no primeiro "."
+  // devolvia literalmente "1", e o card exibia "Impacto 1" — o Copiloto
+  // chegava a dizer "impacto 1, esforço Imediato".
+  function impactoDe(execution_rule: string): string {
+    const vm = responseToVM(
+      baseResponse({ scenarios: [scenario("L", { execution_rule })] }),
+      baseInput()
+    )
+    return vm.sugg[0].impact
+  }
+
+  it("lista numerada não vira '1'", () => {
+    const r = impactoDe("1. Conferir se o pixel está disparando. 2. Abrir o anúncio.")
+    expect(r).not.toBe("1")
+    expect(r).toBe("Conferir se o pixel está disparando")
+  })
+
+  it("aceita outros marcadores de lista", () => {
+    expect(impactoDe("2) Fundir conjuntos semelhantes. 3) Revisar verba.")).toBe(
+      "Fundir conjuntos semelhantes"
+    )
+  })
+
+  it("não quebra em número decimal no meio da frase", () => {
+    expect(impactoDe("Manter o CPM abaixo de R$25.00 durante a próxima semana.")).toBe(
+      "Manter o CPM abaixo de R$25.00 durante a próxima semana"
+    )
+  })
+
+  it("frase longa é cortada em palavra inteira e marcada com reticências", () => {
+    const r = impactoDe(
+      "Refazer abertura com Pattern Interrupt usando headline visual agressiva e cores de contraste."
+    )
+    expect(r.endsWith("…")).toBe(true)
+    expect(r.length).toBeLessThanOrEqual(61) // 60 + reticências
+    expect(r).not.toMatch(/\s…$/) // sem espaço solto antes das reticências
+    // não pode partir palavra no meio
+    expect(r.slice(0, -1).split(" ").pop()).not.toBe("agressi")
+  })
+
+  it("frase curta passa inteira, sem reticências", () => {
+    const r = impactoDe("Reduzir orçamento em 30–50% imediatamente.")
+    expect(r).toBe("Reduzir orçamento em 30–50% imediatamente")
+    expect(r).not.toContain("…")
+  })
+
+  it("nunca corta número no meio (30% não pode virar 3)", () => {
+    const r = impactoDe(
+      "Aumentar o orçamento diário da campanha em exatamente 30% a cada período de 24 horas seguidas."
+    )
+    expect(r).not.toMatch(/\b3…$/)
+    expect(r.endsWith("…")).toBe(true)
+  })
+
+  it("ação vinda da IA recebe o mesmo tratamento", () => {
+    const vm = responseToVM(
+      baseResponse({
+        ai_insights: {
+          executive_summary: "resumo",
+          extra_scenarios: [{
+            title: "Cenário IA",
+            description: "d",
+            recommended_action: "1. Revisar a segmentação de público antes de qualquer mudança de verba.",
+            confidence: "high"
+          }],
+          contextual_insights: [],
+          risk_warnings: []
+        }
+      }),
+      baseInput()
+    )
+    expect(vm.sugg[0].impact).not.toBe("1")
+    expect(vm.sugg[0].impact.startsWith("Revisar a segmentação")).toBe(true)
+  })
+})

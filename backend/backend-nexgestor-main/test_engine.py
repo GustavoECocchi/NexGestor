@@ -1136,3 +1136,77 @@ class TestPesoDosRedsDefineCritico20260801:
         """Não-regressão: a calibração não pode pintar de vermelho quem está na meta."""
         result, _ = run(Metrics(cpa=50.0), make_targets(max_cpa=50.0))
         assert result.final_status == CampaignStatus.GREEN
+
+
+class TestResumoNaoContradizAsMetricas20260801:
+    """
+    O resumo sem cenário era um texto fixo: "Campanha operando dentro dos
+    parâmetros esperados. Nenhum gargalo crítico identificado." Ele saía mesmo
+    com métricas em vermelho — e a ressalva de cobertura não cobria o caso,
+    porque só é emitida com cobertura abaixo de 100%.
+
+    Pior instância encontrada: campanha com CPC, CPL e CPM críticos e cobertura
+    de 100% saía com selo "Crítico", resumo dizendo que estava tudo dentro do
+    esperado e ação "Manter campanha ativa".
+    """
+
+    # Todas as métricas presentes (cobertura 100%), saudáveis, menos os custos.
+    CUSTOS_CRITICOS = dict(
+        cpa=40.0, roas=5.0, ctr_link=2.0, hook_rate=40.0, hold_rate=25.0,
+        lp_conversion_rate=5.0, frequency=1.2, cpm=90.0, cpc=9.0, cpl=300.0,
+    )
+    METAS = dict(
+        max_cpa=50.0, min_roas=3.0, min_ctr_link=1.0, min_hook_rate=25.0,
+        min_hold_rate=15.0, min_lp_conversion_rate=2.0, max_cpm=25.0,
+        max_cpc=1.5, max_cpl=50.0,
+    )
+
+    def test_resumo_nao_diz_tudo_certo_com_metrica_critica(self):
+        result, codes = run(Metrics(**self.CUSTOS_CRITICOS), Targets(**self.METAS))
+        assert not codes, "o cenário precisa ser vazio para exercitar este caminho"
+        assert result.score_coverage == 100, "sem cobertura cheia a ressalva mascararia o bug"
+        criticas = [e.metric for e in result.metric_evaluations
+                    if e.status == CampaignStatus.RED]
+        assert criticas, "o cenário precisa ter métrica crítica"
+
+        assert "dentro dos parâmetros esperados" not in result.summary
+        assert "Nenhum gargalo crítico identificado. Manter" not in result.summary
+        # e tem de nomear o que está crítico
+        assert criticas[0] in result.summary
+
+    def test_acao_principal_nao_manda_manter_com_metrica_critica(self):
+        result, _ = run(Metrics(**self.CUSTOS_CRITICOS), Targets(**self.METAS))
+        assert "Manter campanha ativa" not in result.primary_action
+        assert "crítico" in result.primary_action.lower()
+
+    def test_metrica_amarela_sem_cenario_tambem_aparece_no_resumo(self):
+        result, codes = run(Metrics(cpa=55.0), make_targets(max_cpa=50.0))
+        assert not codes
+        assert "fora da meta" in result.summary
+        assert "CPA" in result.summary
+        assert "Manter campanha ativa" not in result.primary_action
+
+    def test_campanha_realmente_saudavel_mantem_o_texto_original(self):
+        """Não-regressão: sem métrica ruim, o texto positivo continua valendo."""
+        result, codes = run(Metrics(cpa=30.0, roas=5.0),
+                            make_targets(max_cpa=50.0, min_roas=3.0))
+        assert not codes
+        assert result.summary.startswith("Campanha operando dentro dos parâmetros esperados")
+        assert result.primary_action.startswith("Manter campanha ativa")
+
+    def test_lista_de_metricas_declara_o_que_foi_truncado(self):
+        """
+        A contagem e a lista não podem se contradizer: "6 métricas críticas:
+        A, B, C" fazia a frase parecer completa listando metade.
+        """
+        from app.service.service import _lista_metricas
+
+        class _Ev:
+            def __init__(self, metric): self.metric = metric
+
+        seis = [_Ev(x) for x in ["CPA", "ROAS", "CPC", "CPL", "CPM", "CTR Link"]]
+        texto = _lista_metricas(seis, 4)
+        assert texto == "CPA, ROAS, CPC, CPL e mais 2"
+
+        tres = [_Ev(x) for x in ["CPA", "ROAS", "CPC"]]
+        assert _lista_metricas(tres, 4) == "CPA, ROAS, CPC", "sem truncar não anuncia resto"
