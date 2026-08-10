@@ -313,6 +313,144 @@ Sessão curta, 1 commit na `main` (`04d5856`), com push feito pro `origin`. Suí
 
 **Validado:** suítes automatizadas rodando de fato (não só lidas do commit anterior) — `pytest` e `npm test` executados nesta sessão antes do commit, `tsc --noEmit` e `plasmo build` também. **Não testado ao vivo no navegador** (só type-check + build + testes automatizados) — os selects/opções novos não foram clicados manualmente numa extensão carregada.
 
+## Sessão de 2026-08-10 — distribuição para a equipe: backend compartilhado em VPS
+
+Sessão de infraestrutura e documentação, **sem mudança no código de produto**
+(nenhum arquivo `.py`/`.tsx` de aplicação foi tocado). 1 commit na `main`
+(`f7c4f36`), com push **só pro `origin`**. Suítes ao final: **backend 1367**,
+**frontend 199**, `tsc --noEmit` limpo.
+
+> Nota: a suíte de backend mediu **1367** nesta sessão, enquanto o registro de
+> 2026-07-29 dizia 1354. **Nenhum teste foi adicionado aqui** — a diferença não
+> foi investigada e pode ser erro de anotação da sessão anterior.
+
+### Problema e decisão de arquitetura
+
+O pedido do usuário: a equipe precisa usar o NexGestor sem saber mexer em nada
+técnico. O caminho que existia (`COMO-USAR.md` + `iniciar-backend.bat/.sh` +
+`extensao-pronta/`) exigia **cada pessoa instalar Python e manter o backend
+rodando na própria máquina** — inviável para o público-alvo.
+
+**Decisão: um backend compartilhado num VPS da Hostinger** (KVM VPS, root, que a
+empresa já possui), com a extensão distribuída como **zip pré-buildado** carregado
+"sem compactação". Chrome Web Store foi descartada pelo usuário para este período
+(taxa, revisão de dias, e o content script de scraping do facebook.com atrairia
+escrutínio na revisão).
+
+**Decisões do usuário registradas:**
+- **IA LIGADA com chave única compartilhada** no servidor (supersede o default
+  "AI-off" das sessões anteriores). O limite de R$15 passa a ser dividido por
+  toda a equipe — aceito conscientemente.
+- **O VPS vai clonar do repo PESSOAL** (`GustavoECocchi/NexGestor`). Motivo
+  técnico verificado via API: chave de deploy exige **admin**, e no repo da
+  empresa o usuário é `admin=false, push=true`. Migrar depois é um comando
+  (`git remote set-url`).
+- **O modo local foi aposentado** para a equipe (os scripts `iniciar-backend.*`
+  continuam no repo, marcados como só-desenvolvimento).
+
+### O que foi criado
+
+- `backend/backend-nexgestor-main/Dockerfile` — imagem do backend; roda como
+  usuário sem privilégio (`uid 10001`), não copia `.env`.
+- `backend/backend-nexgestor-main/.dockerignore` — impede o `.env` de dev (com a
+  chave real) de entrar no contexto de build.
+- `deploy/docker-compose.yml` + `deploy/Caddyfile` — API + Caddy como porta de
+  entrada, com **HTTPS automático** (Let's Encrypt, renovação sozinha).
+- `deploy/.env.example` e `deploy/README.md` — runbook do zero (DNS, Docker,
+  clone, `.env` no servidor, subir, testar, firewall, gerar o pacote da equipe).
+- `frontend/nexgestor-extension/build-team.sh` — grava a URL do backend no build,
+  gera o zip da equipe **e regenera `extensao-pronta/`**.
+
+### O que foi VALIDADO de fato (com Podman, disponível no Fedora)
+
+- **Imagem builda** e o container **responde 200** em `GET /scenarios` e
+  `POST /analyze` (análise real, `ai_insights: null` com IA off).
+- **Roda sem privilégio**: `uid=10001(appuser)` confirmado dentro do container.
+- **A chave do Gemini NÃO entra na imagem**: `.env` inexistente lá dentro, e a
+  chave real não aparece em nenhuma camada (busca no `podman save` completo).
+- **Caddyfile validado pelo binário real do Caddy** → *"Valid configuration"*,
+  com HTTPS e redirect HTTP→HTTPS automáticos confirmados no adapt.
+- **CORS provado empiricamente**: preflight `OPTIONS` + `POST` com
+  `Origin: chrome-extension://…` retornam os cabeçalhos corretos e `200`. Isso
+  confirma que a extensão fala com o backend **sem** precisar da URL em
+  `host_permissions` — só a variável `PLASMO_PUBLIC_API_BASE` importa.
+- **Pipeline do build da extensão testado ponta a ponta** com URL de exemplo: o
+  compilador embute a URL direto no `fetch(...)`. Artefatos de teste removidos.
+- `pip download --python-version 3.12` confirma que as versões fixadas resolvem
+  na base da imagem (a máquina local usa 3.14).
+
+### O que NÃO foi validado (honestamente)
+
+- **`docker compose up` como conjunto** — não há `docker compose` nesta máquina;
+  só o Podman, que testou a imagem isoladamente. O compose teve YAML e caminhos
+  verificados, mas sobe pela primeira vez no VPS.
+- **Emissão real do certificado** — depende de domínio apontando pro IP; só a
+  configuração foi validada, não o handshake com o Let's Encrypt.
+- **Nada foi testado no VPS** — não havia acesso ainda nesta sessão.
+
+### Defeitos encontrados na auto-revisão (todos corrigidos)
+
+O usuário pediu revisão "de cabo a rabo" do que eu tinha acabado de entregar, e
+ela pagou: **7 defeitos reais**, sendo dois que teriam quebrado o deploy.
+
+1. **Faltava `.dockerignore`** — o `.env` com a chave real ia no contexto de build.
+2. **`git add .` no runbook** versionaria os **45 arquivos do `knowledge-core/`**
+   (projeto à parte que o próprio CLAUDE.md diz não pertencer aqui). Corrigido e
+   `knowledge-core/` foi para o `.gitignore`.
+3. **Afirmação falsa no guia da equipe** — dizia que "o servidor acorda na
+   primeira chamada", comportamento do Render grátis (plano descartado); num VPS
+   não existe hibernação.
+4. **URL `http://` remota passaria batido** — o Chrome bloqueia (mixed content) e
+   a extensão falharia **em silêncio**. O script agora recusa.
+5. **O runbook travaria no Passo 4** — mandava clonar do GitHub arquivos que ainda
+   não tinham sido commitados. Virou "Passo −1" obrigatório.
+6. **`extensao-pronta/` apontava para `localhost:8000`** e a instrução de
+   regenerá-la (`npm run build` cru) manteria isso — build silenciosamente quebrado
+   para quem não roda backend local. Agora o `build-team.sh` cuida dela.
+7. Linha duplicada que eu mesmo introduzi na tabela do README.
+
+> **Lição registrada:** reportei "INSTALAR.md removido" quando o `rm -f` rodou de
+> um diretório errado — `-f` não reclama de arquivo inexistente, então a mensagem
+> de sucesso não provava nada. Só a verificação posterior pegou. Vale para
+> qualquer `rm -f`/`mkdir -p`: confirmar o efeito, não confiar no exit code.
+
+### Documentação unificada num caminho só
+
+Havia **dois guias contradizendo um ao outro** (o `COMO-USAR.md` mandava instalar
+Python; o `INSTALAR.md` que eu tinha criado dizia que não precisava).
+
+- `COMO-USAR.md` **reescrito** como guia único do modo nuvem, preservando as
+  partes boas do original (tabela dos 3 modos de entrada, "o que esperar",
+  dúvidas). O trecho "a camada de IA está desligada" deixou de ser verdade e foi
+  corrigido.
+- `INSTALAR.md` **apagado** (duplicata).
+- `README.md`: "caminho rápido" agora descreve o modo nuvem; chave da IA
+  documentada como **uma só no servidor** (era "cada pessoa usa a própria");
+  `iniciar-backend.*` marcados como só-desenvolvimento.
+
+### Estado do deploy ao final da sessão — NÃO EXECUTADO
+
+O deploy **não aconteceu**. Faltam três coisas, todas fora do controle do
+código:
+
+1. **Domínio** — o usuário já solicitou; ainda não recebeu. Plano: subdomínio
+   `api.<domínio>`. Alternativa registrada se não vier: `<IP>.nip.io`.
+2. **Acesso ao VPS** — outro desenvolvedor vai fornecer. **Chave SSH ed25519 foi
+   gerada nesta máquina** (`~/.ssh/id_ed25519`), sem passphrase, comentário
+   `gustavo-nexgestor-vps`; a pública foi passada pro usuário enviar.
+3. **Coordenação de portas** — o outro dev vai subir **outro serviço no mesmo
+   VPS hoje**. Só um programa ocupa a 443. **Decisão do usuário: esperar ele
+   subir primeiro e fazer o NexGestor no dia seguinte.**
+
+**Ao retomar, começar por aqui:** pedir a saída de `ss -tlnp | grep -E ':(80|443)'`
+e `docker ps` no VPS. Se as portas estiverem livres → runbook como está
+(opção A, nosso Caddy é o porteiro). Se o serviço dele estiver na 443 → **opção
+B**: remover o serviço `caddy` do `docker-compose.yml`, expor a API só em
+`127.0.0.1:8000` e o proxy dele encaminha `api.<domínio>` pra lá. Também lembrar
+que o **registro DNS tipo A deve ser criado o quanto antes** — o Caddy só emite o
+certificado depois da propagação, e essa é a causa nº 1 de falha no primeiro
+`up`.
+
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1354/1354**, sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
@@ -322,12 +460,46 @@ Sessão curta, 1 commit na `main` (`04d5856`), com push feito pro `origin`. Suí
 5. ✅ **Key exposta (2026-07-14) revogada e substituída** — confirmado 401 em 2026-07-16; key nova gerada, configurada e validada ao vivo em 2026-07-25 (ver item 2). **Duas keys adicionais foram expostas no chat durante essa própria configuração** (causa: orientação errada minha sobre o prefixo `!`) — tratadas como queimadas; regra de "segredo só por editor externo" fixada no CLAUDE.md.
 6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`. **Completado em 2026-07-26**: aquele isolamento cobria só `TestIADesativada`; os testes de endpoint ainda faziam 6 chamadas reais ao Gemini por execução. O `conftest.py` agora desliga a IA em toda a suíte (provado com sockets bloqueados: 0 tentativas de rede).
 7. ⬜ **Sem persistência server-side** — o backend é *stateless* (sem banco, sem contas); tudo que "sobrevive" mora no `localStorage` do navegador (`nex:live`, `nex:doneActions`, `nex:screen`, `nex:theme`). O usuário decidiu **não** tratar isso agora — coerente com o período de testes, mas vira bloqueante antes de lançar pra usuários reais (limpar o navegador = perder tudo, sem multi-dispositivo). **Sobe de prioridade agora que a equipe vai testar**: cada pessoa terá seus dados presos ao próprio navegador, sem nada compartilhado.
-8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **⚠️ Desde 2026-07-28 (parte 2), `origin` (pessoal) e `empresa` estão DESSINCRONIZADOS**: os 3 commits daquela sessão + o commit de 2026-07-29 (`04d5856`, TikTok/LinkedIn) foram enviados só pro `origin` — **5 commits de diferença agora**. O usuário tem `push` mas não é `admin` no repo da empresa — alguém com acesso precisa replicar os commits lá.
+8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **⚠️ Desde 2026-07-28 (parte 2), `origin` (pessoal) e `empresa` estão DESSINCRONIZADOS**: os 3 commits daquela sessão, o de 2026-07-29 (`04d5856`, TikTok/LinkedIn) e o de 2026-08-10 (`f7c4f36`, infra de deploy) foram enviados só pro `origin` — **6 commits de diferença agora**. O usuário tem `push` mas não é `admin` no repo da empresa — alguém com acesso precisa replicar os commits lá.
+9. 🟡 **Distribuição para a equipe — infraestrutura pronta, deploy NÃO executado** (2026-08-10). O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por três coisas externas: **domínio** (solicitado, não recebido), **acesso ao VPS** (outro dev vai fornecer; chave SSH já gerada) e **coordenação da porta 443** (o outro dev sobe outro serviço no mesmo VPS). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >
-> **Sincronizar `origin` → `empresa`** com os commits pendentes (`1501bc5`, `82f0cb9`, `1682f14` de 2026-07-28, e `04d5856` de 2026-07-29 — TikTok/LinkedIn) — bloqueado por permissão de admin, ver item 8.
+> **Sincronizar `origin` → `empresa`** com os commits pendentes (`1501bc5`, `82f0cb9`, `1682f14` de 2026-07-28, `04d5856` de 2026-07-29 e `f7c4f36` de 2026-08-10) — bloqueado por permissão de admin, ver item 8. *(Nota: o `push` em si funciona — o usuário tem write; o que exige admin é a chave de deploy. Sincronizar é possível a qualquer momento, só não foi feito por decisão de escopo.)*
 >
 > **Decisão em aberto, não resolvida:** nomear ou não um "Cenário de leilão caro" explícito para quando CPM acima do teto bloqueia a escala vertical (hoje só aparece como métrica CPM vermelha, sem card de causa raiz próprio). Oferecido ao usuário em 2026-07-28 (parte 2); sem resposta ainda.
 >
-> **Próximo passo sugerido para a próxima sessão:** o projeto foi aberto para a equipe em 2026-07-26 e ainda não houve feedback registrado — vale perguntar se alguém conseguiu rodar seguindo o README. Testar a coleta automática contra um Ads Manager real **não** é prioridade (decisão explícita do usuário em 2026-07-28 parte 1). Persistência (item 7) segue prioridade alta com múltiplos testadores. Ao usar a IA, lembrar do limite de R$15 na key — 2 chamadas reais foram usadas na validação de 2026-07-28 (parte 2), dentro do orçamento.
+> **PRÓXIMO PASSO — retomar exatamente aqui (sessão de 2026-08-10 encerrada no meio do deploy):**
+>
+> O trabalho de código está **pronto e commitado**; o que falta é executar o
+> deploy no VPS. Ao voltar, na ordem:
+>
+> 1. **Perguntar ao usuário se já tem o domínio e o acesso ao VPS.** Ambos
+>    estavam pendentes de terceiros ao encerrar (domínio solicitado; acesso
+>    prometido por outro desenvolvedor "hoje").
+> 2. **Descobrir o estado das portas** antes de qualquer coisa — o outro dev ia
+>    subir outro serviço no mesmo VPS. Pedir a saída de
+>    `ss -tlnp | grep -E ':(80|443)'` e `docker ps`.
+>    - Portas livres → **opção A**: runbook (`deploy/README.md`) como está.
+>    - Porta 443 ocupada → **opção B**: tirar o serviço `caddy` do
+>      `docker-compose.yml`, expor a API só em `127.0.0.1:8000` e o proxy dele
+>      encaminha `api.<domínio>`. (Ajuste de ~2 min, ainda não feito.)
+> 3. **Conferir se o registro DNS tipo A já foi criado e propagou** — o Caddy só
+>    emite o certificado depois disso; é a causa nº 1 de falha no primeiro `up`.
+> 4. Executado o deploy e obtida a URL, rodar
+>    `frontend/nexgestor-extension/build-team.sh https://<URL>` para gerar o zip
+>    da equipe (e a `extensao-pronta/` atualizada), e enviar junto do
+>    `COMO-USAR.md`.
+>
+> **Pendências de fundo que continuam valendo:** fechar o **alerta de secret
+> scanning #1** (falso positivo, "Used in tests"); **sincronizar `empresa`** (6
+> commits atrás); **persistência** (item 7) — que sobe de prioridade assim que a
+> equipe começar a testar de fato, porque cada pessoa terá os dados presos ao
+> próprio navegador. Testar a coleta automática contra um Ads Manager real segue
+> **fora de escopo** por decisão do usuário. Lembrar do limite de **R$15** na key
+> do Gemini, agora **compartilhada por toda a equipe** — o consumo deixa de ser
+> só de teste e passa a ser de uso real.
+>
+> **Decisão em aberto, não resolvida** (arrastada desde 2026-07-28): nomear ou
+> não um "Cenário de leilão caro" para quando o CPM acima do teto bloqueia a
+> escala vertical.
