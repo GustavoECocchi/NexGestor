@@ -1,0 +1,20 @@
+# NexGestor — Reverse proxy com HTTPS automático.
+#
+# O Caddy pega o domínio da variável DOMAIN (definida no .env) e emite/renova
+# o certificado TLS sozinho via Let's Encrypt. Nada de configurar SSL na mão.
+#
+# Requisito: o DNS do domínio precisa apontar (registro A) pro IP do VPS ANTES
+# de subir — senão o Let's Encrypt não consegue validar e o certificado falha.
+
+{$DOMAIN} {
+	# Repassa todas as chamadas pro backend FastAPI (serviço "api" na rede interna).
+	reverse_proxy api:8000
+
+	# Log de acesso em formato JSON (útil pra depurar no VPS).
+	log {
+		output stdout
+		format json
+	}
+
+	encode gzip
+}

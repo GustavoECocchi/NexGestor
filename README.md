@@ -11,51 +11,35 @@ O repositório é um monorepo:
 backend/backend-nexgestor-main/    API FastAPI — engine de análise + integração Gemini
 frontend/nexgestor-extension/      Extensão Chrome (side panel) — Plasmo + React + TypeScript
 extensao-pronta/                   Extensão já compilada — carregue esta se só quer testar
-iniciar-backend.bat / .sh          Sobe o backend com um clique (Windows / Linux-macOS)
+deploy/                            Deploy do backend no VPS (Docker + HTTPS automático)
+iniciar-backend.bat / .sh          Sobe o backend local — só para DESENVOLVIMENTO
 ```
 
 ---
 
-## Caminho rápido — só testar a ferramenta
+## Caminho rápido — só usar a ferramenta
 
-> 👉 **Vai apenas usar a ferramenta, sem mexer no código?**
-> Siga o **[COMO-USAR.md](COMO-USAR.md)** — é o mesmo caminho descrito abaixo,
-> porém passo a passo, sem jargão e com a seção de problemas comuns.
+> 👉 **Vai apenas usar o NexGestor, sem mexer no código?**
+> Siga o **[COMO-USAR.md](COMO-USAR.md)** — passo a passo, sem jargão, com a
+> seção de problemas comuns.
 
-Se você quer **usar** o NexGestor (não desenvolver), este é o caminho. Não
-precisa de Node, npm nem build: a extensão já vem compilada no repositório, na
-pasta `extensao-pronta/`.
+O backend roda **num servidor compartilhado** (VPS), então quem só vai usar a
+ferramenta **não instala nada além da extensão**: sem Python, sem Node, sem
+deixar janela aberta. Basta um navegador Chromium (Chrome, Brave, Edge) e
+internet.
 
-**Pré-requisitos:** Python 3.11+ e um navegador Chromium (Chrome, Brave, Edge).
+1. Receber o `.zip` da extensão do time e **extrair** numa pasta fixa.
+2. Abrir `chrome://extensions`, ativar o **Modo do desenvolvedor** e clicar em
+   **Carregar sem compactação**, escolhendo a pasta extraída.
+3. Abrir o side panel e clicar em **Nova campanha**. A análise é real.
 
-**1. Suba o backend.** Na raiz do projeto, dê duplo clique em:
+Quem tiver o repositório em mãos pode carregar a pasta `extensao-pronta/` no
+lugar do zip — é o mesmo build.
 
-- **Windows:** `iniciar-backend.bat`
-- **Linux / macOS:** `iniciar-backend.sh`
-
-O script cria o ambiente virtual, instala as dependências e sobe o servidor
-sozinho. Na primeira vez demora alguns minutos; nas seguintes é quase imediato.
-**Deixe essa janela aberta** enquanto usar a extensão — é ela que serve a
-análise.
-
-**2. Carregue a extensão** (passo manual, uma vez só):
-
-1. Abra `chrome://extensions` (ou `brave://extensions`).
-2. Ative o **Modo do desenvolvedor** no canto superior direito.
-3. Clique em **Carregar sem compactação**.
-4. Selecione a pasta **`extensao-pronta`** — a que fica na raiz do projeto.
-
-> Ao escolher a pasta, deixe `extensao-pronta` **selecionada** e clique em
-> "Selecionar pasta". Se você entrar nela e a barra mostrar o conteúdo, o
-> navegador pode receber a pasta errada e reclamar que o *manifest* está
-> faltando.
-
-**3. Abra o side panel** da extensão e clique em **Nova campanha**. Com o
-backend no ar, a análise é real — não é mock.
-
-A IA vem **desligada** por padrão, e isso não limita nada: o engine de regras
-entrega o diagnóstico completo e o campo `ai_insights` volta `null`. Para
-ligá-la, veja "Configurando a chave da IA".
+> **Gerando o pacote da equipe** (quem mantém o projeto): com o backend já no ar,
+> rode `frontend/nexgestor-extension/build-team.sh https://SUA-URL` — ele grava a
+> URL no build, gera o `.zip` e atualiza a `extensao-pronta/`.
+> Para subir o backend, veja **[deploy/README.md](deploy/README.md)**.
 
 ---
 
@@ -115,17 +99,25 @@ a análise é feita de verdade — não é mock.
 > endereço, defina `PLASMO_PUBLIC_API_BASE` no `.env` do frontend e rode o build
 > de novo.
 
-### Atualizando a `extensao-pronta/`
+### Gerando o pacote da equipe (e atualizando a `extensao-pronta/`)
 
-A pasta `extensao-pronta/` da raiz é uma **cópia versionada** do build de
-produção, para que quem só quer testar não precise instalar Node. Ela **não se
-atualiza sozinha**: depois de mexer no frontend, regenere-a, senão a equipe
-continua testando a versão antiga.
+A pasta `extensao-pronta/` é uma **cópia versionada** do build de produção, para
+quem prefere carregá-la direto do repositório em vez do zip. Ela **não se
+atualiza sozinha** — depois de mexer no frontend, regenere-a, senão a equipe
+continua na versão antiga.
+
+Use sempre o script, passando a URL do backend em produção:
 
 ```bash
-cd frontend/nexgestor-extension && npm run build && cd ../..
-rm -rf extensao-pronta && cp -r frontend/nexgestor-extension/build/chrome-mv3-prod extensao-pronta
+frontend/nexgestor-extension/build-team.sh https://SUA-URL-DO-BACKEND
 ```
+
+Ele grava a URL no build, gera o `.zip` para distribuir e reescreve a
+`extensao-pronta/` com o mesmo build.
+
+> ⚠️ **Não** regenere a pasta com um `npm run build` cru: sem a URL de produção
+> o build aponta para `http://localhost:8000` e a extensão falha na máquina de
+> quem não roda o backend local — sem mensagem de erro clara.
 
 ---
 
@@ -134,7 +126,11 @@ rm -rf extensao-pronta && cp -r frontend/nexgestor-extension/build/chrome-mv3-pr
 A IA é **opcional**: sem chave configurada, o engine de regras funciona
 normalmente e o campo `ai_insights` da resposta vem `null`. Nada quebra.
 
-Para ligá-la, cada pessoa usa a **própria chave**, gerada no
+**Em produção (servidor compartilhado):** a chave é **uma só**, no `.env` do
+VPS — quem usa a extensão não configura nada. O limite de gasto da chave é
+dividido por toda a equipe. Ver [deploy/README.md](deploy/README.md).
+
+**Em desenvolvimento local:** use a **sua própria** chave, gerada no
 [Google AI Studio](https://aistudio.google.com/apikey), preenchendo
 `GEMINI_API_KEY` no `.env` do backend.
 
@@ -176,7 +172,8 @@ explicitamente (há exemplos em `test_ai_integration.py`).
 
 | Arquivo | Conteúdo |
 |---|---|
-| `COMO-USAR.md` (raiz) | Tutorial passo a passo para quem só vai usar a ferramenta |
+| `COMO-USAR.md` (raiz) | Tutorial passo a passo — modo **backend local** (cada pessoa roda o servidor) |
+| `deploy/README.md` | Runbook do **backend compartilhado no VPS** (Docker + HTTPS automático) |
 | `CLAUDE.md` (raiz) | Estado do projeto, decisões de arquitetura e histórico das sessões |
 | `backend/.../CONTRATO_API_FRONTEND.md` | Contrato completo da API — payloads de entrada e resposta |
 | `backend/.../AUDITORIA.md` | Auditoria de segurança e qualidade do backend |

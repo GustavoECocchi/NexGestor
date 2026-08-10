@@ -14,8 +14,15 @@ build/
 out/
 keys.json
 
+# Pacote da extensão gerado pra equipe (build-team.sh)
+nexgestor-extensao-*.zip
+
 # IDE / OS
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Projeto separado que vive nesta mesma pasta por conveniência.
+# Não pertence ao NexGestor e não deve ser versionado aqui.
+knowledge-core/

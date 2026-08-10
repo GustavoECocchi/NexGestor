@@ -1,0 +1,30 @@
+# NexGestor — o que NÃO entra no contexto de build da imagem.
+#
+# ⚠️ A primeira regra é de segurança: o .env de desenvolvimento contém a chave
+#    real do Gemini. Ele nunca deve ser enviado ao daemon do Docker nem acabar
+#    numa camada da imagem. Em produção as variáveis entram em RUNTIME
+#    (env_file do docker-compose), não no build.
+
+# Segredos
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Testes e cache (não precisam rodar dentro da imagem de produção)
+test_*.py
+conftest.py
+pytest.ini
+.pytest_cache/
+
+# Docs e metadados
+*.md
+.claude/
+.git/
+.gitignore
