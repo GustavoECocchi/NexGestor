@@ -451,6 +451,80 @@ que o **registro DNS tipo A deve ser criado o quanto antes** — o Caddy só emi
 certificado depois da propagação, e essa é a causa nº 1 de falha no primeiro
 `up`.
 
+## Sessão de 2026-08-12 — subdomínio definido, registro DNS ainda não criado
+
+Sessão curta, **sem nenhuma mudança de código** (nenhum arquivo de aplicação,
+teste ou deploy foi tocado). Suite backend reconferida: **1367 passed, 0 failed**
+em 1,4s — mesmo número da sessão de 2026-08-10, o que confirma que 1367 é a
+contagem real e que a divergência anotada lá (1354 vs 1367) foi erro de anotação
+de uma sessão anterior, não teste some/aparece. Frontend não tocado, `tsc` não
+rodado (nada para validar).
+
+O deploy **continua não executado**. O que mudou hoje é só o estado do primeiro
+bloqueio.
+
+### Subdomínio: nome definido, apontamento inexistente
+
+O usuário informou que recebeu o subdomínio **`gestor.nexgold.com.br`**. A
+verificação de DNS mostrou que isso é **menos do que parece**: o nome foi
+escolhido, mas **o registro nunca foi criado**.
+
+- Consulta direta ao servidor autoritativo (`ns1.dns-parking.com`, resposta com
+  flag `aa`) retorna **NXDOMAIN** para `gestor.nexgold.com.br`. Não é atraso de
+  propagação — o nome não está na zona. Sem A, sem CNAME.
+- **O DNS do `nexgold.com.br` é gerenciado pela Hostinger**
+  (`ns1/ns2.dns-parking.com`, contato `dns.hostinger.com`) — mesma casa do VPS,
+  então o registro se cria no hPanel (Domínios → Zona DNS).
+- A zona foi editada em 11/08 (serial `2026081101`) — alguém mexeu nela na
+  véspera, só não criou o `gestor`.
+- **O apex `nexgold.com.br` aponta pra dois IPs** (`147.79.105.23` e
+  `89.116.213.9`), ambos com 80/443 abertas mas resetando sem SNI — cara de
+  hospedagem compartilhada do site institucional. **Não reaproveitar esses IPs
+  para o `gestor`**: apontar pra hospedagem compartilhada faria o Caddy falhar
+  de um jeito confuso de depurar. O `www` confirma o padrão (aponta pra
+  `...cdn.hstgr.net`).
+
+**Registro a criar** (falta só o IP do VPS): tipo `A`, nome `gestor` (só isso —
+a Hostinger completa o domínio; digitar o nome inteiro vira
+`gestor.nexgold.com.br.nexgold.com.br`), apontando pro IP do VPS, TTL padrão. O
+TTL negativo da zona é 600s, então a confirmação por `dig` vale ~10 min depois
+de criado.
+
+### O bloqueio real, nomeado com precisão
+
+O usuário perguntou o que exatamente impede o deploy. A resposta, registrada
+para não se perder: **o IP do VPS e o acesso SSH**. Os dois são irredutíveis, e
+o resto é contornável.
+
+A cadeia que trava hoje: a extensão **precisa** de HTTPS (o `build-team.sh`
+recusa URL `http://` remota de propósito — o Chrome bloqueia a chamada e a
+extensão falha **em silêncio**, achado da auto-revisão de 2026-08-10); HTTPS
+exige certificado; o Let's Encrypt só emite depois de resolver o nome no DNS
+público e alcançar o servidor na porta 80. Hoje isso morre na resolução do nome
+(NXDOMAIN) — não é erro contornável por configuração, é a CA recusando emitir
+para um nome inexistente.
+
+**Não bloqueia:** a porta 443 ocupada pelo serviço do outro dev (é a opção B já
+prevista, ~2 min de ajuste) e o nome específico do subdomínio.
+
+**Atalho registrado, com ressalva:** `<IP>.nip.io` dispensa o registro A e o
+acesso ao painel. Dois poréns — a Let's Encrypt limita emissão por domínio
+registrado e o `nip.io` inteiro é **um** domínio compartilhado por todo mundo,
+então esbarrar no limite é comum; e a URL é feia para um produto que a equipe
+vai usar. Serve para destravar um teste, não para ficar. **Repare que até o
+atalho precisa do IP do VPS** — é esse o dado que falta por qualquer caminho.
+
+### Pendente desta sessão
+
+- **IP do VPS** — não fornecido. É o que falta para criar o registro A.
+- **Acesso SSH ao VPS** — segue pendente (chave `ed25519` já gerada em
+  2026-08-10, pública já entregue ao usuário para enviar ao outro dev).
+- **Estado da porta 443 no VPS** — não verificável sem acesso; segue indefinido
+  entre opção A e opção B.
+- **Variante do compose para a opção B** — foi oferecida para adiantar em
+  paralelo, mas **não foi escrita** (o usuário encerrou a sessão antes). O
+  `docker-compose.yml` continua na forma da opção A, com o Caddy tomando 80/443.
+
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1354/1354**, sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
@@ -461,7 +535,7 @@ certificado depois da propagação, e essa é a causa nº 1 de falha no primeiro
 6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`. **Completado em 2026-07-26**: aquele isolamento cobria só `TestIADesativada`; os testes de endpoint ainda faziam 6 chamadas reais ao Gemini por execução. O `conftest.py` agora desliga a IA em toda a suíte (provado com sockets bloqueados: 0 tentativas de rede).
 7. ⬜ **Sem persistência server-side** — o backend é *stateless* (sem banco, sem contas); tudo que "sobrevive" mora no `localStorage` do navegador (`nex:live`, `nex:doneActions`, `nex:screen`, `nex:theme`). O usuário decidiu **não** tratar isso agora — coerente com o período de testes, mas vira bloqueante antes de lançar pra usuários reais (limpar o navegador = perder tudo, sem multi-dispositivo). **Sobe de prioridade agora que a equipe vai testar**: cada pessoa terá seus dados presos ao próprio navegador, sem nada compartilhado.
 8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **⚠️ Desde 2026-07-28 (parte 2), `origin` (pessoal) e `empresa` estão DESSINCRONIZADOS**: os 3 commits daquela sessão, o de 2026-07-29 (`04d5856`, TikTok/LinkedIn) e o de 2026-08-10 (`f7c4f36`, infra de deploy) foram enviados só pro `origin` — **6 commits de diferença agora**. O usuário tem `push` mas não é `admin` no repo da empresa — alguém com acesso precisa replicar os commits lá.
-9. 🟡 **Distribuição para a equipe — infraestrutura pronta, deploy NÃO executado** (2026-08-10). O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por três coisas externas: **domínio** (solicitado, não recebido), **acesso ao VPS** (outro dev vai fornecer; chave SSH já gerada) e **coordenação da porta 443** (o outro dev sobe outro serviço no mesmo VPS). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
+9. 🟡 **Distribuição para a equipe — infraestrutura pronta, deploy NÃO executado** (2026-08-10). O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por coisas externas ao código. **Atualização de 2026-08-12:** o **nome** do subdomínio saiu — `gestor.nexgold.com.br` — mas o **registro A nunca foi criado** (NXDOMAIN confirmado no servidor autoritativo da Hostinger, não é propagação pendente). Os bloqueios que restam são **o IP do VPS** (sem ele não há o que cadastrar no DNS, e nem o atalho `nip.io` funciona) e **o acesso SSH** (o deploy roda lá, não aqui) — os dois irredutíveis. A **coordenação da porta 443** continua indefinida, mas é contornável (opção B, ~2 min). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >
@@ -469,27 +543,37 @@ certificado depois da propagação, e essa é a causa nº 1 de falha no primeiro
 >
 > **Decisão em aberto, não resolvida:** nomear ou não um "Cenário de leilão caro" explícito para quando CPM acima do teto bloqueia a escala vertical (hoje só aparece como métrica CPM vermelha, sem card de causa raiz próprio). Oferecido ao usuário em 2026-07-28 (parte 2); sem resposta ainda.
 >
-> **PRÓXIMO PASSO — retomar exatamente aqui (sessão de 2026-08-10 encerrada no meio do deploy):**
+> **PRÓXIMO PASSO — retomar exatamente aqui (atualizado em 2026-08-12):**
 >
 > O trabalho de código está **pronto e commitado**; o que falta é executar o
-> deploy no VPS. Ao voltar, na ordem:
+> deploy no VPS. O subdomínio já tem nome (`gestor.nexgold.com.br`), mas **o
+> registro A não existe** — verificado, é NXDOMAIN no autoritativo, não
+> propagação pendente. Ao voltar, na ordem:
 >
-> 1. **Perguntar ao usuário se já tem o domínio e o acesso ao VPS.** Ambos
->    estavam pendentes de terceiros ao encerrar (domínio solicitado; acesso
->    prometido por outro desenvolvedor "hoje").
-> 2. **Descobrir o estado das portas** antes de qualquer coisa — o outro dev ia
->    subir outro serviço no mesmo VPS. Pedir a saída de
+> 1. **Pedir ao usuário o IP do VPS.** É o único dado que falta para o DNS, e
+>    todo caminho passa por ele (inclusive o atalho `nip.io`). Está no hPanel em
+>    VPS → Visão geral, ou com o dev que administra o servidor. Com o IP em mãos,
+>    o registro a criar na Hostinger (Domínios → Zona DNS) é: tipo `A`, nome
+>    `gestor` (só isso, sem o domínio completo), valor = IP do VPS, TTL padrão.
+>    **Não apontar para os IPs do apex** (`147.79.105.23` / `89.116.213.9`) — são
+>    da hospedagem compartilhada do site, e o Caddy falharia de forma confusa.
+> 2. **Confirmar o registro por `dig`** depois de criado (TTL negativo da zona é
+>    600s, então ~10 min). Só aí faz sentido subir o Caddy — o Let's Encrypt não
+>    emite certificado para nome que não resolve.
+> 3. **Perguntar pelo acesso SSH** (chave `ed25519` já gerada aqui em 2026-08-10,
+>    pública já entregue ao usuário). Sem isso não dá para rodar nada no VPS.
+> 4. **Descobrir o estado das portas** com acesso em mãos — o outro dev ia subir
+>    outro serviço no mesmo VPS. Pedir a saída de
 >    `ss -tlnp | grep -E ':(80|443)'` e `docker ps`.
 >    - Portas livres → **opção A**: runbook (`deploy/README.md`) como está.
 >    - Porta 443 ocupada → **opção B**: tirar o serviço `caddy` do
 >      `docker-compose.yml`, expor a API só em `127.0.0.1:8000` e o proxy dele
->      encaminha `api.<domínio>`. (Ajuste de ~2 min, ainda não feito.)
-> 3. **Conferir se o registro DNS tipo A já foi criado e propagou** — o Caddy só
->    emite o certificado depois disso; é a causa nº 1 de falha no primeiro `up`.
-> 4. Executado o deploy e obtida a URL, rodar
->    `frontend/nexgestor-extension/build-team.sh https://<URL>` para gerar o zip
->    da equipe (e a `extensao-pronta/` atualizada), e enviar junto do
->    `COMO-USAR.md`.
+>      encaminha `gestor.nexgold.com.br`. (Ajuste de ~2 min, **ainda não
+>      escrito** — foi oferecido em 2026-08-12 e a sessão encerrou antes.)
+> 5. Executado o deploy e obtida a URL, rodar
+>    `frontend/nexgestor-extension/build-team.sh https://gestor.nexgold.com.br`
+>    para gerar o zip da equipe (e a `extensao-pronta/` atualizada), e enviar
+>    junto do `COMO-USAR.md`.
 >
 > **Pendências de fundo que continuam valendo:** fechar o **alerta de secret
 > scanning #1** (falso positivo, "Used in tests"); **sincronizar `empresa`** (6
