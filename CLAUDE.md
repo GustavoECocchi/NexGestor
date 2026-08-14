@@ -525,17 +525,182 @@ atalho precisa do IP do VPS** — é esse o dado que falta por qualquer caminho.
   paralelo, mas **não foi escrita** (o usuário encerrou a sessão antes). O
   `docker-compose.yml` continua na forma da opção A, com o Caddy tomando 80/443.
 
+## Sessão de 2026-08-14 — o deploy JÁ estava no ar, persistência compartilhada e exclusão de campanha
+
+Sessão longa, 5 commits na `main` (`b988be0`, `f454dda`, `f65ba77`, `615e7d8`,
+`ce99a95`). Suítes ao final: **backend 1393**, **frontend 283**, `tsc --noEmit`
+e `plasmo build` limpos.
+
+### O achado que mudou o ponto de partida
+
+O `CLAUDE.md` dizia que o deploy estava bloqueado por falta de IP e SSH. **Já
+tinha sido feito por outra pessoa** — medido de fora, não presumido: DNS
+resolvendo para o VPS (PTR `srv1884808.hstgr.cloud`), certificado Let's
+Encrypt válido até 11/11/2026, `GET /scenarios` devolvendo os 15 cenários,
+`POST /analyze` em 0,08s com o engine correto, CORS da extensão passando. Quem
+atende 80/443 é o **nginx do próprio servidor**, não o Caddy deste repositório
+— por isso o `docker-compose.yml` passou a subir só o backend em
+`127.0.0.1:8000`, e a variante com Caddy virou `docker-compose.caddy.yml`.
+
+Três coisas que a documentação registrava errado, corrigidas:
+
+- O **limite de requisições já está ativo** (rajada de 12 → 11 passam, a 12ª
+  volta 429; reproduzido duas vezes), enquanto o arquivo de referência o
+  descrevia como opcional e comentado.
+- O **404 em `/docs` não é hardening, é roteamento**: `/docs` devolve o 404
+  HTML do nginx e `/api/v1/<inexistente>` devolve o 404 JSON do FastAPI. O
+  `main.py` não desabilita a documentação, então aplicar o `location /` do
+  arquivo de exemplo sem adaptar exporia `/docs` e `/openapi.json`.
+- A **raiz do domínio serve o painel da extensão compilado** (`__plasmo`,
+  `sidepanel.*.js`). Não vaza segredo, mas provavelmente não foi intencional —
+  vale confirmar com quem montou o servidor.
+
+### O 429 nunca chegava à extensão (e a correção mais valiosa da sessão)
+
+O 429 do limite é gerado pelo **nginx** e sai **sem cabeçalho CORS**, ao
+contrário do 200 que vem do backend. O Chrome bloqueia a resposta antes do
+JavaScript ler o status, então tudo chegava como `Failed to fetch` — e o
+tratamento de 429 recém-escrito era, na prática, código morto.
+
+A causa raiz era o host de produção **nunca ter entrado em
+`host_permissions`**. Com ele declarado, o painel fica isento de CORS e passa a
+enxergar as respostas do proxy. **Provado em Chromium 151** com duas cópias do
+mesmo build diferindo só nessa linha, contra o servidor real:
+
+| Build | 14 chamadas simultâneas |
+|---|---|
+| com o host declarado | leu **5×200 e 9×429**, nenhuma bloqueada |
+| sem o host declarado | **14 de 14 bloqueadas** (`Failed to fetch`) |
+
+Numa chamada isolada as duas leem 200 — o CORS do backend sempre funcionou; a
+diferença aparece só nos erros do proxy. Isso **não contradiz** o registro de
+2026-08-10 ("a extensão fala com o backend sem `host_permissions`"): aquilo
+vale para as respostas do backend; a declaração acrescenta enxergar as do
+proxy.
+
+> Interpolar `$PLASMO_PUBLIC_API_BASE` no manifest foi testado e **descartado**:
+> sem a variável definida o literal permanece no manifest gerado e o Chrome
+> recusaria a extensão em qualquer `npm run build` cru. O host ficou literal e
+> o `build-team.sh` avisa quando alguém builda para URL não coberta.
+
+Outros três defeitos no tratamento de erro, cada um provado por teste antes da
+correção e por teste de mutação depois: o timeout não cobria a leitura do corpo
+(o teste **travou** em vez de falhar — assinatura exata do bug); mensagens já
+escritas para o usuário eram embrulhadas em "A análise falhou", contradizendo o
+próprio texto; e a detecção de abort por `instanceof` é frágil nos dois
+sentidos (`DOMException` **não** é `instanceof Error` no jsdom, e **é** no
+Chrome). `lib/api.ts` não tinha nenhum teste — agora tem.
+
+### Persistência: base COMPARTILHADA (decisão temporária, explícita)
+
+Escolha do usuário: **uma base só, todos veem tudo**, sem login e sem dono —
+e registrada como **válida apenas para o período de testes**. Está escrito
+assim em `config.py`, `storage.py`, nas rotas, no `lib/api.ts`, no `README.md`
+e no `COMO-USAR.md`, sempre ao lado do caminho de migração (coluna `dono`,
+filtro no listar/remover, autenticação de verdade no lugar do identificador).
+
+Decisões de desenho que sustentam isso:
+
+- **`DB_PATH` vazio é o padrão** — quem roda local segue stateless e a suíte
+  não toca disco por acidente; quem liga é o compose. Desligada, as rotas
+  respondem **501, não 500**, e a extensão trata em silêncio.
+- O **payload é opaco** para o backend: mudança de campo na tela não vira
+  migração de banco.
+- **O id local deixou de ser identidade.** Ele é gerado por navegador (≥1000),
+  então a primeira campanha da Ana e a do Bruno nasceriam ambas como 1000 e
+  uma sobrescreveria a outra. Quem identifica passa a ser o id do servidor.
+- Duas regras de mesclagem seguram o risco de perder dado: o servidor manda no
+  que já foi salvo lá, e campanha que existe **só** neste navegador nunca é
+  descartada — e **sobe sozinha** na próxima abertura.
+
+Verificado com container e navegador reais: o volume nasce pertencendo ao uid
+10001; **destruir o container E a imagem** e subir de novo mantém os dados com
+os timestamps originais; dois perfis de navegador distintos enxergam a mesma
+base e uma campanha criada depois aparece nos dois; e uma campanha só-local
+subiu sozinha ao abrir a extensão (`id 1000 → 1001, serverId 1`).
+
+> Nota de bastidor: a primeira rodada desse último teste falhou por **bug do
+> teste, não do produto** — páginas de extensão MV3 bloqueiam script inline por
+> CSP, então o seed do `localStorage` nunca rodava.
+
+### Exclusão de campanha (lixeira no card)
+
+Lixeira aparece no hover, no canto do card, com confirmação **"Apagar para todo
+o time?"** — texto deliberado, porque um "tem certeza?" genérico esconderia a
+consequência real da base compartilhada. Exemplos (mock) não têm lixeira.
+
+Modos de falha previstos e tratados: clique/Enter na lixeira não pode abrir a
+campanha (o card inteiro é clicável); campanha só-local é apagada sem tocar na
+rede; **404 conta como sucesso** (outra pessoa já apagou — simulado com seis
+DELETEs paralelos do mesmo id: exatamente **um 200 e cinco 404**); servidor
+fora do ar **não** tira o card da tela (sumir aqui e continuar lá faria a
+campanha ressuscitar depois); e a corrida real entre a sincronização em voo e o
+apagar é barrada por um registro de ids apagados na sessão.
+
+**Achado fora do pedido:** o card é `role="button"` sem rótulo, então seu nome
+acessível era *todo o texto interno* — um leitor de tela leria o card inteiro
+como nome do botão. Ganhou `aria-label` próprio.
+
+### A IA escrevia alerta de risco que ninguém via
+
+O backend devolve quatro blocos de IA; o adapter lia dois e **descartava
+`contextual_insights` e `risk_warnings` em silêncio** desde que a camada de IA
+existe — a chamada ao Gemini era paga, o modelo escrevia o alerta, e a tela
+jogava fora. Achado ao responder "onde vejo o que a IA respondeu?" durante o
+teste manual do usuário. Agora aparecem numa seção **"Observações da IA"** no
+detalhe, com a janela estimada (48h, 1 semana) como etiqueta, em laranja
+(risco preventivo ≠ erro consumado), renderizados como **texto puro**.
+
+### Simulações contra o backend real (2 workers, como em produção)
+
+- **100 gravações concorrentes**: todas 200, nenhuma perdida, nenhum
+  "database is locked", zero 500 no log.
+- **Toda entrada inválida** (payload string/número/nulo/ausente, corpo não-JSON,
+  id não numérico no DELETE) → **422, nunca 500**.
+- **Payload hostil** (script, aspas, emoji, quebras, `DROP TABLE`) volta
+  idêntico; a tabela continua de pé (queries parametrizadas).
+- **Tetos** de payload e de campanhas → 413 e 507, e o limite **nunca** vira
+  descarte silencioso do dado antigo.
+- **Banco em pasta sem permissão de escrita**: o app **sobe**, a persistência
+  devolve 500 com mensagem limpa (sem traceback no corpo, sem chave no log) e a
+  **análise continua respondendo 200** — o produto principal não cai junto com
+  o acessório.
+
+Os três últimos viraram teste automatizado.
+
+### Teste manual do usuário (parcial)
+
+O usuário carregou a extensão na própria máquina, criou uma campanha pelo modo
+"Importar arquivo" e **apagou com sucesso** — confirmado no servidor, não só na
+tela: `POST 200` → `DELETE 200` → base zerada.
+
+**Ficou sem testar** (o usuário precisou sair): ver a seção "Observações da IA"
+com o build novo, o teste de persistência por recarga da extensão, e o de
+servidor fora do ar (a extensão deve manter o card e dizer "Não foi possível
+apagar").
+
+### Observação de produto, não corrigida
+
+Ao montar dados de teste de **pequena escala**, uma campanha saudável saiu
+**RED com score 100**: o Cenário I dispara porque o padrão do engine exige 50
+conversões/semana (regra do Meta para sair do aprendizado), e o formulário
+manual **não tem campo** para ajustar esse piso (só a importação por JSON tem,
+via `min_weekly_conversions`). Para anunciante pequeno, quase toda campanha vai
+parecer crítica. Decisão de produto, deixada para o usuário.
+
 ## Status atual / Roadmap
 
-1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1354/1354**, sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
+1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1393/1393** (1354 até 2026-07-29; +26 de persistência e +13 de robustez em 2026-08-14), sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
 2. ✅ **Integração Gemini validada ao vivo, de novo** — modelo `gemini-flash-lite-latest`. A key da sessão de 2026-07-14 foi revogada (2026-07-16); **key nova configurada e testada ponta a ponta em 2026-07-25** (`ai_insights` preenchido de verdade numa chamada real). Ver "Sessão de 2026-07-25 (parte 2)" — inclui o incidente de duas keys expostas no chat e a regra de segredos fixada a partir dele. **2026-07-28 (parte 2)**: prompt revisado (removida a pressão a inventar quando faltam dados; 7 de 16 targets do engine que nunca chegavam à IA agora vão; aviso de plataforma p/ Google Ads) e reconfirmado ao vivo com 2 chamadas reais (dentro do limite de R$15) — a IA recusa recomendar escala com cobertura baixa e volta ao normal com cobertura alta.
-3. ✅ Frontend: UI completa; modo manual já plugado no backend real (ver correção de estado acima). **Polimento de UX feito em 2026-07-24 parte 2** (copiloto responsivo, persistência de checkmarks, atalho de busca visível, estado vazio, acessibilidade de teclado). Mock reduzido a **2 campanhas de exemplo** (marcadas visualmente como "exemplo") ao lado das campanhas vivas. **Identidade visual e tema fechados em 2026-07-25**: logo integrada, tiles do Resumo com peso visual, **tema claro/escuro com toggle persistido**, contraste do claro conferido contra WCAG, `prefers-reduced-motion` respeitado. **Testes automatizados adicionados na parte 3** (Vitest + Testing Library, cobrindo adapter, sanitizador XSS, store, tema, roteamento do copiloto e parsing de importação de JSON). **Correções de 2026-07-26**: hover dos cards, quadrado azul no anel de score, `.collect-btn` no tema, CSS morto removido. **2026-07-28 (parte 2), suite 99 → 165/165**: zeros fabricados corrigidos na UI (Copiloto/Comparador/Resumo nunca mais inventam R$ 0,00 pra métrica ausente), bug de scroll do detalhe corrigido (2 causas: `scrollIntoView` na montagem do Copiloto + reaproveitamento de nó do DOM entre Home/Detail, achado só na validação ao vivo), rótulos "Diagnóstico IA"/"veredito da IA" agora só aparecem quando há IA de verdade, veredito do comparador não inverte mais o diagnóstico quando o vencedor tem cenário de oportunidade, formulário manual ganhou campos de aprendizado/conversões-semana, **números do detalhe (score + tiles) contam de 0 até o valor real ao abrir a campanha** — validado por type-check + build + suite + verificação visual ao vivo no navegador real (não só jsdom). **2026-07-29, suite 165 → 167/167**: formulário de nova campanha (e a importação de JSON) ganharam TikTok Ads e LinkedIn Ads como opções de plataforma; corrigido de quebra um bug no adapter (`lib/adapt.ts`) que rotularia qualquer plataforma que não fosse Google Ads como "Meta Ads" — não testado ao vivo no navegador, só type-check + build + suite. Segue sem teste contra o Ads Manager real (única coisa que ainda depende de conta real).
+3. ✅ Frontend: UI completa; modo manual já plugado no backend real (ver correção de estado acima). **Polimento de UX feito em 2026-07-24 parte 2** (copiloto responsivo, persistência de checkmarks, atalho de busca visível, estado vazio, acessibilidade de teclado). Mock reduzido a **2 campanhas de exemplo** (marcadas visualmente como "exemplo") ao lado das campanhas vivas. **Identidade visual e tema fechados em 2026-07-25**: logo integrada, tiles do Resumo com peso visual, **tema claro/escuro com toggle persistido**, contraste do claro conferido contra WCAG, `prefers-reduced-motion` respeitado. **Testes automatizados adicionados na parte 3** (Vitest + Testing Library, cobrindo adapter, sanitizador XSS, store, tema, roteamento do copiloto e parsing de importação de JSON). **Correções de 2026-07-26**: hover dos cards, quadrado azul no anel de score, `.collect-btn` no tema, CSS morto removido. **2026-07-28 (parte 2), suite 99 → 165/165**: zeros fabricados corrigidos na UI (Copiloto/Comparador/Resumo nunca mais inventam R$ 0,00 pra métrica ausente), bug de scroll do detalhe corrigido (2 causas: `scrollIntoView` na montagem do Copiloto + reaproveitamento de nó do DOM entre Home/Detail, achado só na validação ao vivo), rótulos "Diagnóstico IA"/"veredito da IA" agora só aparecem quando há IA de verdade, veredito do comparador não inverte mais o diagnóstico quando o vencedor tem cenário de oportunidade, formulário manual ganhou campos de aprendizado/conversões-semana, **números do detalhe (score + tiles) contam de 0 até o valor real ao abrir a campanha** — validado por type-check + build + suite + verificação visual ao vivo no navegador real (não só jsdom). **2026-08-14, suite 167 → 283/283** (persistência, lixeira, observações da IA, tratamento de erro de rede — ver a sessão de 2026-08-14). **2026-07-29, suite 165 → 167/167**: formulário de nova campanha (e a importação de JSON) ganharam TikTok Ads e LinkedIn Ads como opções de plataforma; corrigido de quebra um bug no adapter (`lib/adapt.ts`) que rotularia qualquer plataforma que não fosse Google Ads como "Meta Ads" — não testado ao vivo no navegador, só type-check + build + suite. Segue sem teste contra o Ads Manager real (única coisa que ainda depende de conta real).
 4. 🟡 **Coleta automática — provisória (scraping via content script), aceitável só para o período de testes atual.** Funciona mecanicamente (mensageria + manifest validados), mas não foi testada contra um Ads Manager real. **Migração para Meta Marketing API (OAuth) adiada de propósito** (ver "Decisão de escopo" acima) — não é bloqueante para o período de testes, só para o lançamento real. **(2026-07-28) Usuário decidiu explicitamente que a validação contra Ads Manager real também não entra nesta rodada de testes** — não puxar como prioridade sem sinal do usuário.
 5. ✅ **Key exposta (2026-07-14) revogada e substituída** — confirmado 401 em 2026-07-16; key nova gerada, configurada e validada ao vivo em 2026-07-25 (ver item 2). **Duas keys adicionais foram expostas no chat durante essa própria configuração** (causa: orientação errada minha sobre o prefixo `!`) — tratadas como queimadas; regra de "segredo só por editor externo" fixada no CLAUDE.md.
 6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`. **Completado em 2026-07-26**: aquele isolamento cobria só `TestIADesativada`; os testes de endpoint ainda faziam 6 chamadas reais ao Gemini por execução. O `conftest.py` agora desliga a IA em toda a suíte (provado com sockets bloqueados: 0 tentativas de rede).
-7. ⬜ **Sem persistência server-side** — o backend é *stateless* (sem banco, sem contas); tudo que "sobrevive" mora no `localStorage` do navegador (`nex:live`, `nex:doneActions`, `nex:screen`, `nex:theme`). O usuário decidiu **não** tratar isso agora — coerente com o período de testes, mas vira bloqueante antes de lançar pra usuários reais (limpar o navegador = perder tudo, sem multi-dispositivo). **Sobe de prioridade agora que a equipe vai testar**: cada pessoa terá seus dados presos ao próprio navegador, sem nada compartilhado.
-8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **⚠️ Desde 2026-07-28 (parte 2), `origin` (pessoal) e `empresa` estão DESSINCRONIZADOS**: os 3 commits daquela sessão, o de 2026-07-29 (`04d5856`, TikTok/LinkedIn) e o de 2026-08-10 (`f7c4f36`, infra de deploy) foram enviados só pro `origin` — **6 commits de diferença agora**. O usuário tem `push` mas não é `admin` no repo da empresa — alguém com acesso precisa replicar os commits lá.
-9. 🟡 **Distribuição para a equipe — infraestrutura pronta, deploy NÃO executado** (2026-08-10). O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por coisas externas ao código. **Atualização de 2026-08-12:** o **nome** do subdomínio saiu — `gestor.nexgold.com.br` — mas o **registro A nunca foi criado** (NXDOMAIN confirmado no servidor autoritativo da Hostinger, não é propagação pendente). Os bloqueios que restam são **o IP do VPS** (sem ele não há o que cadastrar no DNS, e nem o atalho `nip.io` funciona) e **o acesso SSH** (o deploy roda lá, não aqui) — os dois irredutíveis. A **coordenação da porta 443** continua indefinida, mas é contornável (opção B, ~2 min). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
+7. 🟡 **Persistência existe desde 2026-08-14 — em base COMPARTILHADA, e isso é temporário.** O backend guarda as campanhas num SQLite de arquivo único (`/dados/nexgestor.db`, volume `nexgestor-dados`); rotas `GET/POST /api/v1/campaigns` e `DELETE /api/v1/campaigns/{id}`, com lixeira no card. **Sem login e sem dono: toda a equipe vê e apaga as campanhas de todo mundo** — decisão explícita do usuário para o período de testes, com o caminho de migração escrito em `app/service/storage.py` (coluna `dono`, filtro no listar/remover, autenticação de verdade). **Antes de abrir para usuários reais isto PRECISA virar dado por pessoa.** `DB_PATH` vazio é o padrão (stateless); desligada, as rotas respondem 501 e a extensão volta ao `localStorage` sem erro. Validado com container real (sobrevive a destruir container e imagem), dois perfis de navegador vendo a mesma base, e campanha só-local subindo sozinha. **Ainda não está no ar** — depende do item 9.
+8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **⚠️ Desde 2026-07-28 (parte 2), `origin` (pessoal) e `empresa` estão DESSINCRONIZADOS**: os 3 commits daquela sessão, o de 2026-07-29 (`04d5856`, TikTok/LinkedIn) e o de 2026-08-10 (`f7c4f36`, infra de deploy) foram enviados só pro `origin`, mais os **5 de 2026-08-14** (deploy real, tratamento de erro, persistência, lixeira e observações da IA) — **11 commits de diferença agora**. O usuário tem `push` mas não é `admin` no repo da empresa — alguém com acesso precisa replicar os commits lá.
+9. 🟡 **Distribuição para a equipe — o deploy JÁ FOI FEITO (por outra pessoa), mas está DESATUALIZADO.** *(Atualizado em 2026-08-14; o texto de 2026-08-10/12 abaixo ficou obsoleto — os "bloqueios irredutíveis" de IP e SSH não se aplicam mais ao deploy inicial, que aconteceu sem nós.)* `https://gestor.nexgold.com.br` responde, com HTTPS válido até 11/11/2026, atrás do **nginx do próprio VPS** (não do Caddy deste repo) e com **limite de requisições ativo** (60r/m + burst 10, devolvendo 429). **O que está no ar é o código de antes de 2026-08-14**: verificado, `GET /api/v1/campaigns` responde **404** lá. Ou seja, **sem persistência e sem lixeira para a equipe** até alguém com acesso rodar `git pull && docker compose up -d --build` na pasta `deploy/`. Só depois disso faz sentido gerar o pacote (`build-team.sh https://gestor.nexgold.com.br`) — antes, distribuiria uma extensão falando com um backend que não tem essas rotas. **Pendente no servidor, com correção pronta e testada em nginx 1.24 real:** o 429 sai sem cabeçalho CORS (bloco `error_page 429` + `location @limite` em `deploy/nginx-gestor.conf.exemplo`); deixou de ser bloqueante porque o `host_permissions` resolve pelo lado da extensão, mas conserta a causa na origem e cobre o preflight. **A IA está ligada** com chave única compartilhada (limite de R$15 dividido pela equipe) — a chave do `.env` local foi confirmada válida em 2026-08-14.
+
+    *Histórico (2026-08-10):* infraestrutura preparada aqui — O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por coisas externas ao código. **Atualização de 2026-08-12:** o **nome** do subdomínio saiu — `gestor.nexgold.com.br` — mas o **registro A nunca foi criado** (NXDOMAIN confirmado no servidor autoritativo da Hostinger, não é propagação pendente). Os bloqueios que restam são **o IP do VPS** (sem ele não há o que cadastrar no DNS, e nem o atalho `nip.io` funciona) e **o acesso SSH** (o deploy roda lá, não aqui) — os dois irredutíveis. A **coordenação da porta 443** continua indefinida, mas é contornável (opção B, ~2 min). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >
@@ -543,47 +708,48 @@ atalho precisa do IP do VPS** — é esse o dado que falta por qualquer caminho.
 >
 > **Decisão em aberto, não resolvida:** nomear ou não um "Cenário de leilão caro" explícito para quando CPM acima do teto bloqueia a escala vertical (hoje só aparece como métrica CPM vermelha, sem card de causa raiz próprio). Oferecido ao usuário em 2026-07-28 (parte 2); sem resposta ainda.
 >
-> **PRÓXIMO PASSO — retomar exatamente aqui (atualizado em 2026-08-12):**
+> **PRÓXIMO PASSO — retomar exatamente aqui (atualizado em 2026-08-14):**
 >
-> O trabalho de código está **pronto e commitado**; o que falta é executar o
-> deploy no VPS. O subdomínio já tem nome (`gestor.nexgold.com.br`), mas **o
-> registro A não existe** — verificado, é NXDOMAIN no autoritativo, não
-> propagação pendente. Ao voltar, na ordem:
+> O código está **pronto, testado e commitado**. O que falta é **atualizar o que
+> está no ar** e terminar a validação manual que o usuário começou.
 >
-> 1. **Pedir ao usuário o IP do VPS.** É o único dado que falta para o DNS, e
->    todo caminho passa por ele (inclusive o atalho `nip.io`). Está no hPanel em
->    VPS → Visão geral, ou com o dev que administra o servidor. Com o IP em mãos,
->    o registro a criar na Hostinger (Domínios → Zona DNS) é: tipo `A`, nome
->    `gestor` (só isso, sem o domínio completo), valor = IP do VPS, TTL padrão.
->    **Não apontar para os IPs do apex** (`147.79.105.23` / `89.116.213.9`) — são
->    da hospedagem compartilhada do site, e o Caddy falharia de forma confusa.
-> 2. **Confirmar o registro por `dig`** depois de criado (TTL negativo da zona é
->    600s, então ~10 min). Só aí faz sentido subir o Caddy — o Let's Encrypt não
->    emite certificado para nome que não resolve.
-> 3. **Perguntar pelo acesso SSH** (chave `ed25519` já gerada aqui em 2026-08-10,
->    pública já entregue ao usuário). Sem isso não dá para rodar nada no VPS.
-> 4. **Descobrir o estado das portas** com acesso em mãos — o outro dev ia subir
->    outro serviço no mesmo VPS. Pedir a saída de
->    `ss -tlnp | grep -E ':(80|443)'` e `docker ps`.
->    - Portas livres → **opção A**: runbook (`deploy/README.md`) como está.
->    - Porta 443 ocupada → **opção B**: tirar o serviço `caddy` do
->      `docker-compose.yml`, expor a API só em `127.0.0.1:8000` e o proxy dele
->      encaminha `gestor.nexgold.com.br`. (Ajuste de ~2 min, **ainda não
->      escrito** — foi oferecido em 2026-08-12 e a sessão encerrou antes.)
-> 5. Executado o deploy e obtida a URL, rodar
->    `frontend/nexgestor-extension/build-team.sh https://gestor.nexgold.com.br`
->    para gerar o zip da equipe (e a `extensao-pronta/` atualizada), e enviar
->    junto do `COMO-USAR.md`.
+> 1. **Subir o código novo no VPS** — é o que destrava tudo. Hoje
+>    `GET /api/v1/campaigns` responde **404** lá (verificado), ou seja, a equipe
+>    não tem persistência nem lixeira. Precisa de quem tem acesso ao servidor:
+>    `git pull && docker compose up -d --build` na pasta `deploy/`. **Conferir
+>    depois** que o `docker-compose.yml` foi de fato o que subiu — segue não
+>    confirmado como o backend atual foi iniciado (compose vs uvicorn/systemd);
+>    se não for pelo compose, o volume `nexgestor-dados` e o `DB_PATH` não
+>    entram, e a persistência fica desligada respondendo 501.
+> 2. **Terminar o teste manual** (o usuário precisou sair no meio): recarregar a
+>    extensão para pegar o build novo, conferir a seção **"Observações da IA"**
+>    no detalhe, testar **persistência** (recarregar a extensão e ver a campanha
+>    continuar) e **servidor fora do ar** (o card deve permanecer com "Não foi
+>    possível apagar", em vez de sumir e ressuscitar). Os dois arquivos de dados
+>    de teste estão em `~/Downloads/nexgestor-teste-{1-problema,2-saudavel}.json`.
+> 3. **Gerar o pacote da equipe** — só DEPOIS do passo 1:
+>    `frontend/nexgestor-extension/build-team.sh https://gestor.nexgold.com.br`.
+>    Antes disso, distribuiria uma extensão falando com um backend sem as rotas.
+> 4. **Aplicar no nginx** o bloco `error_page 429` + `location @limite`
+>    (`deploy/nginx-gestor.conf.exemplo`, testado em nginx 1.24 real). Deixou de
+>    ser bloqueante — o `host_permissions` resolve pelo lado da extensão — mas
+>    conserta a causa na origem e cobre o preflight.
+> 5. **Perguntar ao Gabriel** por que a raiz do domínio serve o painel da
+>    extensão compilado. Não vaza segredo, mas provavelmente não é intencional.
+>
+> **Antes de abrir para usuários reais (não é para o período de testes):** a base
+> é **compartilhada, sem login e sem dono** — todo mundo vê e apaga tudo. A
+> migração para dado por pessoa está descrita em `app/service/storage.py`.
 >
 > **Pendências de fundo que continuam valendo:** fechar o **alerta de secret
-> scanning #1** (falso positivo, "Used in tests"); **sincronizar `empresa`** (6
-> commits atrás); **persistência** (item 7) — que sobe de prioridade assim que a
-> equipe começar a testar de fato, porque cada pessoa terá os dados presos ao
-> próprio navegador. Testar a coleta automática contra um Ads Manager real segue
-> **fora de escopo** por decisão do usuário. Lembrar do limite de **R$15** na key
-> do Gemini, agora **compartilhada por toda a equipe** — o consumo deixa de ser
-> só de teste e passa a ser de uso real.
+> scanning #1** (falso positivo, "Used in tests"); **sincronizar `empresa`** (que
+> agora está **11 commits atrás** do `origin`). Testar a coleta automática contra
+> um Ads Manager real segue **fora de escopo** por decisão do usuário. Lembrar do
+> limite de **R$15** na key do Gemini, **compartilhada por toda a equipe** — a
+> chave foi confirmada válida em 2026-08-14, então o consumo é real.
 >
-> **Decisão em aberto, não resolvida** (arrastada desde 2026-07-28): nomear ou
-> não um "Cenário de leilão caro" para quando o CPM acima do teto bloqueia a
-> escala vertical.
+> **Decisões em aberto:** (a) nomear ou não um "Cenário de leilão caro" para
+> quando o CPM acima do teto bloqueia a escala vertical (arrastada desde
+> 2026-07-28); (b) o piso de **50 conversões/semana** do Cenário I faz quase toda
+> campanha de anunciante pequeno sair como crítica, e o formulário manual não tem
+> campo para ajustá-lo (só a importação por JSON tem).
