@@ -417,6 +417,21 @@ body::after{
 .del-yes:hover:not(:disabled){background:color-mix(in srgb, var(--red) 22%, transparent)!important}
 .del-no:hover:not(:disabled){border-color:var(--line-2);color:var(--txt)}
 
+
+/* ===== Observações da IA (insights cruzados + alertas de risco) =====
+   Blocos que o backend já devolvia e a tela descartava até 14/08/2026.
+   Texto puro, sem HTML injetado: é conteúdo gerado por modelo. */
+.ai-extras{display:flex;flex-direction:column;gap:9px;padding:0 16px 4px}
+.ai-extra{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:12px 13px}
+.ai-extra-h{display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-weight:700;font-size:12.5px;letter-spacing:-.01em;color:var(--txt);margin-bottom:5px}
+.ai-extra-h svg{width:14px;height:14px;flex:none;color:var(--accent)}
+.ai-extra p{font-size:12px;line-height:1.5;color:var(--txt-2);margin:0}
+/* Risco puxa para o laranja: é alerta preventivo, não erro consumado — por
+   isso não usa o vermelho de "está quebrado agora". */
+.ai-extra.risco{border-color:color-mix(in srgb, var(--orange) 34%, var(--line));background:linear-gradient(165deg,color-mix(in srgb, var(--orange) 7%, var(--panel-2)),var(--panel))}
+.ai-extra.risco .ai-extra-h svg{color:var(--orange)}
+.ai-prazo{margin-left:auto;flex:none;font-family:var(--font);font-size:10px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:999px;color:var(--orange);background:color-mix(in srgb, var(--orange) 15%, transparent);border:1px solid color-mix(in srgb, var(--orange) 30%, transparent)}
+
 /* ===== Movimento reduzido =====
    Respeita quem pede menos animação no SO. `.card`/`.mtile` já nascem visíveis
    (o `rise` só anima o estado inicial via `from` + fill `backwards`), então não é

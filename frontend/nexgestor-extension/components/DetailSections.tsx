@@ -1,7 +1,7 @@
 import { useState } from "react"
 
 import { AnimatedNumber } from "~components/AnimatedNumber"
-import { IconBolt, IconBulb, IconTrendUp } from "~components/Icons"
+import { IconAlert, IconBolt, IconBulb, IconTrendUp } from "~components/Icons"
 import { loadDoneActions, toggleDoneAction } from "~lib/store"
 import { sanitizeHtml } from "~lib/sanitize"
 import { PA_COLOR, PRIO, STATUS, URG_COLOR } from "~lib/status"
@@ -114,6 +114,43 @@ export function Suggestions({ c }: { c: CampaignVM }) {
             <span className="tag">Esforço <b style={{ color: "var(--txt)" }}>{s.effort}</b></span>
             <span className="tag">Urgência <b style={{ color: URG_COLOR[s.urgency] }}>{s.urgency}</b></span>
           </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Insights e riscos vindos da camada de IA.
+ *
+ * Estes dois blocos existiam na resposta do backend desde sempre e nunca eram
+ * exibidos — a chamada ao Gemini era paga, o alerta de risco era escrito, e
+ * morria no adapter. Renderizados como TEXTO puro (sem `dangerouslySetInnerHTML`):
+ * é conteúdo gerado por modelo, então não há motivo para deixá-lo injetar HTML.
+ */
+export function AIExtras({ c }: { c: CampaignVM }) {
+  const insights = c.aiInsights ?? []
+  const riscos = c.aiRisks ?? []
+  if (insights.length === 0 && riscos.length === 0) return null
+
+  return (
+    <div className="ai-extras">
+      {insights.map((i) => (
+        <div className="ai-extra" key={`i-${i.title}`}>
+          <div className="ai-extra-h"><IconBulb />{i.title}</div>
+          <p>{i.explanation}</p>
+        </div>
+      ))}
+      {riscos.map((r) => (
+        <div className="ai-extra risco" key={`r-${r.title}`}>
+          <div className="ai-extra-h">
+            <IconAlert />
+            {r.title}
+            {/* A janela estimada é o que torna o alerta acionável ("48h" muda a
+                decisão de hoje); sem ela vira aviso genérico. */}
+            {r.timeframe && <span className="ai-prazo">{r.timeframe}</span>}
+          </div>
+          <p>{r.explanation}</p>
         </div>
       ))}
     </div>

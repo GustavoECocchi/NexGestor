@@ -5,7 +5,8 @@ import {
   MetricTiles,
   OpportunityCard,
   PriorityActions,
-  Suggestions
+  Suggestions,
+  AIExtras
 } from "~components/DetailSections"
 import { IconBack, IconInfo } from "~components/Icons"
 import { STATUS } from "~lib/status"
@@ -92,6 +93,16 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
 
         <div className="sec-label">Sugestões <span className="ln" /></div>
         <Suggestions c={c} />
+
+        {/* Só renderiza quando a IA de fato produziu algo — o próprio
+            componente devolve null se os dois blocos estiverem vazios, então
+            campanha sem IA não ganha um cabeçalho órfão. */}
+        {((c.aiInsights?.length ?? 0) > 0 || (c.aiRisks?.length ?? 0) > 0) && (
+          <div className="sec-label">
+            Observações da IA <span className="ln" />
+          </div>
+        )}
+        <AIExtras c={c} />
 
         <Copilot c={c} />
         <div style={{ height: 8 }} />

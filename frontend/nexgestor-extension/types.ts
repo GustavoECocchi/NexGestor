@@ -199,6 +199,19 @@ export interface CampaignVM {
    */
   hasAI?: boolean
   /**
+   * Padrões cruzados que a IA notou (`contextual_insights`) e alertas
+   * preventivos (`risk_warnings`).
+   *
+   * Ficaram fora da UI da criação da camada de IA até 14/08/2026: o backend
+   * devolvia os quatro blocos, o adapter lia só dois, e estes dois eram
+   * descartados em silêncio — pagava-se a chamada ao Gemini e o alerta de
+   * risco nunca chegava a quem precisava dele.
+   *
+   * Ausentes em campanhas analisadas antes disso e em campanhas sem IA.
+   */
+  aiInsights?: AIInsight[]
+  aiRisks?: AIRisk[]
+  /**
    * Id da linha no servidor, quando a campanha já foi salva lá.
    *
    * Existe porque `id` NÃO serve de identidade na base compartilhada: ele é

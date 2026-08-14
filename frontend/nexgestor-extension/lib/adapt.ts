@@ -241,6 +241,10 @@ export function responseToVM(
     confidence: res.score_confidence,
     // Só é "IA" o que veio da camada de IA. Sem isso a UI chamava de
     // "Diagnóstico IA" um texto do engine determinístico.
-    hasAI: res.ai_insights != null
+    hasAI: res.ai_insights != null,
+    // Estes dois blocos eram descartados: a IA os produzia (e eram cobrados),
+    // mas nada na tela os lia. `?? []` porque a IA pode responder sem eles.
+    aiInsights: res.ai_insights?.contextual_insights ?? [],
+    aiRisks: res.ai_insights?.risk_warnings ?? []
   }
 }
