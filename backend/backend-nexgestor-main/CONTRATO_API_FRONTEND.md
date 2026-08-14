@@ -13,7 +13,7 @@ Content-Type: application/json
 
 Path único e definitivo. O prefixo `/api/v1` vem de `main.py`; o `/campaign` vem do router. **Não** existe `/api/v1/analyze`.
 
-Endpoint auxiliar (catálogo dos 11 cenários, útil para a UI documentar/legendar):
+Endpoint auxiliar (catálogo dos 15 cenários, útil para a UI documentar/legendar):
 
 ```
 GET /api/v1/campaign/scenarios

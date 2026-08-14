@@ -1,0 +1,61 @@
+# NexGestor — ALTERNATIVA: deploy num VPS SEM proxy próprio.
+#
+# ⚠️ Este NÃO é o arquivo em uso. A montagem real (14/08/2026) tem um nginx
+#    que já ocupa 80/443 no VPS — use o docker-compose.yml. Este aqui serve
+#    para um servidor limpo, onde o Caddy pode ser a porta de entrada.
+#    Rodar os dois juntos causa conflito de porta.
+#
+# Uso: docker compose -f docker-compose.caddy.yml up -d --build
+#
+# Sobe dois serviços:
+#   api    → o backend FastAPI (não exposto direto na internet)
+#   caddy  → porta de entrada (80/443). Faz HTTPS sozinho com Let's Encrypt
+#            e repassa as chamadas pro backend.
+#
+# Uso no VPS (dentro da pasta deploy/):
+#   cp .env.example .env         # depois edite .env com o DOMÍNIO e a chave
+#   docker compose up -d --build
+#
+# Ver logs:      docker compose logs -f
+# Atualizar:     git pull && docker compose up -d --build
+# Parar:         docker compose down
+
+services:
+  api:
+    build:
+      context: ../backend/backend-nexgestor-main
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # As configurações (chave do Gemini, CORS, etc.) vêm do .env — NUNCA
+    # ficam gravadas na imagem. Edite o .env direto no VPS.
+    env_file:
+      - .env
+    expose:
+      - "8000"          # visível só pra rede interna do compose (o Caddy alcança)
+    networks:
+      - nexnet
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"         # necessário pro Let's Encrypt validar o domínio
+      - "443:443"       # HTTPS
+    environment:
+      # O DOMAIN vem do .env; o Caddyfile usa {$DOMAIN} pra emitir o certificado.
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile.alternativo:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # guarda os certificados (não reemitir a cada restart)
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks:
+      - nexnet
+
+networks:
+  nexnet:
+
+volumes:
+  caddy_data:
+  caddy_config:

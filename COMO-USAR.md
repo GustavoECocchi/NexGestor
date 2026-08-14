@@ -93,7 +93,10 @@ Basta clicar no ícone do NexGestor. Só isso — não há nada para ligar antes
 | O que aparece | O que fazer |
 |---|---|
 | **"Manifest file is missing or unreadable"** | Pasta errada na hora de carregar. Repita o Passo 2 selecionando a pasta **sem entrar nela**. |
-| **"Não foi possível falar com o backend"** | Verifique sua internet. Se estiver tudo certo, o servidor pode estar fora do ar — avise o time. |
+| **"Não foi possível falar com o servidor"** | Espere um minuto e tente de novo: várias pessoas analisando ao mesmo tempo esbarram no limite do servidor (o escritório inteiro conta como um só usuário). Se insistir, confira sua internet e avise o time. |
+| **"O servidor está recebendo muitas análises agora"** | É o limite acima, dito com todas as letras. Um minuto de espera resolve — seus dados continuam preenchidos. |
+| **"O servidor está fora do ar"** | Não é problema seu nem dos seus dados. Avise o time; quem cuida do servidor precisa religá-lo. |
+| **"Você está sem conexão com a internet"** | Reconecte e tente de novo — o formulário não se perde. |
 | **O painel não abre ao clicar no ícone** | Recarregue a extensão em `chrome://extensions` (ícone ↻ no card do NexGestor) e tente de novo. |
 | **A extensão sumiu do navegador** | Provavelmente a pasta extraída foi movida ou apagada. Extraia o zip de novo e repita o Passo 2. |
 | **A análise demora muito** | Alguns segundos é normal (o sistema consulta a IA). Se travar ou der erro, avise o time. |

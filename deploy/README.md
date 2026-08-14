@@ -1,205 +1,317 @@
-# Deploy do backend NexGestor no VPS (Hostinger)
+# Deploy do backend NexGestor no VPS
 
-Guia para **você** (Gustavo) subir o backend uma vez no VPS. Depois disso, sua
-equipe só instala a extensão — ninguém mais precisa mexer em Python ou servidor.
+O backend **já está no ar**. Este arquivo descreve a montagem real, como ligar
+a camada de IA e como manter tudo funcionando.
 
-O resultado final é uma URL HTTPS fixa (ex.: `https://api.seudominio.com.br`)
-que a extensão de todo mundo vai usar.
+## Estado atual — verificado em 14/08/2026
 
-> **Tempo estimado:** ~30 min na primeira vez.
-> **Pré-requisito:** acesso ao seu VPS Hostinger (IP + senha root, ou o
-> terminal do navegador no hPanel).
+| Item | Situação |
+|---|---|
+| URL | `https://gestor.nexgold.com.br` |
+| Servidor | VPS Hostinger (`srv1884808.hstgr.cloud`) |
+| DNS | Registro A criado, resolve normalmente |
+| Certificado | Let's Encrypt, emitido 13/08/2026, válido até 11/11/2026 |
+| Porta de entrada | **nginx** do próprio VPS (não o Caddy deste repositório) |
+| `GET /api/v1/campaign/scenarios` | 200 — 15 cenários |
+| `POST /api/v1/campaign/analyze` | 200 em ~0,2s, engine correto |
+| CORS da extensão | Passa (`Origin: chrome-extension://…`) |
+| `/docs` e `/openapi.json` | 404 — **do nginx**, não do app (ver abaixo) |
+| Limite de requisições | **Ativo** — 11 chamadas simultâneas passam, a 12ª volta 429 |
+| **Camada de IA** | **Desligada** — `ai_insights` volta `null` |
+
+A renovação do certificado está coberta pelo Gabriel, que montou o servidor
+(informado por ele; o mecanismo não foi verificado daqui).
+
+### Sobre o 404 em `/docs` — não é hardening, é roteamento
+
+O `app/main.py` **não** desabilita a documentação (não há `docs_url=None` nem
+`openapi_url=None`), então não é o app que está recusando. O que acontece é que
+o nginx só encaminha o caminho da API; a raiz serve conteúdo estático. Prova:
+
+| Caminho | Resposta | Quem respondeu |
+|---|---|---|
+| `/docs` | 404 **HTML** com rodapé `nginx/1.24.0 (Ubuntu)` | nginx |
+| `/api/v1/<inexistente>` | 404 **JSON** `{"detail":"Not Found"}` | FastAPI |
+
+Duas consequências práticas:
+
+1. **Não é sinal de que o backend no ar seja outro build.** A dúvida registrada
+   mais abaixo ("não confirmado como o backend foi subido") continua de pé, mas
+   o 404 do `/docs` não é evidência dela — o engine responde sob `/api` com os
+   15 cenários deste repositório.
+2. **A documentação da API ficaria pública se alguém encaminhasse a raiz** para
+   o backend. O `nginx-gestor.conf.exemplo` faz exatamente isso no `location /`
+   — por isso ele traz um aviso para não ser aplicado sem adaptar.
+
+> Curiosidade medida junto: a raiz do domínio hoje devolve o **painel da própria
+> extensão** compilado (HTML com `<div id="__plasmo">` e `sidepanel.*.js`).
+> Alguém publicou o build do frontend ali. Não expõe segredo (o bundle é o mesmo
+> que a equipe instala, e a chave da IA vive só no servidor), mas provavelmente
+> não era intencional — vale confirmar com quem montou o servidor.
+
+### 🔴 Um ajuste pendente no nginx: o 429 não chega à extensão
+
+O limite de requisições funciona, mas a resposta 429 é gerada pelo **nginx**, e
+sai **sem cabeçalho CORS** — ao contrário do 200, que vem do backend e sai com
+ele. Medido na mesma requisição, só mudando o resultado:
+
+| Resposta | Quem gera | `Access-Control-Allow-Origin` |
+|---|---|---|
+| 200 | backend | presente |
+| 429 | nginx | **ausente** |
+
+Sem esse cabeçalho o Chrome bloqueia a resposta antes do JavaScript ler o
+status. Na extensão o erro chega como `Failed to fetch` — **idêntico a queda de
+internet** —, então o tratamento de 429 que existe em `lib/api.ts` nunca roda e
+o usuário lê uma mensagem sobre a conexão dele quando o servidor é que o estava
+limitando.
+
+Isso vai acontecer na prática: o limite é por IP de origem, e a equipe inteira
+num mesmo escritório sai pelo **mesmo IP público** (NAT) — 11 análises
+simultâneas já estouram.
+
+**Há duas correções, e a do lado do cliente já foi aplicada:**
+
+1. **Extensão (feito).** O host de produção entrou em `host_permissions`
+   (`package.json`), o que isenta o painel de CORS e o faz enxergar as
+   respostas do proxy. **Provado em navegador real** (Chromium 151, duas cópias
+   do mesmo build diferindo só nessa linha, contra este servidor):
+
+   | Build | Resultado de 14 chamadas simultâneas |
+   |---|---|
+   | com o host declarado | leu **5×200 e 9×429** — nenhuma bloqueada |
+   | sem o host declarado | **14 de 14 bloqueadas** (`TypeError: Failed to fetch`) |
+
+   Num pedido isolado, sem estourar o limite, **as duas leem 200** — o backend
+   manda CORS normalmente. A diferença aparece só nos erros gerados pelo nginx.
+   Vale por build: uma extensão apontada para outro endereço volta ao
+   comportamento antigo (o `build-team.sh` avisa quando isso acontece).
+
+2. **nginx (pendente, precisa de acesso ao servidor).** Correção de 5 linhas
+   (`error_page 429` + um `location` com os cabeçalhos), pronta e **testada num
+   nginx 1.24 real** em `nginx-gestor.conf.exemplo`. Continua valendo a pena:
+   conserta a causa na origem, cobre o **preflight** (que também é contado pelo
+   limite) e vale para qualquer cliente, não só para os hosts declarados no
+   manifest.
 
 ---
 
-## ⚠️ Passo -1 — Enviar estes arquivos pro GitHub (obrigatório antes de tudo)
+## Como está montado
 
-O VPS vai **baixar o código do GitHub**. Se esta pasta `deploy/` ainda não
-estiver lá, o Passo 3 traz um repositório sem ela e o deploy trava.
-
-Do seu computador, na pasta do projeto:
-```bash
-git status                 # confira o que vai entrar antes de adicionar
-git add -A
-git commit -m "Infra de deploy: Docker, Caddy e guia da equipe"
-git push origin main
+```
+internet ──► nginx (80/443, VPS)  ──►  backend FastAPI (127.0.0.1:8000)
+             HTTPS + certificado         engine + integração Gemini
 ```
 
-Confirme que subiu abrindo o repositório no GitHub e vendo a pasta `deploy/`.
+O `docker-compose.yml` desta pasta reflete essa montagem: sobe **só** o
+backend, escutando em `127.0.0.1:8000`. Ele não tenta ocupar 80/443, porque
+essas portas já são do nginx.
 
-> Se o VPS for clonar o repositório **da empresa** (`NexGoldCompany/NexGestor`),
-> rode também `git push empresa main` — senão os arquivos não estarão lá.
+**O que foi verificado e o que não foi.** Tudo na tabela acima foi medido de
+fora (DNS, certificado, respostas da API, CORS). Duas coisas só dá pra saber
+de dentro do VPS e seguem **não confirmadas**:
+
+1. **Como o backend foi subido** — por este compose ou por uvicorn/systemd.
+   Muda o comando de restart e o caminho do `.env` (ver a seção da IA).
+2. **Se o nginx roda no host ou em container.** O `Server: nginx/1.24.0
+   (Ubuntu)` é a cara do pacote da distribuição, que roda no host — e é o que
+   este arquivo assume. Se estivesse num container, `proxy_pass` para
+   `127.0.0.1:8000` apontaria para dentro do próprio container do nginx e não
+   acharia o backend; o endereço teria que ser o nome do serviço na rede do
+   Docker. Como a API responde hoje, o que está lá certamente está coerente —
+   a ressalva vale só para quem for reconfigurar.
+
+O bloco nginx correspondente está documentado em `nginx-gestor.conf.exemplo`
+(referência — o arquivo em produção foi escrito pelo Gabriel).
+
+> **Não usar o `docker-compose.caddy.yml` neste VPS.** Ele sobe um Caddy que
+> tenta tomar 80/443 e conflitaria com o nginx. Aquele arquivo serve só para
+> um servidor limpo, sem proxy próprio.
 
 ---
 
-## Passo 0 — Definir o domínio (endereço do backend)
+## Ligar a camada de IA
 
-O HTTPS precisa de um nome de domínio apontando pro IP do VPS. Dois caminhos:
+Hoje a IA está desligada porque `GEMINI_API_KEY` está vazia no servidor.
+**Preencher essa variável é o único passo** — o resto já está pronto:
 
-- **Tem um domínio?** (ex.: `nexgestor.com.br`) → crie um **subdomínio**
-  `api.` pra ele. É o recomendado.
-- **Não tem domínio?** → dá pra usar `<IP-DO-VPS>.nip.io` (um serviço grátis
-  que transforma o IP num nome válido). Ex.: se o IP é `72.60.1.23`, o domínio
-  vira `72.60.1.23.nip.io`. Funciona com HTTPS de verdade, sem comprar nada.
+- o SDK (`google-genai`) já está no `requirements.txt`, então já foi instalado;
+- `GEMINI_ENABLED` já é `True` por padrão no `config.py`;
+- o modelo `gemini-flash-lite-latest` foi testado ao vivo em 14/08/2026 e
+  respondeu em **~2,8s** (dentro do timeout de 8s), com resumo executivo,
+  cenário extra, insight e aviso de risco preenchidos.
 
-Guarde o domínio escolhido — vou chamar de `SEU_DOMINIO` daqui pra frente.
+Nada no frontend muda: a URL é a mesma, então **não é preciso regerar nem
+redistribuir a extensão** quando a IA for ligada.
 
-### Se tiver domínio: apontar o DNS
+### 🔒 Regra de segredo (vale sempre)
 
-No painel onde seu domínio é gerenciado (Hostinger hPanel → Domínios → DNS),
-crie um registro:
+A chave é colada **no editor do servidor** (`nano`, ou o terminal do hPanel).
+Nunca num chat — nem com o Claude, nem em grupo de mensagem. O `.env` fica só
+no VPS e está no `.gitignore`.
 
-| Tipo | Nome  | Aponta para (Valor) | TTL     |
-|------|-------|---------------------|---------|
-| A    | `api` | `IP_DO_SEU_VPS`     | 300/Auto|
-
-Espere alguns minutos propagar. Teste no seu PC:
-```bash
-ping api.seudominio.com.br     # tem que responder com o IP do VPS
-```
-(Com `nip.io` não precisa criar nada — já resolve sozinho.)
-
----
-
-## Passo 1 — Entrar no VPS
-
-Pelo terminal do seu PC:
-```bash
-ssh root@IP_DO_SEU_VPS
-```
-(ou use o **Terminal do navegador** no hPanel da Hostinger → seu VPS → Terminal.)
-
----
-
-## Passo 2 — Instalar Docker (uma vez só)
-
-Cole isto no VPS. Instala Docker + o plugin do Compose:
-```bash
-curl -fsSL https://get.docker.com | sh
-docker --version && docker compose version    # confirma que instalou
-```
-
----
-
-## Passo 3 — Baixar o código no VPS
-
-O repositório é **privado**, então o VPS precisa de permissão pra baixar. O
-jeito limpo é uma **chave de deploy** (não expõe senha nenhuma):
+### Se o backend roda via Docker (este `docker-compose.yml`)
 
 ```bash
-# 1) Gera uma chave SSH no VPS (dê Enter em tudo, sem senha):
-ssh-keygen -t ed25519 -C "vps-nexgestor" -f ~/.ssh/id_ed25519 -N ""
-
-# 2) Mostra a chave PÚBLICA (pode aparecer no chat sem problema — é pública):
-cat ~/.ssh/id_ed25519.pub
-```
-Copie o que apareceu e cole no GitHub em:
-**repositório → Settings → Deploy keys → Add deploy key** (só leitura basta).
-
-Depois, ainda no VPS:
-```bash
-git clone git@github.com:NexGoldCompany/NexGestor.git
 cd NexGestor/deploy
+nano .env                       # preencha GEMINI_API_KEY=
+docker compose up -d            # relê o .env e recria o container
 ```
 
-> **Atalho sem chave (menos elegante):** se preferir, dá pra baixar via HTTPS
-> com um token do GitHub. Mas isso deixa o token no histórico do VPS — a chave
-> de deploy acima é mais segura.
+### Se o backend roda direto (uvicorn/systemd, sem Docker)
+
+```bash
+nano <pasta-do-backend>/.env    # preencha GEMINI_API_KEY=
+systemctl restart <nome-do-servico>
+```
+
+> ⚠️ **Armadilha real, confirmada por teste.** O `config.py` declara
+> `env_file=".env"` — caminho **relativo ao diretório de trabalho do
+> processo**, não à pasta do código. Se o serviço não roda com
+> `WorkingDirectory` na pasta do backend, o `.env` é **ignorado em silêncio**:
+> a API sobe normal, responde 200, e a IA simplesmente não liga. Nenhum erro
+> aparece em lugar nenhum.
+>
+> Medido aqui, mesmo código e mesmo `.env`, só mudando o diretório:
+>
+> | Diretório do processo | Chave carregada |
+> |---|---|
+> | pasta do backend | ✅ sim |
+> | qualquer outro | ❌ não |
+>
+> **À prova disso:** passar a variável pelo próprio systemd, que não depende de
+> diretório nenhum —
+>
+> ```ini
+> [Service]
+> WorkingDirectory=/caminho/do/backend
+> EnvironmentFile=/caminho/do/backend/.env
+> ```
+>
+> Depois: `systemctl daemon-reload && systemctl restart <servico>`.
+>
+> O modo Docker **não** tem esse problema: o `env_file:` do compose injeta as
+> variáveis no ambiente do container, sem depender de diretório.
+
+Se ainda não existir um `.env` no servidor, use o `deploy/.env.example` como
+base — ele já vem com `GEMINI_MODEL`, `GEMINI_ENABLED` e o timeout corretos.
+
+> **Reiniciar é obrigatório.** As configurações são lidas uma vez, na subida
+> do processo. Editar o `.env` sem reiniciar não muda nada.
+
+### Confirmar que ligou
+
+De qualquer máquina:
+
+```bash
+curl -s --max-time 30 -X POST https://gestor.nexgold.com.br/api/v1/campaign/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{"campaign":{"id":1,"name":"teste"},
+       "metrics":{"spend":3200,"impressions":120000,"link_clicks":1900,
+                  "conversions":78,"cpa":41,"roas":4.2,"frequency":1.6},
+       "targets":{"max_cpa":60,"min_roas":3}}' \
+  | python3 -c 'import sys,json
+d=json.load(sys.stdin)
+if "overall_score" not in d: raise SystemExit(f"RESPOSTA INVALIDA (nao eh uma analise): {str(d)[:200]}")
+print("IA LIGADA" if d.get("ai_insights") else "IA DESLIGADA")'
+```
+
+Se responder **IA LIGADA**, está funcionando de verdade — `ai_insights` só vem
+preenchido quando o Gemini respondeu de fato.
+
+> **Por que a checagem do `overall_score` está aí.** Sem ela o comando responde
+> "IA DESLIGADA" para *qualquer* resposta que não seja uma análise — um 422 por
+> payload malformado, um 500, um 429 de limite de requisições. Ou seja: daria
+> um diagnóstico errado, mandando você caçar problema na chave do Gemini quando
+> o problema é outro. Testado nos três casos (análise ok, erro 422, servidor
+> inalcançável).
+
+### Se a chave estiver preenchida e mesmo assim vier `null`
+
+A IA falha **em silêncio, de propósito**: se o Gemini não responde, a análise
+continua sendo entregue sem a camada de IA, em vez de derrubar a requisição.
+Então o diagnóstico está nos logs do servidor:
+
+```bash
+docker compose logs --tail=50 api        # ou: journalctl -u <servico> -n 50
+```
+
+Causas em ordem de probabilidade:
+
+1. **Chave revogada ou inválida** → `401 UNAUTHENTICATED`. Já aconteceu duas
+   vezes neste projeto.
+2. **Limite de gasto atingido** — a chave tem teto de **R$15**, dividido pela
+   equipe inteira.
+3. **Modelo aposentado** → `404 ... no longer available`. O Google faz isso sem
+   aviso; foi o que derrubou `gemini-2.5-flash` e `gemini-flash-latest`.
+4. **Reinício esquecido** depois de editar o `.env`.
+
+As chaves nunca aparecem nos logs em texto puro — são redigidas antes de
+qualquer escrita.
 
 ---
 
-## Passo 4 — Configurar (domínio + chave do Gemini)
+## Atenção: a API é pública e não tem autenticação
 
-```bash
-cp .env.example .env
-nano .env
-```
+Qualquer pessoa que descubra a URL pode chamar a análise (confirmado em
+14/08/2026: chamadas seguidas sem `Origin`, todas 200, sem rate limit).
 
-No editor, ajuste:
-- `DOMAIN=` → coloque o `SEU_DOMINIO` do Passo 0.
-- `GEMINI_API_KEY=` → **cole a chave do Gemini aqui**, no editor do VPS.
-
-> 🔒 **Importante:** a chave é colada **aqui, no `nano` do VPS** — nunca no
-> chat do Claude. Este arquivo `.env` fica só no servidor e não vai pro GitHub.
-
-Salve no `nano`: `Ctrl+O`, `Enter`, depois `Ctrl+X`.
-
----
-
-## Passo 5 — Subir tudo
-
-```bash
-docker compose up -d --build
-```
-
-Primeira vez demora alguns minutos (baixa imagens, instala dependências, o
-Caddy emite o certificado HTTPS). Acompanhe:
-```bash
-docker compose logs -f
-```
-Quando aparecer `certificate obtained successfully` e o backend logando, está
-no ar. Saia dos logs com `Ctrl+C` (não derruba nada — segue rodando).
-
----
-
-## Passo 6 — Testar
-
-Do seu PC (ou navegador):
-```bash
-curl https://SEU_DOMINIO/api/v1/campaign/scenarios
-```
-Tem que voltar um JSON com os cenários. Se voltar, **o backend está pronto** e
-essa é a URL que vai na extensão da equipe.
-
-Abra também `https://SEU_DOMINIO/docs` no navegador — é a documentação
-interativa da API (útil pra confirmar visualmente).
-
----
-
-## Passo 7 — Firewall (se o Passo 6 falhar)
-
-Se a Hostinger tiver firewall no VPS, libere as portas **80** e **443**
-(hPanel → VPS → Firewall). Sem elas o HTTPS não conecta.
-
----
-
-## Passo 8 — Gerar o pacote da equipe (no seu computador, não no VPS)
-
-Com o backend no ar, gere a extensão já apontando pra ele. Na pasta do projeto,
-no **seu computador**:
-
-```bash
-frontend/nexgestor-extension/build-team.sh https://SEU_DOMINIO
-```
-
-Isso produz:
-- `frontend/nexgestor-extension/nexgestor-extensao-<data>.zip` → **envie esse
-  arquivo pra equipe**, junto com o guia `COMO-USAR.md`.
-- a pasta `extensao-pronta/` atualizada (pra quem preferir pegar do repositório).
-
-> A URL precisa ser **https://**. O script recusa `http://` remoto de propósito:
-> o Chrome bloqueia essas chamadas e a extensão falharia sem mensagem clara.
-
-Se você mexer no frontend depois, rode o script de novo e redistribua o zip.
+Com a IA **desligada**, o custo de abuso é só CPU. Com a IA **ligada**, cada
+chamada de terceiros consome a chave compartilhada de R$15. Vale subir um
+limite de requisições junto com a chave — há um `limit_req` pronto e comentado
+em `nginx-gestor.conf.exemplo`.
 
 ---
 
 ## Manutenção do dia a dia
 
-| Ação                         | Comando (dentro de `NexGestor/deploy`)     |
-|------------------------------|--------------------------------------------|
-| Ver logs                     | `docker compose logs -f`                   |
-| Reiniciar                    | `docker compose restart`                   |
+| Ação | Comando (em `NexGestor/deploy`) |
+|---|---|
+| Ver logs | `docker compose logs -f` |
+| Reiniciar | `docker compose restart` |
 | Atualizar após mudança no código | `git pull && docker compose up -d --build` |
-| Parar tudo                   | `docker compose down`                      |
-| Trocar a chave do Gemini     | `nano .env` → `docker compose up -d`       |
+| Parar | `docker compose down` |
+| Ligar/trocar a chave do Gemini | `nano .env` → `docker compose up -d` |
 
-O `restart: unless-stopped` faz o backend voltar sozinho se o VPS reiniciar.
+`restart: unless-stopped` faz o backend voltar sozinho se o VPS reiniciar.
 
 ---
 
-## Resumo do que a equipe precisa saber
+## Gerar o pacote da equipe
 
-**Nada.** Depois deste deploy, o backend fica no ar sozinho. A equipe só instala
-a extensão (ver `COMO-USAR.md`, na raiz do projeto) — que já vem
-apontando pra `https://SEU_DOMINIO`.
+No **seu computador** (não no VPS), na pasta do projeto:
+
+```bash
+frontend/nexgestor-extension/build-team.sh https://gestor.nexgold.com.br
+```
+
+Produz:
+
+- `frontend/nexgestor-extension/nexgestor-extensao-<data>.zip` → é isso que vai
+  pra equipe, junto do `COMO-USAR.md` da raiz;
+- a pasta `extensao-pronta/` atualizada.
+
+A URL precisa ser `https://` — o script recusa `http://` remoto de propósito,
+porque o Chrome bloqueia essas chamadas e a extensão falharia sem mensagem
+clara.
+
+Rode de novo e redistribua sempre que mexer no frontend. **Ligar a IA não
+exige isso** — é configuração de servidor, a URL não muda.
+
+---
+
+## Anexo — montar do zero num servidor sem proxy
+
+Só para um VPS limpo, onde 80/443 estejam livres. O Caddy vira a porta de
+entrada e emite o certificado sozinho.
+
+```bash
+curl -fsSL https://get.docker.com | sh          # instala Docker
+git clone <repo> && cd NexGestor/deploy
+cp .env.example .env && nano .env               # DOMAIN + GEMINI_API_KEY
+docker compose -f docker-compose.caddy.yml up -d --build
+```
+
+Requisitos: registro A do domínio já apontando pro IP **antes** de subir (o
+Let's Encrypt não emite certificado para nome que não resolve), e portas 80 e
+443 liberadas no firewall do hPanel.

@@ -1,0 +1,157 @@
+# NexGestor — referência do bloco nginx que atende gestor.nexgold.com.br
+#
+# ⚠️ Isto é REFERÊNCIA, não o arquivo em produção. O nginx do VPS foi
+#    configurado pelo Gabriel e já está funcionando (verificado em 14/08/2026:
+#    HTTPS válido, redirect 80→443, CORS da extensão passando). O arquivo aqui
+#    existe para (a) o time saber como a peça se encaixa e (b) servir de base
+#    caso precise ser recriado.
+#
+# Onde costuma ficar no servidor:
+#   /etc/nginx/sites-available/gestor.nexgold.com.br  (link em sites-enabled/)
+# Testar e aplicar mudanças:
+#   nginx -t && systemctl reload nginx
+#
+# ⚠️ ESTE ARQUIVO NÃO É CÓPIA DO QUE ESTÁ NO SERVIDOR. Medido em 14/08/2026, a
+#    produção difere em pelo menos um ponto importante: aqui o `location /`
+#    encaminha TUDO para o backend, mas lá a raiz serve conteúdo estático (o
+#    próprio painel da extensão) e só o caminho da API é encaminhado — prova:
+#    `/docs` devolve o 404 HTML do nginx, enquanto `/api/v1/<inexistente>`
+#    devolve o 404 JSON do FastAPI.
+#
+#    Consequência de aplicar este arquivo como está, sem adaptar: a raiz para
+#    de servir o que serve hoje, e `/docs` + `/openapi.json` (que o
+#    `app/main.py` NÃO desabilita) passam a ficar públicos. Se for recriar a
+#    configuração, restrinja o proxy ao prefixo da API.
+
+# ── Limite de requisições — JÁ ESTÁ ATIVO EM PRODUÇÃO ────────────────────────
+# Vai no nível http{} (ex.: /etc/nginx/nginx.conf), fora do server{}.
+#
+# ✅ Medido de fora em 14/08/2026: numa rajada de 12 chamadas simultâneas, 11
+#    passam e a 12ª volta **429** — assinatura exata de `rate=60r/m` com
+#    `burst=10 nodelay` e `limit_req_status 429`. Reproduzido duas vezes. Ou
+#    seja, o servidor já tem esta proteção; o bloco abaixo documenta o que
+#    está lá, não algo a implantar.
+#
+# Motivo: a API é pública e não tem autenticação. Com GEMINI_ENABLED=True,
+# cada chamada de qualquer pessoa que descubra a URL consome a chave
+# compartilhada (teto de R$15 dividido pela equipe).
+#
+#   limit_req_zone $binary_remote_addr zone=nexgestor:10m rate=60r/m;
+#   limit_req_status 429;
+#
+# ⚠️ A chave é o IP de origem — e a equipe inteira num mesmo escritório sai
+#    pelo MESMO IP público (NAT). O limite é compartilhado por todas essas
+#    pessoas, não por pessoa. Foi por isso que ficou em 60/min em vez dos 30
+#    que pareciam suficientes: uma análise por clique, várias pessoas testando
+#    ao mesmo tempo, e 30/min viraria bloqueio no meio de uma demonstração.
+#
+# 🔴 PENDENTE NO SERVIDOR — o 429 sai SEM cabeçalho CORS, e por isso a extensão
+#    não consegue vê-lo.
+#
+#    Medido em 14/08/2026, mesma requisição, só mudando o resultado:
+#
+#      | Resposta | Quem gera | Content-Type     | Access-Control-Allow-Origin |
+#      |----------|-----------|------------------|-----------------------------|
+#      | 200      | backend   | application/json | presente                    |
+#      | 429      | nginx     | text/html        | AUSENTE                     |
+#
+#    Sem esse cabeçalho o Chrome bloqueia a resposta antes do JavaScript ler o
+#    status: o `fetch` da extensão rejeita com "Failed to fetch", idêntico a
+#    queda de internet. O usuário lê uma mensagem sobre a conexão dele
+#    enquanto o problema é o servidor limitando — e o tratamento de 429 que
+#    existe no código (`lib/api.ts`) nunca chega a rodar.
+#
+#    Correção, dentro do `location /` deste server (nginx ≥1.10). Os headers
+#    ficam SÓ na página de erro, então não duplicam o cabeçalho que o backend
+#    já manda nas respostas normais — duplicar faria o Chrome rejeitar tudo:
+#
+#      error_page 429 = @limite;
+#
+#    e, no nível do server{}:
+#
+#      location @limite {
+#          default_type application/json;
+#          add_header Access-Control-Allow-Origin      $http_origin always;
+#          add_header Access-Control-Allow-Credentials true          always;
+#          return 429 '{"detail":"rate_limited"}';
+#      }
+#
+#    Depois: `nginx -t && systemctl reload nginx`. Para conferir, force o 429
+#    com uma rajada e verifique que a resposta traz Access-Control-Allow-Origin.
+#
+#    ✅ Este bloco NÃO é sugestão no escuro: foi executado num nginx 1.24 real
+#       (mesma versão do VPS) com backend simulado, em 14/08/2026. Resultado
+#       medido — 429 devolve `Access-Control-Allow-Origin`,
+#       `Access-Control-Allow-Credentials` e corpo `{"detail":"rate_limited"}`;
+#       e a resposta 200 continua com UM ÚNICO cabeçalho CORS, sem a
+#       duplicação que quebraria a extensão.
+#
+#    Enquanto isso não for feito, a extensão mostra uma mensagem que cita as
+#    duas causas possíveis (conexão ou limite do servidor) em vez de afirmar a
+#    errada — ver `mensagemDeErro` em components/NewCampaignModal.tsx.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name gestor.nexgold.com.br;
+
+    # O certbot normalmente injeta este redirect sozinho.
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name gestor.nexgold.com.br;
+
+    ssl_certificate     /etc/letsencrypt/live/gestor.nexgold.com.br/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gestor.nexgold.com.br/privkey.pem;
+
+    location / {
+        # burst=10 nodelay: absorve rajadas curtas sem punir uso normal.
+        # (Medido ativo em produção — ver a seção do limite lá em cima.)
+        limit_req zone=nexgestor burst=10 nodelay;
+
+        # Faz o 429 sair COM cabeçalho CORS. Sem isto o Chrome bloqueia a
+        # resposta e a extensão nunca vê o status — ver a seção do limite.
+        error_page 429 = @limite;
+
+        # 127.0.0.1 pressupõe nginx rodando NO HOST (pacote da distribuição).
+        # Se o nginx estiver em container, este endereço aponta pra dentro do
+        # próprio container e não acha o backend — nesse caso use o nome do
+        # serviço na rede do Docker.
+        proxy_pass http://127.0.0.1:8000;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # A análise com IA ligada leva ~3s (timeout do backend é 8s). O default
+        # do nginx (60s) cobre com folga; explicitado só para deixar claro que
+        # não pode ser reduzido para menos que o timeout do Gemini.
+        proxy_read_timeout 30s;
+    }
+
+    # Página de erro do limite de requisições. Os cabeçalhos CORS ficam SÓ
+    # aqui, onde o backend não responde — por isso não duplicam nada.
+    location @limite {
+        default_type application/json;
+        add_header Access-Control-Allow-Origin      $http_origin always;
+        add_header Access-Control-Allow-Credentials true          always;
+        # Methods/Headers são obrigatórios porque o PREFLIGHT também é contado
+        # pelo limite. A extensão manda Content-Type: application/json, que não
+        # é "safelisted", então cada análise vira OPTIONS + POST — duas
+        # requisições contra a cota. Se quem for barrado for o OPTIONS, uma
+        # resposta 429 sem estes dois cabeçalhos reprova o preflight e o erro
+        # volta a chegar como "Failed to fetch".
+        add_header Access-Control-Allow-Methods     "POST, GET, OPTIONS" always;
+        add_header Access-Control-Allow-Headers     "content-type"       always;
+        return 429 '{"detail":"rate_limited"}';
+    }
+
+    # NÃO adicionar cabeçalhos CORS nas respostas normais: quem responde CORS
+    # é o próprio backend (CORS_ORIGIN_REGEX aceita chrome-extension://).
+    # Duplicar o cabeçalho faz o Chrome REJEITAR a resposta — a extensão
+    # quebraria. Por isso o bloco @limite acima existe separado.
+}
