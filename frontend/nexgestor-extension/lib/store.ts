@@ -85,3 +85,53 @@ export function toggleDoneAction(campaignId: number, title: string): Set<string>
   }
   return cur
 }
+
+// =============================================================================
+// Sincronização com a base COMPARTILHADA do servidor.
+//
+// ⚠️ TEMPORÁRIO — período de testes (14/08/2026). Sem login e sem dono: todo
+//    mundo vê as mesmas campanhas. Ver `lib/api.ts` e o storage.py do backend.
+//
+// O localStorage deixa de ser a verdade e passa a ser cache: sobrevive a
+// servidor fora do ar e mantém a tela populada enquanto a lista chega.
+// =============================================================================
+
+/**
+ * Mescla a lista do servidor com o que existe neste navegador.
+ *
+ * Regras, nesta ordem:
+ *
+ * 1. O servidor manda no que já foi salvo lá (`serverId`). Uma campanha que
+ *    sumiu de lá foi apagada por alguém da equipe e some daqui também — é o
+ *    preço combinado da base compartilhada.
+ * 2. Campanha local SEM `serverId` nunca chegou ao servidor (analisada com ele
+ *    fora do ar, ou com a persistência desligada). É a única fonte desse dado,
+ *    então JAMAIS pode ser descartada — vai para o topo, por ser a mais nova.
+ */
+export function mesclarComServidor(
+  doServidor: CampaignVM[],
+  locais: CampaignVM[] = loadLive()
+): CampaignVM[] {
+  const soLocais = locais.filter((c) => c.serverId === undefined)
+  const mesclada = [...soLocais, ...doServidor]
+  persist(mesclada)
+  return mesclada
+}
+
+/**
+ * Marca uma campanha local como salva no servidor, reancorando o id.
+ *
+ * O id muda porque na base compartilhada quem identifica é o servidor: o id
+ * local (>= 1000, por navegador) colidiria entre pessoas diferentes.
+ */
+export function marcarComoSalva(
+  vm: CampaignVM,
+  serverId: number,
+  idLocal: number
+): CampaignVM[] {
+  const salva = { ...vm, serverId, id: idLocal }
+  const lista = loadLive().filter((c) => c.id !== vm.id && c.id !== idLocal)
+  const nova = [salva, ...lista]
+  persist(nova)
+  return nova
+}

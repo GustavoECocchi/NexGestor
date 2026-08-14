@@ -36,3 +36,16 @@ services:
     # Trocar por "8000:8000" exporia o backend direto na internet, sem HTTPS.
     ports:
       - "127.0.0.1:8000:8000"
+    # Banco das campanhas salvas. SEM este volume o arquivo vive dentro do
+    # container e some no próximo `up -d --build` — perderíamos exatamente o
+    # dado que a persistência existe para proteger.
+    environment:
+      DB_PATH: /dados/nexgestor.db
+    volumes:
+      - nexgestor-dados:/dados
+
+volumes:
+  # Backup: `docker run --rm -v nexgestor-dados:/d -v $PWD:/b alpine \
+  #            cp /d/nexgestor.db /b/` (com o serviço parado, ou copiando
+  #            também os arquivos -wal/-shm que o WAL cria).
+  nexgestor-dados:

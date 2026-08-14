@@ -21,6 +21,15 @@ COPY app ./app
 # Roda como usuário sem privilégio (boa prática — se o processo for comprometido,
 # não tem root dentro do container).
 RUN useradd --create-home --uid 10001 appuser
+
+# Pasta do banco (SQLite). Precisa existir na imagem E pertencer ao appuser
+# ANTES do volume ser montado: quando um volume nomeado nasce vazio, o Docker
+# copia o conteúdo e o DONO do diretório da imagem. Sem isto o volume nasceria
+# do root, o processo (uid 10001) não conseguiria escrever, e o sintoma seria
+# um 500 na primeira campanha salva — não um erro no boot.
+RUN mkdir -p /dados && chown appuser:appuser /dados
+VOLUME ["/dados"]
+
 USER appuser
 
 EXPOSE 8000

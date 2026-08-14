@@ -190,6 +190,14 @@ avaliar o produto:
   e quebra sem aviso quando a Meta muda a página. Nunca foi validada contra uma
   conta real. Será substituída pela Meta Marketing API (OAuth) antes do
   lançamento.
-- **Não há persistência no servidor.** O backend é *stateless*; tudo que
-  "sobrevive" está no `localStorage` do navegador. Limpar os dados do navegador
-  apaga as campanhas, e não há sincronização entre dispositivos.
+- **A base de campanhas é COMPARTILHADA e isso é temporário.** Desde 14/08/2026
+  o servidor guarda as campanhas analisadas (SQLite), mas **sem login e sem
+  dono**: toda a equipe vê — e pode apagar — as campanhas de todo mundo. Foi
+  uma decisão consciente para o período de testes, em que ver o diagnóstico do
+  colega ajuda. **Antes de abrir para usuários reais isto precisa virar dado por
+  pessoa**; o caminho de migração está documentado em
+  `backend/backend-nexgestor-main/app/service/storage.py`. Não guardar nada
+  sensível ali enquanto for assim.
+- **Sem persistência, a extensão continua funcionando.** Se o servidor estiver
+  fora do ar ou com `DB_PATH` vazio, ela volta a usar só o `localStorage` do
+  navegador — nenhuma campanha some por causa disso.

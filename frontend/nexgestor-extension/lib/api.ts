@@ -1,4 +1,4 @@
-import type { AnalyzeInput, CampaignAnalysisResponse } from "~types"
+import type { AnalyzeInput, CampaignAnalysisResponse, CampaignVM } from "~types"
 
 // Base do backend FastAPI. Defina PLASMO_PUBLIC_API_BASE no .env para produção.
 // No build da equipe (build-team.sh) isto vira a URL do VPS — por isso é
@@ -133,4 +133,85 @@ export async function analyzeCampaign(
   } finally {
     clearTimeout(t)
   }
+}
+
+// =============================================================================
+// Campanhas salvas no servidor.
+//
+// ⚠️ BASE COMPARTILHADA — decisão TEMPORÁRIA do período de testes (14/08/2026):
+//    não há login nem dono, então toda a equipe vê (e pode apagar) as mesmas
+//    campanhas. Isso muda antes do lançamento; o caminho de migração está em
+//    `backend/.../app/service/storage.py`.
+//
+// Regra de ouro destas funções: NUNCA derrubar a UI nem apagar dado local por
+// causa do servidor. Se a persistência estiver desligada ou fora do ar, a
+// extensão volta a funcionar como antes, só com o localStorage.
+// =============================================================================
+
+/** Uma campanha como o servidor a devolve. */
+interface LinhaSalva {
+  id: number
+  payload: CampaignVM
+  criado_em?: string
+  atualizado_em?: string
+}
+
+/**
+ * Lista as campanhas do servidor.
+ *
+ * `null` significa "não deu para falar com a persistência" (desligada, fora do
+ * ar, sem rede) — deliberadamente diferente de `[]`, que significa "a base
+ * respondeu e está vazia". Quem chama precisa distinguir: no primeiro caso
+ * mantém o cache local; no segundo, a base realmente não tem nada.
+ */
+export async function listarCampanhasSalvas(): Promise<CampaignVM[] | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/campaigns`, {
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    })
+    // 501 = persistência desligada neste servidor. Não é erro: é a
+    // configuração antiga (stateless), e a extensão precisa seguir funcionando.
+    if (!res.ok) return null
+
+    const dados = (await res.json()) as { campanhas?: LinhaSalva[] }
+    if (!Array.isArray(dados.campanhas)) return null
+
+    return dados.campanhas
+      .filter((l) => l && typeof l.id === "number" && l.payload && typeof l.payload === "object")
+      .map((l) => ({ ...l.payload, id: idLocalDoServidor(l.id), serverId: l.id }))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Salva (cria ou atualiza) uma campanha. Devolve o id do servidor, ou `null`
+ * se não foi possível salvar — nesse caso a campanha continua só no navegador.
+ */
+export async function salvarCampanha(vm: CampaignVM): Promise<number | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: vm, id: vm.serverId ?? null }),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    })
+    if (!res.ok) return null
+
+    const salva = (await res.json()) as { id?: number }
+    return typeof salva.id === "number" ? salva.id : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Converte o id do servidor no id que a UI usa.
+ *
+ * O deslocamento existe porque a UI reserva ids < 1000 para as campanhas de
+ * exemplo (mock) e usa `isLiveId` para separar as duas coisas — o id 1 do
+ * servidor viraria a campanha de exemplo nº 1 sem esta conversão.
+ */
+export function idLocalDoServidor(serverId: number): number {
+  return 1000 + serverId
 }

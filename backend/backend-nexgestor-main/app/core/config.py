@@ -36,6 +36,22 @@ class Settings(BaseSettings):
     # CORS_ORIGINS e, se quiser travar, defina CORS_ORIGIN_REGEX="" no .env.
     CORS_ORIGIN_REGEX: str = r"chrome-extension://.*"
 
+    # ── Persistência (SQLite) ────────────────────────────
+    # ⚠️ TEMPORÁRIO — combinado para o período de testes (14/08/2026).
+    # A base é COMPARTILHADA: toda a equipe vê as mesmas campanhas, sem login e
+    # sem dono. Isso vai mudar antes do lançamento — ver `app/service/storage.py`,
+    # que documenta o caminho de migração para dados por pessoa.
+    #
+    # Caminho do arquivo. Default VAZIO = persistência desligada, backend
+    # stateless como sempre foi — quem roda local não precisa de banco nenhum e
+    # a suíte de testes não toca em disco por acidente. Quem liga é o
+    # docker-compose (DB_PATH=/dados/nexgestor.db, apontando para o volume).
+    DB_PATH: str = ""
+    # Tetos defensivos: a API é pública e sem autenticação, então sem limite
+    # qualquer um enche o disco do VPS.
+    DB_MAX_CAMPANHAS: int = 500
+    DB_MAX_PAYLOAD_BYTES: int = 64 * 1024
+
     # ── Gemini (IA) ──────────────────────────────────────
     # Sem chave configurada => IA fica desligada e o engine funciona normalmente.
     # repr=False: a key nunca aparece em repr(settings)/str(settings) — evita

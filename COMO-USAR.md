@@ -88,6 +88,28 @@ Basta clicar no ícone do NexGestor. Só isso — não há nada para ligar antes
 
 ---
 
+## ⚠️ Durante os testes, as campanhas são de todo mundo
+
+As campanhas analisadas ficam guardadas **no servidor da empresa, numa base
+única**. Na prática:
+
+- **Você vê as campanhas que seus colegas analisaram, e eles veem as suas.** Não
+  há login nem espaço separado por pessoa.
+- **Se alguém apagar uma campanha, ela some para todos.**
+- Em compensação, seus dados **não somem** se você limpar o navegador ou trocar
+  de computador — é só instalar a extensão de novo.
+
+Isso é **provisório, só para o período de testes** — a ideia é justamente que
+todos vejam os mesmos diagnósticos enquanto avaliamos a ferramenta. Antes do
+lançamento cada pessoa terá seu próprio espaço.
+
+**Enquanto for assim, não analise nada que não possa ser visto pelo time.**
+
+Se o servidor estiver fora do ar, a extensão continua funcionando e guarda suas
+análises no próprio navegador — elas sobem quando o servidor voltar.
+
+---
+
 ## Problemas comuns
 
 | O que aparece | O que fazer |

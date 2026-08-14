@@ -198,4 +198,13 @@ export interface CampaignVM {
    * que é o lado seguro (não promete IA que não houve).
    */
   hasAI?: boolean
+  /**
+   * Id da linha no servidor, quando a campanha já foi salva lá.
+   *
+   * Existe porque `id` NÃO serve de identidade na base compartilhada: ele é
+   * gerado por navegador (>= 1000), então a primeira campanha da Ana e a do
+   * Bruno nascem ambas como 1000. Ausente = existe só neste navegador (salva
+   * enquanto o servidor estava fora, ou persistência desligada).
+   */
+  serverId?: number
 }

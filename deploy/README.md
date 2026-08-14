@@ -22,6 +22,46 @@ a camada de IA e como manter tudo funcionando.
 A renovação do certificado está coberta pelo Gabriel, que montou o servidor
 (informado por ele; o mecanismo não foi verificado daqui).
 
+### Campanhas salvas — base compartilhada (temporária)
+
+Desde 14/08/2026 o servidor guarda as campanhas analisadas num SQLite
+(`/dados/nexgestor.db`, volume `nexgestor-dados`). Endpoints:
+`GET/POST /api/v1/campaigns` e `DELETE /api/v1/campaigns/{id}`.
+
+> ⚠️ **Sem login e sem dono**: toda a equipe vê e pode apagar as campanhas de
+> todo mundo. Foi decidido assim **para o período de testes**. Antes de abrir
+> para usuários reais isto precisa virar dado por pessoa — o caminho de
+> migração está escrito em `app/service/storage.py`.
+
+O que já foi verificado com container real (podman), não presumido:
+
+- O volume nasce pertencendo ao `appuser` (uid 10001) e o processo escreve —
+  a pasta é criada com o dono certo **na imagem**, antes da montagem.
+- **O dado sobrevive a destruir o container E a imagem** e subir de novo:
+  duas campanhas continuaram lá, com os timestamps originais.
+- Com a extensão real em dois perfis diferentes de navegador, os dois enxergam
+  a mesma base, e uma campanha criada depois aparece para ambos.
+- Uma campanha analisada com o servidor fora do ar fica só no navegador e
+  **sobe sozinha** na próxima abertura (verificado ponta a ponta).
+
+**Desligar a persistência:** `DB_PATH=` vazio no `.env`. O backend volta a ser
+stateless e a extensão continua funcionando com o `localStorage` — as rotas
+respondem 501, que ela trata em silêncio.
+
+**Backup** (o arquivo mora num volume Docker, sem cópia automática):
+
+```bash
+docker compose stop api
+docker run --rm -v nexgestor-dados:/d -v "$PWD":/b alpine \
+  sh -c 'cp /d/nexgestor.db* /b/ 2>/dev/null || cp /d/nexgestor.db /b/'
+docker compose start api
+```
+
+Parar o serviço antes evita copiar um `-wal` pela metade. Sem parar, copie
+também os arquivos `nexgestor.db-wal` e `nexgestor.db-shm`.
+
+---
+
 ### Sobre o 404 em `/docs` — não é hardening, é roteamento
 
 O `app/main.py` **não** desabilita a documentação (não há `docs_url=None` nem

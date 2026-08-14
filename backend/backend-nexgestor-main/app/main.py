@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routes import routes
+from app.routes import routes, campanhas_salvas
 from app.core.config import settings
 
 
@@ -86,3 +86,6 @@ def health_check():
 
 # Registra as rotas do módulo `campaign` sob o prefixo /api/v1.
 app.include_router(routes.router, prefix=settings.API_V1_STR)
+
+# Persistência das campanhas (base COMPARTILHADA — temporária, ver storage.py).
+app.include_router(campanhas_salvas.router, prefix=settings.API_V1_STR)
