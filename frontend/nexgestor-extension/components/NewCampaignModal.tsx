@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react"
 
 import { IconBolt, IconCheck, IconEdit, IconRefresh } from "~components/Icons"
 import { responseToVM } from "~lib/adapt"
-import { analyzeCampaign } from "~lib/api"
+import { analyzeCampaign, API_BASE, IS_LOCAL_BACKEND, isApiError } from "~lib/api"
 import { nextLiveId } from "~lib/store"
 import type { AnalyzeInput, CampaignVM, Metrics, Targets } from "~types"
 
 // Etapas reais da análise: enviar → engine processa → montar resultado.
 const STEPS = [
   { t: "Enviando métricas ao engine…", ico: <path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z" /> },
-  { t: "Cruzando dados com os 11 cenários…", ico: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></> },
+  // 15 = número de detectores no engine (`_detect_*` em service.py). Os 4
+  // últimos (L–O) entraram em 2026-07-28 e este texto ficou dizendo 11.
+  { t: "Cruzando dados com os 15 cenários…", ico: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></> },
   { t: "Montando diagnóstico…", ico: <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" /> }
 ]
 
@@ -23,6 +25,56 @@ export function num(raw: string): number | undefined {
   const direct = Number(s.replace(",", "."))
   const n = Number.isFinite(direct) ? direct : Number(normalized)
   return Number.isFinite(n) ? n : undefined
+}
+
+/**
+ * Traduz a falha da análise para uma frase que diga o que fazer.
+ *
+ * A regra é a mesma em todos os ramos: nunca sugerir que o problema está nos
+ * dados da campanha quando o problema é do servidor, e nunca mandar o usuário
+ * mexer em algo que não existe na máquina dele.
+ *
+ * `base`/`local` são parâmetros (e não leitura direta dos módulos) só para os
+ * testes conseguirem exercitar os dois tipos de build — o call site usa os
+ * defaults.
+ */
+export function mensagemDeErro(
+  e: unknown,
+  base: string = API_BASE,
+  local: boolean = IS_LOCAL_BACKEND,
+  online: boolean = typeof navigator === "undefined" ? true : navigator.onLine
+): string {
+  const msg = e instanceof Error ? e.message : String(e)
+
+  // Já é texto pronto para o usuário (servidor ocupado, fora do ar, timeout).
+  // Embrulhar em "A análise falhou" contradiria a própria mensagem.
+  if (isApiError(e)) return msg
+
+  const semRede = msg.includes("Failed to fetch") || msg.includes("NetworkError")
+  if (!semRede) return `A análise falhou: ${msg}`
+
+  // Modo desenvolvedor: quem roda backend local sabe o que fazer. (localhost
+  // funciona offline, então `online` não entra nesta decisão.)
+  if (local) {
+    return `Não foi possível falar com o backend em ${base}. Confirme que ele está rodando (uvicorn app.main:app --reload).`
+  }
+
+  // Único caso em que dá pra AFIRMAR que o problema é a internet do usuário.
+  // (`onLine: true` não prova conexão; `false` prova a ausência dela.)
+  if (!online) {
+    return "Você está sem conexão com a internet. Reconecte e tente de novo — seus dados continuam preenchidos."
+  }
+
+  // Aqui "Failed to fetch" continua ambíguo, e medir no servidor mostrou por
+  // quê (14/08/2026): o 429 do limite de requisições é gerado pelo nginx, SEM
+  // cabeçalho CORS. Com o host declarado em `host_permissions` o painel fica
+  // isento de CORS e passa a LER esse 429 (aí cai no ramo de ApiError, com
+  // mensagem exata) — mas isso vale só para os hosts declarados. Um build
+  // apontado para outro endereço, ou um erro do proxy fora do previsto, ainda
+  // chega aqui indistinguível de queda de rede. Afirmar "verifique sua
+  // conexão" mandaria o usuário caçar problema na internet dele enquanto o
+  // servidor apenas o estava limitando, então a mensagem cita as duas causas.
+  return `Não foi possível falar com o servidor (${base}). Pode ser sua conexão, ou o servidor recusando por excesso de análises ao mesmo tempo — a equipe divide o mesmo limite. Espere um minuto e tente de novo; se continuar, avise o responsável técnico.`
 }
 
 /** Arredonda os campos que o backend tipa como int; os demais passam intactos. */
@@ -337,12 +389,7 @@ export function NewCampaignModal({
     } catch (e) {
       clearTimeout(timer.current)
       setStep(-1)
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(
-        msg.includes("Failed to fetch") || msg.includes("NetworkError")
-          ? "Não foi possível falar com o backend. Confirme que ele está rodando em http://localhost:8000 (uvicorn app.main:app --reload)."
-          : `A análise falhou: ${msg}`
-      )
+      setError(mensagemDeErro(e))
     }
   }
 

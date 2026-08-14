@@ -56,6 +56,25 @@ fi
 
 echo "▶ Backend configurado: $API_URL"
 
+# ── 1b) O host precisa estar em host_permissions ─────────
+# Sem a URL declarada ali, o painel fica sujeito a CORS normal. Respostas
+# geradas pelo BACKEND continuam funcionando (ele manda os cabeçalhos), mas
+# tudo que o proxy responde sozinho — 429 do limite, 502 de backend fora do ar
+# — vem sem CORS e é bloqueado pelo Chrome ANTES do código ler o status. A
+# extensão então mostra "não foi possível falar com o servidor" em vez da causa
+# real. Não quebra o uso normal, mas degrada o diagnóstico; por isso avisa.
+API_HOST="$(printf '%s' "$API_URL" | sed -E 's#^https?://##; s#[:/].*$##')"
+if ! grep -q "$API_HOST" package.json; then
+  echo ""
+  echo "⚠️  '$API_HOST' NÃO está em host_permissions (package.json)."
+  echo "    O build funciona, mas erros gerados pelo proxy (429 de limite, 502"
+  echo "    de servidor fora do ar) chegarão como 'Failed to fetch' e a extensão"
+  echo "    não conseguirá explicar a causa certa ao usuário."
+  echo "    Para corrigir, acrescente em package.json → manifest.host_permissions:"
+  echo "        \"https://$API_HOST/*\""
+  echo ""
+fi
+
 # ── 2) Grava a variável de ambiente do build ─────────────
 echo "PLASMO_PUBLIC_API_BASE=$API_URL" > .env.production
 echo "▶ .env.production gravado."

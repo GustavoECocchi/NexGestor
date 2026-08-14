@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest"
-import { chavesDoFormularioManual, normalizaCampo, num, parseFileJSON } from "~components/NewCampaignModal"
+import { chavesDoFormularioManual, mensagemDeErro, normalizaCampo, num, parseFileJSON } from "~components/NewCampaignModal"
+import { ApiError } from "~lib/api"
 
 beforeEach(() => {
   localStorage.clear() // parseFileJSON chama nextLiveId(), que lê localStorage
@@ -188,5 +189,95 @@ describe("normalizaCampo — campo inteiro não pode virar 422", () => {
     expect(r.input.metrics.impressions).toBe(50001)
     expect(r.input.metrics.link_clicks).toBe(900)
     expect(r.input.metrics.cpa).toBe(49.99)
+  })
+})
+
+describe("mensagemDeErro — o que o usuário lê quando a análise falha", () => {
+  const REMOTO = "https://gestor.nexgold.com.br"
+  const LOCAL = "http://localhost:8000"
+
+  describe("erro já escrito para o usuário (ApiError)", () => {
+    it("mostra o texto como está, sem embrulhar em 'A análise falhou'", () => {
+      const e = new ApiError(
+        "O servidor está recebendo muitas análises agora. Espere um minuto e tente de novo."
+      )
+      const out = mensagemDeErro(e, REMOTO, false)
+
+      expect(out).toBe(e.message)
+      // O embrulho contradiria a mensagem: manda procurar defeito nos dados
+      // da campanha quando o problema é só o servidor estar ocupado.
+      expect(out).not.toMatch(/análise falhou/i)
+    })
+
+    it("vale igual no build local", () => {
+      const e = new ApiError("O servidor não respondeu em 30s. Tente de novo em alguns minutos.")
+      expect(mensagemDeErro(e, LOCAL, true)).toBe(e.message)
+    })
+  })
+
+  describe("sem rede — a instrução muda com o tipo de build", () => {
+    const semRede = new TypeError("Failed to fetch")
+
+    it("build da equipe não manda o usuário 'subir o backend'", () => {
+      const out = mensagemDeErro(semRede, REMOTO, false, true)
+
+      expect(out).toContain(REMOTO)
+      expect(out).not.toMatch(/localhost/i)
+      expect(out).not.toMatch(/uvicorn/i)
+    })
+
+    it("build local dá a instrução de desenvolvedor", () => {
+      const out = mensagemDeErro(semRede, LOCAL, true, true)
+
+      expect(out).toContain(LOCAL)
+      expect(out).toMatch(/uvicorn/i)
+    })
+
+    it("reconhece também o texto do Firefox ('NetworkError')", () => {
+      const out = mensagemDeErro(new TypeError("NetworkError when attempting to fetch resource."), REMOTO, false, true)
+      expect(out).not.toMatch(/análise falhou/i)
+    })
+  })
+
+  describe("'Failed to fetch' é ambíguo — a mensagem não pode culpar a internet", () => {
+    // Medido no servidor em 14/08/2026: o 429 do limite de requisições é
+    // gerado pelo nginx e sai SEM cabeçalho CORS (o 200, que vem do backend,
+    // sai com ele). O Chrome então bloqueia a resposta antes do código ler o
+    // status, e o erro chega como "Failed to fetch" — indistinguível de queda
+    // de rede. Com a equipe atrás do mesmo IP (NAT), isto vai acontecer.
+    const semRede = new TypeError("Failed to fetch")
+
+    it("com o navegador online, cita as duas causas possíveis", () => {
+      const out = mensagemDeErro(semRede, REMOTO, false, true)
+
+      expect(out).toMatch(/muitas análises|excesso de análises/i)
+      // Não pode AFIRMAR que é a internet do usuário: `onLine: true` não
+      // prova conexão, e a causa provável é o limite do servidor.
+      expect(out).not.toMatch(/verifique sua conexão/i)
+    })
+
+    it("offline de verdade é o único caso em que afirma ser a internet", () => {
+      const out = mensagemDeErro(semRede, REMOTO, false, false)
+
+      expect(out).toMatch(/sem conexão/i)
+      expect(out).not.toMatch(/excesso de análises/i)
+    })
+
+    it("no build local o offline não muda a instrução (localhost roda sem internet)", () => {
+      expect(mensagemDeErro(semRede, LOCAL, true, false)).toMatch(/uvicorn/i)
+    })
+  })
+
+  describe("erro inesperado", () => {
+    it("preserva o detalhe técnico — é o que permite diagnosticar", () => {
+      const out = mensagemDeErro(new Error("Falha na análise: 500"), REMOTO, false)
+      expect(out).toContain("500")
+    })
+
+    it("aceita coisa que nem é Error sem quebrar a tela", () => {
+      expect(mensagemDeErro("pane geral", REMOTO, false)).toContain("pane geral")
+      expect(() => mensagemDeErro(null, REMOTO, false)).not.toThrow()
+      expect(() => mensagemDeErro(undefined, REMOTO, false)).not.toThrow()
+    })
   })
 })
