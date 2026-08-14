@@ -233,3 +233,74 @@ class TestRobustez:
         assert client.post("/api/v1/campaigns", json={"payload": "texto"}).status_code == 422
         assert client.post("/api/v1/campaigns", json={"payload": 42}).status_code == 422
         assert client.post("/api/v1/campaigns", json={}).status_code == 422
+
+
+class TestFalhaDeInfra:
+    """
+    Banco inacessível (disco cheio, permissão, volume não montado).
+
+    Medido com uma pasta somente-leitura em 14/08/2026: o app SOBE normalmente,
+    as rotas de persistência devolvem 500 com mensagem limpa (sem traceback no
+    corpo) e a ANÁLISE continua respondendo 200 — o produto principal não pode
+    cair junto com o acessório.
+    """
+
+    def test_erro_no_banco_vira_500_com_mensagem_limpa(self, base, monkeypatch):
+        def explode(*_a, **_k):
+            raise sqlite3.OperationalError("attempt to write a readonly database")
+
+        monkeypatch.setattr(storage, "listar", explode)
+        monkeypatch.setattr(storage, "salvar", explode)
+        monkeypatch.setattr(storage, "remover", explode)
+
+        for resp in (
+            client.get("/api/v1/campaigns"),
+            client.post("/api/v1/campaigns", json={"payload": VM}),
+            client.delete("/api/v1/campaigns/1"),
+        ):
+            assert resp.status_code == 500
+            corpo = resp.json()["detail"]
+            # O detalhe técnico fica no log do servidor, não na resposta.
+            assert "readonly" not in corpo
+            assert "Traceback" not in corpo
+
+    def test_analise_nao_cai_junto_com_a_persistencia(self, base, monkeypatch):
+        monkeypatch.setattr(storage, "listar", lambda *_a, **_k: 1 / 0)
+
+        r = client.post(
+            "/api/v1/campaign/analyze",
+            json={
+                "campaign": {"id": 1, "name": "t"},
+                "metrics": {"spend": 100, "conversions": 5},
+                "targets": {},
+            },
+        )
+        assert r.status_code == 200
+
+
+class TestEntradaHostil:
+    """Round-trip do payload — o backend não interpreta, então não pode alterar."""
+
+    def test_conteudo_hostil_volta_identico_e_nao_executa_nada(self, base):
+        payload = {
+            "name": "<script>alert('xss')</script> & \"aspas\" 'simples'",
+            "sql": "'; DROP TABLE campanhas; --",
+            "emoji": "🚀 ação ñ",
+            "quebras": "linha1\nlinha2\ttab",
+            "aninhado": {"lista": [1, 2, {"profundo": None}]},
+            "zero": 0,
+            "falso": False,
+        }
+        client.post("/api/v1/campaigns", json={"payload": payload})
+
+        lista = client.get("/api/v1/campaigns").json()["campanhas"]
+        assert lista[0]["payload"] == payload
+        # A tabela continua existindo: as queries são parametrizadas.
+        assert len(lista) == 1
+
+    def test_id_nao_numerico_no_delete_e_422_e_nao_500(self, base):
+        assert client.delete("/api/v1/campaigns/abc").status_code == 422
+
+    def test_entradas_invalidas_nunca_viram_500(self, base):
+        for corpo in ({"payload": "texto"}, {"payload": 42}, {"payload": None}, {}, [1, 2, 3]):
+            assert client.post("/api/v1/campaigns", json=corpo).status_code == 422

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { listarCampanhasSalvas, salvarCampanha, idLocalDoServidor } from "~lib/api"
-import { loadLive, marcarComoSalva, mesclarComServidor, upsertLive } from "~lib/store"
+import { apagarCampanha, listarCampanhasSalvas, salvarCampanha, idLocalDoServidor } from "~lib/api"
+import { loadLive, marcarComoSalva, mesclarComServidor, removeLive, upsertLive } from "~lib/store"
 import type { CampaignVM } from "~types"
 
 /**
@@ -202,5 +202,61 @@ describe("salvarCampanha", () => {
       fetchMock.mockResolvedValue(resposta(status))
       await expect(salvarCampanha(vm())).resolves.toBeNull()
     }
+  })
+})
+
+describe("apagarCampanha — traduz a resposta do servidor em decisão", () => {
+  it("200 é sucesso", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { removida: 3 }))
+    await expect(apagarCampanha(3)).resolves.toBe("apagada")
+  })
+
+  it("404 também é sucesso — outra pessoa do time já apagou", async () => {
+    // O objetivo do usuário era "que ela não esteja mais lá". Chamar isso de
+    // falha geraria alarme sobre algo que já está do jeito que ele queria.
+    fetchMock.mockResolvedValue(resposta(404))
+    await expect(apagarCampanha(3)).resolves.toBe("sumiu")
+  })
+
+  it("erro do servidor e persistência desligada NÃO são sucesso", async () => {
+    for (const status of [500, 501, 502, 429]) {
+      fetchMock.mockResolvedValue(resposta(status))
+      await expect(apagarCampanha(3), `status ${status}`).resolves.toBe("falhou")
+    }
+  })
+
+  it("sem rede é falha, e não lança", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"))
+    await expect(apagarCampanha(3)).resolves.toBe("falhou")
+  })
+
+  it("usa DELETE no id certo", async () => {
+    fetchMock.mockResolvedValue(resposta(200))
+    await apagarCampanha(42)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toMatch(/\/api\/v1\/campaigns\/42$/)
+    expect(init.method).toBe("DELETE")
+  })
+})
+
+describe("removeLive", () => {
+  it("remove só a campanha pedida e persiste", () => {
+    upsertLive(vm({ id: 1001, name: "Fica" }))
+    upsertLive(vm({ id: 1002, name: "Sai" }))
+
+    expect(removeLive(1002).map((c) => c.name)).toEqual(["Fica"])
+    expect(loadLive().map((c) => c.name)).toEqual(["Fica"])
+  })
+
+  it("id inexistente não apaga nada", () => {
+    upsertLive(vm({ id: 1001, name: "Fica" }))
+    expect(removeLive(9999)).toHaveLength(1)
+  })
+
+  it("remover a última deixa a lista vazia, não corrompida", () => {
+    upsertLive(vm({ id: 1001 }))
+    expect(removeLive(1001)).toEqual([])
+    expect(loadLive()).toEqual([])
   })
 })

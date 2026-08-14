@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { CampaignDetail } from "~components/CampaignDetail"
 import { CommandPalette } from "~components/CommandPalette"
@@ -7,8 +7,8 @@ import { Header } from "~components/Header"
 import { Home } from "~components/Home"
 import { NewCampaignModal } from "~components/NewCampaignModal"
 import { CAMPAIGNS } from "~data/mock"
-import { idLocalDoServidor, listarCampanhasSalvas, salvarCampanha } from "~lib/api"
-import { loadLive, marcarComoSalva, mesclarComServidor, upsertLive } from "~lib/store"
+import { apagarCampanha, idLocalDoServidor, listarCampanhasSalvas, salvarCampanha } from "~lib/api"
+import { loadLive, marcarComoSalva, mesclarComServidor, removeLive, upsertLive } from "~lib/store"
 import type { CampaignVM } from "~types"
 
 type Screen = { name: "home" } | { name: "detail"; id: number }
@@ -33,6 +33,10 @@ export function App() {
   const [palette, setPalette] = useState(false)
   // Campanhas analisadas ao vivo (persistidas em localStorage) + demo mock.
   const [live, setLive] = useState<CampaignVM[]>(loadLive)
+  // Ids já apagados nesta sessão. Existe por causa de uma corrida real: o GET
+  // da sincronização pode ter partido ANTES do DELETE, e sem este filtro a
+  // campanha reapareceria depois de o usuário a ter apagado.
+  const apagadas = useRef<Set<number>>(new Set())
 
   const campaigns = useMemo(() => [...live, ...CAMPAIGNS], [live])
 
@@ -53,7 +57,9 @@ export function App() {
 
     listarCampanhasSalvas().then(async (doServidor) => {
       if (cancelado || doServidor === null) return
-      const mesclada = mesclarComServidor(doServidor)
+      const mesclada = mesclarComServidor(
+        doServidor.filter((c) => c.serverId === undefined || !apagadas.current.has(c.serverId))
+      )
       setLive(mesclada)
 
       // Sobe o que ficou só neste navegador — analisado enquanto o servidor
@@ -72,6 +78,37 @@ export function App() {
       cancelado = true
     }
   }, [])
+
+  /**
+   * Apaga uma campanha. `false` = não deu, e o card continua na tela.
+   *
+   * Falhas previstas e o que cada uma faz:
+   *
+   * - Campanha que existe só aqui (sem `serverId`): apaga local, sem rede.
+   * - Servidor responde 404: alguém do time já apagou. É sucesso — o objetivo
+   *   era que ela não estivesse mais lá.
+   * - Servidor fora do ar / 500: NÃO some da tela. Sumir daqui e continuar no
+   *   servidor faria a campanha "ressuscitar" na próxima abertura, que é pior
+   *   que uma mensagem de erro honesta.
+   */
+  const apagar = async (id: number): Promise<boolean> => {
+    const alvo = live.find((c) => c.id === id)
+    if (!alvo) return true // já não está aqui
+
+    if (alvo.serverId !== undefined) {
+      const r = await apagarCampanha(alvo.serverId)
+      if (r === "falhou") return false
+      // Guarda o id para a sincronização em voo não trazer a campanha de
+      // volta: o GET pode ter partido antes do DELETE chegar.
+      apagadas.current.add(alvo.serverId)
+    }
+
+    setLive(removeLive(id))
+    // Se a tela persistida apontava para ela, não deixe o usuário cair num
+    // detalhe de campanha que não existe mais.
+    setScreen((atual) => (atual.name === "detail" && atual.id === id ? { name: "home" } : atual))
+    return true
+  }
 
   /**
    * Passa a campanha a ser identificada pelo servidor.
@@ -132,6 +169,7 @@ export function App() {
           onOpenCampaign={openCampaign}
           onNew={() => setModal("new")}
           onCompare={() => setModal("compare")}
+          onDelete={apagar}
         />
       ) : (
         <CampaignDetail key={`detail-${detail.id}`} c={detail} onBack={goHome} />

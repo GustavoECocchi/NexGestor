@@ -12,13 +12,15 @@ export function Home({
   liveCount,
   onOpenCampaign,
   onNew,
-  onCompare
+  onCompare,
+  onDelete
 }: {
   campaigns: CampaignVM[]
   liveCount: number
   onOpenCampaign: (id: number) => void
   onNew: () => void
   onCompare: () => void
+  onDelete: (id: number) => Promise<boolean>
 }) {
   const [filter, setFilter] = useState<UIStatus | null>(null)
   const toggle = (s: UIStatus) => setFilter((f) => (f === s ? null : s))
@@ -66,7 +68,16 @@ export function Home({
           ) : (
             <div className="feed">
               {list.map((c, i) => (
-                <CampaignCard key={c.id} c={c} index={i} demo={!isLiveId(c.id)} onOpen={onOpenCampaign} />
+                <CampaignCard
+                  key={c.id}
+                  c={c}
+                  index={i}
+                  demo={!isLiveId(c.id)}
+                  onOpen={onOpenCampaign}
+                  // Exemplo não é apagável: não pertence a ninguém e volta no
+                  // próximo carregamento (vem do mock, não do servidor).
+                  onDelete={isLiveId(c.id) ? onDelete : undefined}
+                />
               ))}
             </div>
           )}

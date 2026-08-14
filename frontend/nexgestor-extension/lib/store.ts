@@ -135,3 +135,10 @@ export function marcarComoSalva(
   persist(nova)
   return nova
 }
+
+/** Remove uma campanha do cache local. Devolve a lista nova. */
+export function removeLive(id: number): CampaignVM[] {
+  const nova = loadLive().filter((c) => c.id !== id)
+  persist(nova)
+  return nova
+}

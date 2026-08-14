@@ -393,6 +393,30 @@ body::after{
 .cmdk-tag.ghost{background:var(--bg);border:1px solid var(--line);color:var(--muted)}
 .cmdk-empty{padding:18px;text-align:center;color:var(--muted);font-size:12px}
 
+
+/* ===== Apagar campanha (lixeira no canto do card) =====
+   A base é COMPARTILHADA no período de testes: apagar remove para todo o time,
+   por isso a confirmação diz isso com todas as letras em vez de um "tem
+   certeza?" genérico.
+   O espaço é RESERVADO por `.card.delible .pill{margin-right}` — a lixeira
+   aparece/some só com opacidade, nunca empurrando o layout no hover. */
+.card-del{position:absolute;top:11px;right:11px;z-index:2;width:26px;height:26px;display:grid;place-items:center;padding:0;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--txt-3);cursor:pointer;opacity:0;transition:opacity .18s ease,color .18s ease,background .18s ease,border-color .18s ease}
+.card-del svg{width:14px;height:14px}
+.card:hover .card-del,.card:focus-within .card-del{opacity:1}
+.card-del:hover{color:var(--red);background:color-mix(in srgb, var(--red) 12%, transparent);border-color:color-mix(in srgb, var(--red) 35%, transparent)}
+.card-del:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:2px}
+.card.delible .pill{margin-right:30px}
+/* Sem hover (toque): a lixeira não pode ficar inalcançável. */
+@media (hover:none){.card-del{opacity:1}}
+
+.card-del-confirm{position:absolute;top:8px;right:8px;left:8px;z-index:3;display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel-2);border:1px solid color-mix(in srgb, var(--red) 40%, var(--line));box-shadow:0 10px 24px -12px var(--shadow)}
+.card-del-confirm span{flex:1;font-size:11.5px;color:var(--txt-2);line-height:1.25}
+.card-del-confirm button{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--txt-2)}
+.card-del-confirm button:disabled{opacity:.6;cursor:default}
+.del-yes{border-color:color-mix(in srgb, var(--red) 45%, transparent)!important;background:color-mix(in srgb, var(--red) 14%, transparent)!important;color:var(--red)!important}
+.del-yes:hover:not(:disabled){background:color-mix(in srgb, var(--red) 22%, transparent)!important}
+.del-no:hover:not(:disabled){border-color:var(--line-2);color:var(--txt)}
+
 /* ===== Movimento reduzido =====
    Respeita quem pede menos animação no SO. `.card`/`.mtile` já nascem visíveis
    (o `rise` só anima o estado inicial via `from` + fill `backwards`), então não é

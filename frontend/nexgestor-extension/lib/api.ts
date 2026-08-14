@@ -215,3 +215,27 @@ export async function salvarCampanha(vm: CampaignVM): Promise<number | null> {
 export function idLocalDoServidor(serverId: number): number {
   return 1000 + serverId
 }
+
+/** Resultado de apagar — "sumiu" cobre o 404, que na prática é sucesso. */
+export type ResultadoApagar = "apagada" | "sumiu" | "falhou"
+
+/**
+ * Apaga uma campanha da base compartilhada.
+ *
+ * 404 vira "sumiu", não erro: na base compartilhada outra pessoa pode ter
+ * apagado a mesma campanha antes. O objetivo do usuário ("que ela não esteja
+ * mais lá") foi atingido, então tratar como falha só geraria alarme falso.
+ */
+export async function apagarCampanha(serverId: number): Promise<ResultadoApagar> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/campaigns/${serverId}`, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    })
+    if (res.ok) return "apagada"
+    if (res.status === 404) return "sumiu"
+    return "falhou"
+  } catch {
+    return "falhou"
+  }
+}
