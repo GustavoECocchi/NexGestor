@@ -688,6 +688,28 @@ manual **não tem campo** para ajustar esse piso (só a importação por JSON te
 via `min_weekly_conversions`). Para anunciante pequeno, quase toda campanha vai
 parecer crítica. Decisão de produto, deixada para o usuário.
 
+## Sessão de 2026-08-15 — repositório da empresa sincronizado, sem mudança de código
+
+Sessão curta, administrativa. **Nenhum arquivo de aplicação foi tocado** — só
+`CLAUDE.md`. Suite backend reconferida ao final: **1393 passed, 0 failed**.
+Frontend não tocado, `tsc --noEmit` não rodado (nada para validar).
+
+- **`empresa/main` estava 10 commits atrás de `origin/main`** (pendentes desde
+  2026-07-28: sessões de 2026-07-28/29, 2026-08-10 e os 5 de 2026-08-14).
+  Confirmado fast-forward limpo (`git merge-base --is-ancestor empresa/main
+  main`) antes de empurrar — sem rebase, sem force. `git push empresa main`
+  resolveu; os dois remotes ficaram no mesmo commit. Isso fecha o item 8 do
+  roadmap, que estava marcado como pendente de sincronização.
+- **Combinado com o outro dev**: ele avisou que foi ele quem subiu o código no
+  VPS da primeira vez, e o usuário pediu a ele para atualizar com o código
+  novo (que já tinha persistência/lixeira, commitado desde 2026-08-14).
+  **Ainda não confirmado que ele rodou isso** — `GET
+  /api/v1/campaigns` em produção não foi reconferido nesta sessão. É o
+  primeiro passo a checar na próxima sessão (ver item 9 abaixo).
+- Sem mudança de código, sem decisão de produto nova. O resto da sessão foi
+  conversa sobre nível técnico do projeto e orientação de carreira do usuário
+  (fora do escopo deste arquivo).
+
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1393/1393** (1354 até 2026-07-29; +26 de persistência e +13 de robustez em 2026-08-14), sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
@@ -697,7 +719,7 @@ parecer crítica. Decisão de produto, deixada para o usuário.
 5. ✅ **Key exposta (2026-07-14) revogada e substituída** — confirmado 401 em 2026-07-16; key nova gerada, configurada e validada ao vivo em 2026-07-25 (ver item 2). **Duas keys adicionais foram expostas no chat durante essa própria configuração** (causa: orientação errada minha sobre o prefixo `!`) — tratadas como queimadas; regra de "segredo só por editor externo" fixada no CLAUDE.md.
 6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`. **Completado em 2026-07-26**: aquele isolamento cobria só `TestIADesativada`; os testes de endpoint ainda faziam 6 chamadas reais ao Gemini por execução. O `conftest.py` agora desliga a IA em toda a suíte (provado com sockets bloqueados: 0 tentativas de rede).
 7. 🟡 **Persistência existe desde 2026-08-14 — em base COMPARTILHADA, e isso é temporário.** O backend guarda as campanhas num SQLite de arquivo único (`/dados/nexgestor.db`, volume `nexgestor-dados`); rotas `GET/POST /api/v1/campaigns` e `DELETE /api/v1/campaigns/{id}`, com lixeira no card. **Sem login e sem dono: toda a equipe vê e apaga as campanhas de todo mundo** — decisão explícita do usuário para o período de testes, com o caminho de migração escrito em `app/service/storage.py` (coluna `dono`, filtro no listar/remover, autenticação de verdade). **Antes de abrir para usuários reais isto PRECISA virar dado por pessoa.** `DB_PATH` vazio é o padrão (stateless); desligada, as rotas respondem 501 e a extensão volta ao `localStorage` sem erro. Validado com container real (sobrevive a destruir container e imagem), dois perfis de navegador vendo a mesma base, e campanha só-local subindo sozinha. **Ainda não está no ar** — depende do item 9.
-8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **Sincronizado em 2026-08-15**: `empresa/main` estava 10 commits atrás de `origin/main` (os pendentes de 2026-07-28/29, 2026-08-10 e 2026-08-14); `git push empresa main` resolveu com fast-forward simples (confirmado via `git merge-base --is-ancestor` antes de empurrar). `origin` e `empresa` estão no mesmo commit agora (`3da9fb3`). O `push` em si nunca precisou de admin — só a chave de deploy exige (ver item 9).
+8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **Sincronizado em 2026-08-15**: `empresa/main` estava 10 commits atrás de `origin/main` (os pendentes de 2026-07-28/29, 2026-08-10 e 2026-08-14); `git push empresa main` resolveu com fast-forward simples (confirmado via `git merge-base --is-ancestor` antes de empurrar). `origin` e `empresa` estão no mesmo commit desde então (conferir com `git rev-list --count empresa/main..main` — deve ser 0). O `push` em si nunca precisou de admin — só a chave de deploy exige (ver item 9).
 9. 🟡 **Distribuição para a equipe — o deploy JÁ FOI FEITO (por outra pessoa), mas está DESATUALIZADO.** *(Atualizado em 2026-08-14; o texto de 2026-08-10/12 abaixo ficou obsoleto — os "bloqueios irredutíveis" de IP e SSH não se aplicam mais ao deploy inicial, que aconteceu sem nós.)* `https://gestor.nexgold.com.br` responde, com HTTPS válido até 11/11/2026, atrás do **nginx do próprio VPS** (não do Caddy deste repo) e com **limite de requisições ativo** (60r/m + burst 10, devolvendo 429). **O que está no ar é o código de antes de 2026-08-14**: verificado, `GET /api/v1/campaigns` responde **404** lá. Ou seja, **sem persistência e sem lixeira para a equipe** até alguém com acesso rodar `git pull && docker compose up -d --build` na pasta `deploy/`. Só depois disso faz sentido gerar o pacote (`build-team.sh https://gestor.nexgold.com.br`) — antes, distribuiria uma extensão falando com um backend que não tem essas rotas. **Pendente no servidor, com correção pronta e testada em nginx 1.24 real:** o 429 sai sem cabeçalho CORS (bloco `error_page 429` + `location @limite` em `deploy/nginx-gestor.conf.exemplo`); deixou de ser bloqueante porque o `host_permissions` resolve pelo lado da extensão, mas conserta a causa na origem e cobre o preflight. **A IA está ligada** com chave única compartilhada (limite de R$15 dividido pela equipe) — a chave do `.env` local foi confirmada válida em 2026-08-14.
 
     *Histórico (2026-08-10):* infraestrutura preparada aqui — O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por coisas externas ao código. **Atualização de 2026-08-12:** o **nome** do subdomínio saiu — `gestor.nexgold.com.br` — mas o **registro A nunca foi criado** (NXDOMAIN confirmado no servidor autoritativo da Hostinger, não é propagação pendente). Os bloqueios que restam são **o IP do VPS** (sem ele não há o que cadastrar no DNS, e nem o atalho `nip.io` funciona) e **o acesso SSH** (o deploy roda lá, não aqui) — os dois irredutíveis. A **coordenação da porta 443** continua indefinida, mas é contornável (opção B, ~2 min). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
@@ -711,14 +733,17 @@ parecer crítica. Decisão de produto, deixada para o usuário.
 > O código está **pronto, testado e commitado**. O que falta é **atualizar o que
 > está no ar** e terminar a validação manual que o usuário começou.
 >
-> 1. **Subir o código novo no VPS** — é o que destrava tudo. Hoje
->    `GET /api/v1/campaigns` responde **404** lá (verificado), ou seja, a equipe
->    não tem persistência nem lixeira. Precisa de quem tem acesso ao servidor:
->    `git pull && docker compose up -d --build` na pasta `deploy/`. **Conferir
->    depois** que o `docker-compose.yml` foi de fato o que subiu — segue não
->    confirmado como o backend atual foi iniciado (compose vs uvicorn/systemd);
->    se não for pelo compose, o volume `nexgestor-dados` e o `DB_PATH` não
->    entram, e a persistência fica desligada respondendo 501.
+> 1. **Subir o código novo no VPS** — é o que destrava tudo. Hoje (última
+>    verificação, 2026-08-14) `GET /api/v1/campaigns` responde **404** lá, ou
+>    seja, a equipe não tem persistência nem lixeira. **2026-08-15: o usuário já
+>    pediu ao outro dev (que tem acesso SSH) para rodar isso** — ainda não
+>    confirmado se ele já fez. Comando: `git pull && docker compose up -d
+>    --build` na pasta `deploy/`. **Primeira coisa a checar na próxima
+>    sessão**: rodar `curl https://gestor.nexgold.com.br/api/v1/campaigns` — se
+>    voltar 200, ele já subiu; se 404, ainda não. **Conferir também** que o
+>    `docker-compose.yml` foi de fato o que subiu (compose vs uvicorn/systemd
+>    direto) — se não for pelo compose, o volume `nexgestor-dados` e o
+>    `DB_PATH` não entram, e a persistência fica desligada respondendo 501.
 > 2. **Terminar o teste manual** (o usuário precisou sair no meio): recarregar a
 >    extensão para pegar o build novo, conferir a seção **"Observações da IA"**
 >    no detalhe, testar **persistência** (recarregar a extensão e ver a campanha
