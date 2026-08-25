@@ -710,6 +710,143 @@ Frontend não tocado, `tsc --noEmit` não rodado (nada para validar).
   conversa sobre nível técnico do projeto e orientação de carreira do usuário
   (fora do escopo deste arquivo).
 
+## Sessão de 2026-08-25 (parte 2) — varredura do backend: 13 defeitos de veracidade e coerência
+
+Pedido do usuário depois do bug do card no dashboard (parte 1): varrer o
+backend atrás de "erros como esse" — falsos positivos, texto que contradiz o
+dado, conflitos entre cenários. Suítes ao final: **backend 1402 → 1450/1450**,
+**dashboard 288/288**, `tsc --noEmit` limpo.
+
+### Por que 1402 testes verdes não pegavam nada disso
+
+Todos os testes existentes usavam metas próximas do default: `min_ctr_link`
+nunca abaixo de 1.0, `min_roas` nunca acima de 3.0, `min_hold_rate` só 5 ou 15.
+Os defeitos vivem **fora dessa faixa** — exatamente onde cai um gestor que
+configura as próprias metas, que é o motivo de a classe `Targets` existir.
+
+Método: 80.000 casos de fuzz checando **invariantes** (propriedades que nunca
+podem ser violadas) em vez de valores esperados. **0 crashes** — a robustez das
+sessões anteriores segurou; o que quebrava era a veracidade do texto e a
+coerência das recomendações.
+
+### Os três padrões de raiz
+
+1. **Limiar hardcoded ignorando o `Target` configurável.** `ctr_link < 0.7`
+   (Cenário C e nota de CTR Todos), `hold_rate < 10.0` (Cenário B),
+   `roas > 10.0` (Cenário K). Como o semáforo da métrica JÁ usava o alvo, os
+   dois discordavam sobre o mesmo número na mesma tela.
+2. **Texto formatado sem validar sinal/precisão do número.** Déficit negativo,
+   meta arredondada, desvio exibido como 0%.
+3. **Ausência de regra de conflito entre cenários com ações opostas.**
+
+### Achados (todos reproduzidos antes de corrigir, todos com teste de mutação)
+
+**Afirmação factualmente falsa:**
+
+- **"deficit de -30" — 10,2% de todas as análises.** `learning_phase=True` com
+  volume ACIMA da meta: `deficit = meta - volume` ficava negativo e era exibido
+  como déficit, enquanto o semáforo de Conversões/semana dizia "✓ Volume
+  suficiente" na mesma resposta. Era o achado mais frequente da varredura.
+- **CTR Link acima da meta declarado "crítico".** Com `min_ctr_link=0.5` e
+  `ctr_link=0.65` (30% ACIMA da meta), o Cenário C disparava chamando de
+  crítico o que o semáforo marcava GREEN → **status RED com score 100/100**.
+- **K e O contradizendo-se sobre o mesmo ROAS.** Com meta 15x e ROAS 12x, K
+  dizia "ilusão estatística, ROAS alto mascarando problema" e O dizia "ROAS
+  12.0x abaixo da meta de 15.0x", lado a lado.
+- **Meta arredondada gerando frase falsa.** `{meta:.0f}` com
+  `min_hold_rate=3.4` produzia "Hold Rate 3.1% abaixo da meta de **3%**" — falso
+  na própria linha — e o tile anunciava "Meta: >3%", que não é a meta que o
+  gestor configurou. Atingia 69% das análises na forma mais branda (`:.1f`
+  exibindo 2.45 como 2.5).
+- **"⚠ CPA 0% acima da meta"** — `{delta:.0f}` transformava 0,4% de desvio num
+  alerta que declara desvio zero.
+
+**Recomendação contraditória (risco financeiro):**
+
+- **"Aumentar orçamento agora" num criativo reprovado.** O Cenário G tem
+  prioridade 1 e virava a ação principal mesmo com o Cenário A (prioridade 2)
+  dizendo "Pausar o criativo atual" na mesma resposta.
+- **Ação principal contradizendo cenário listado.** Com zero conversão sobre
+  R$2.000, D virava a ação principal ("Manter campanhas ativas", e o card ainda
+  afirmava "Pausar seria um erro") enquanto L dizia "Pausar a veiculação".
+- **Pausar + expandir juntos.** L ("pausar") com H ("duplicar estrutura para
+  novos públicos").
+- **E e G no mesmo orçamento.** "Reduzir orçamento do conjunto saturado" com
+  "aumentar orçamento agora". Com os defaults nunca coexistiam (teto de escala
+  1.8 < fadiga 2.8), o que **escondia o conflito** — mas os dois limiares são
+  configuráveis.
+
+**Severidade invertida:**
+
+- **Hold Rate.** O detector do Cenário B usava `< 10.0` fixo enquanto o semáforo
+  usava `min(10, 70% da meta)` — corrigido em 26/07/2026 **só no semáforo**.
+  Resultado: Hold 12 contra meta 30 (40% da meta) saía prioridade 2/YELLOW/score
+  62, e Hold 9 contra meta 11 (82% da meta) saía prioridade 1/RED/score 88. A
+  campanha pior recebia o veredito mais brando, contrariando o próprio score.
+
+**Números inventados** (o mesmo pecado que o Princípio 0 do prompt proíbe à IA):
+
+- Cenário J prometia "Com redução de 15% do orçamento, CPA estimado: R$X"
+  dividindo 85% do gasto pelas MESMAS conversões — assume que cortar verba não
+  custa conversão, e por construção **sempre** prometia um CPA 15% menor.
+- Cenário H previa "N dia(s) antes do colapso" dividindo a distância até a
+  fadiga por uma taxa de 0,3/dia que não existe no input (não há série
+  histórica).
+
+**Coerência e documentação:**
+
+- **RED com score ≥90 em 7,85% das análises** ("Crítico" ao lado de "97/100").
+  É legítimo — o score mede as métricas recebidas, o status inclui a causa raiz
+  — mas sem explicação lê como erro do produto. **Nenhum número foi alterado**:
+  o summary agora diz por que divergem.
+- `_apply_minimal_fallback` sobrescrevia o summary e descartava a ressalva de
+  cobertura parcial, justamente no caminho com menos dados.
+- O catálogo de `GET /campaign/scenarios` (servido ao frontend como
+  documentação) descrevia os limiares fixos já removidos e não mencionava nem o
+  gate de evidência do Cenário G (2026-07-28) nem a condição de CPM.
+
+### Como foi corrigido
+
+Cada limiar hardcoded virou uma função nomeada e **compartilhada entre o
+detector e o semáforo** (`_limiar_red_hold_rate`, `_limiar_red_ctr_link`,
+`_limiar_roas_inflado`), então cenário e semáforo passam a significar a mesma
+coisa por construção — não dá mais para discordarem. Formatação de meta e de
+percentual centralizada em `_meta`/`_pct`. Quatro regras novas de supressão
+(L→D/G/H, A→G, C→G, E→G) sob um princípio explícito: **nenhuma resposta pode
+conter um card mandando ampliar investimento e outro mandando parar; quando as
+duas leituras são verdadeiras, vence a que protege o dinheiro do gestor.**
+
+**Comportamento com metas default preservado**: os 1402 testes anteriores
+passaram sem alteração em nenhum deles.
+
+### Validação
+
+- **48 testes novos** (`test_regressao_20260825.py`), todos confirmados por
+  **teste de mutação: 19/19 mutações detectadas, 0 testes vácuos**. Duas
+  mutações passaram na primeira rodada e ambas eram problema do teste, não do
+  código: uma usava `39.65`, que como float binário é ligeiramente menor que
+  39,65 e portanto já formatava como "39.6" sem reproduzir o arredondamento
+  (trocado por `39.66`); a outra mutava só a primeira linha de uma concatenação
+  implícita e não chegava a reintroduzir o bug.
+- **Fuzz reexecutado**: conflito de direção de orçamento, déficit negativo,
+  CTR/ROAS acusados contra a própria meta, K×O juntos e meta exibida errada
+  todos em **0 ocorrências**; 0 crashes em 60.000 casos.
+- **Ponta a ponta contra o servidor real** (`uvicorn` + `POST /analyze`): o caso
+  do déficit negativo volta 200 com o texto correto e com a explicação nova do
+  score. Servidor desligado ao final.
+- **Não validado pela UI do dashboard** — a verificação foi no nível da API. Os
+  campos que mudaram são strings que o frontend só renderiza (`summary`,
+  `root_cause`, `primary_action`), e nenhuma estrutura de resposta mudou.
+
+### Ficam registrados como NÃO-defeito (analisados e descartados)
+
+O fuzz com regex grosseiro acusava dois pares que não são contradição: "pausar
+o **criativo** atual" (A) ao lado de "manter a **campanha** ativa" (D) age em
+objetos diferentes, e "duplicar estrutura para novos públicos" (H) com "pausar o
+criativo atual" (A) é complementar — troca-se o criativo E expande-se. Só foram
+tratados como conflito os pares que mexem no **mesmo** botão de orçamento em
+direções opostas.
+
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1393/1393** (1354 até 2026-07-29; +26 de persistência e +13 de robustez em 2026-08-14), sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
