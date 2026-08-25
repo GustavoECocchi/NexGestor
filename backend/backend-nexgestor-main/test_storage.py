@@ -1,9 +1,10 @@
 """
-Testes da persistência (SQLite) — base COMPARTILHADA, temporária.
+Testes da persistência (SQLite) — isolada por `dono`, sem login de verdade.
 
-O que estes testes travam, além do CRUD: os limites defensivos (a API é pública
-e sem autenticação) e a degradação quando a persistência está desligada, que é o
-estado padrão de quem roda local.
+O que estes testes travam, além do CRUD: o isolamento por dono (header
+`X-Nex-Dono`), os limites defensivos (agora por dono, não globais) e a
+degradação quando a persistência está desligada, que é o estado padrão de
+quem roda local.
 """
 import json
 import sqlite3
@@ -15,7 +16,10 @@ from app.core.config import settings
 from app.main import app
 from app.service import storage
 
-client = TestClient(app)
+# Header default para não repetir em cada chamada — a maioria dos testes não
+# é sobre isolamento entre pessoas, então todos usam o mesmo dono a menos que
+# passem `headers={"X-Nex-Dono": "..."}` explicitamente (que sobrepõe este).
+client = TestClient(app, headers={"X-Nex-Dono": "equipe-teste"})
 
 
 @pytest.fixture
@@ -58,7 +62,7 @@ class TestPersistenciaDesligada:
 
     def test_funcoes_do_storage_recusam_explicitamente(self, sem_base):
         with pytest.raises(storage.PersistenciaDesligada):
-            storage.listar()
+            storage.listar("ana")
 
     def test_analise_continua_funcionando_sem_banco(self, sem_base):
         """A persistência é acessório: sem ela o produto principal roda igual."""
@@ -134,30 +138,112 @@ class TestCrud:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Base compartilhada — decisão TEMPORÁRIA do período de testes
+# Isolamento por dono — substitui a base compartilhada de 14/08/2026
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestBaseCompartilhada:
-    def test_quem_salva_e_quem_le_nao_se_distinguem(self, base):
-        """
-        Hoje NÃO existe dono: qualquer cliente lê e apaga tudo. Este teste
-        documenta a decisão do período de testes — se um dia ele começar a
-        falhar porque alguém adicionou isolamento por pessoa, é sinal de que a
-        migração descrita em storage.py aconteceu, e ele deve ser reescrito,
-        não "consertado".
-        """
-        client.post("/api/v1/campaigns", json={"payload": {"name": "da Ana"}})
-        client.post("/api/v1/campaigns", json={"payload": {"name": "do Bruno"}})
+class TestIsolamentoPorDono:
+    def test_ana_nao_ve_campanha_do_bruno(self, base):
+        client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"name": "da Ana"}},
+            headers={"X-Nex-Dono": "ana"},
+        )
+        client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"name": "do Bruno"}},
+            headers={"X-Nex-Dono": "bruno"},
+        )
 
-        nomes = {c["payload"]["name"] for c in client.get("/api/v1/campaigns").json()["campanhas"]}
-        assert nomes == {"da Ana", "do Bruno"}
+        nomes_ana = {
+            c["payload"]["name"]
+            for c in client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "ana"}).json()["campanhas"]
+        }
+        nomes_bruno = {
+            c["payload"]["name"]
+            for c in client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "bruno"}).json()["campanhas"]
+        }
+        assert nomes_ana == {"da Ana"}
+        assert nomes_bruno == {"do Bruno"}
 
-    def test_a_tabela_ainda_nao_tem_coluna_de_dono(self, base):
-        storage.salvar({"name": "x"})
+    def test_identificador_normalizado_ignora_espaco_e_maiuscula(self, base):
+        client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"name": "x"}},
+            headers={"X-Nex-Dono": "Ana"},
+        )
+        lista = client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "  ana  "}).json()["campanhas"]
+        assert len(lista) == 1
+
+    def test_atualizar_id_de_outro_dono_cria_campanha_nova_em_vez_de_sobrescrever(self, base):
+        id_ana = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"name": "da Ana"}},
+            headers={"X-Nex-Dono": "ana"},
+        ).json()["id"]
+
+        r = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"name": "do Bruno"}, "id": id_ana},
+            headers={"X-Nex-Dono": "bruno"},
+        )
+        assert r.status_code == 200
+        assert r.json()["id"] != id_ana
+
+        # A campanha da Ana continua intacta.
+        lista_ana = client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "ana"}).json()["campanhas"]
+        assert lista_ana[0]["payload"]["name"] == "da Ana"
+
+    def test_apagar_id_de_outro_dono_e_404(self, base):
+        id_ana = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"name": "da Ana"}},
+            headers={"X-Nex-Dono": "ana"},
+        ).json()["id"]
+
+        r = client.delete(f"/api/v1/campaigns/{id_ana}", headers={"X-Nex-Dono": "bruno"})
+        assert r.status_code == 404
+
+        # Não apagou de verdade — a campanha da Ana continua lá.
+        assert len(client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "ana"}).json()["campanhas"]) == 1
+
+    def test_tabela_tem_coluna_de_dono(self, base):
+        storage.salvar({"name": "x"}, dono="ana")
         with sqlite3.connect(base) as conn:
             colunas = {l[1] for l in conn.execute("PRAGMA table_info(campanhas)")}
-        assert "dono" not in colunas
-        assert colunas == {"id", "payload", "criado_em", "atualizado_em"}
+        assert "dono" in colunas
+
+    def test_linha_antiga_sem_dono_fica_orfa(self, base):
+        """
+        Bases criadas antes de 25/08/2026 não tinham `dono`. A migração
+        (ALTER TABLE) preserva a linha, mas ninguém a filtra de volta —
+        aceitável porque é dado do período de testes, sem usuário real.
+        """
+        storage.inicializar()
+        with sqlite3.connect(base) as conn:
+            conn.execute(
+                "INSERT INTO campanhas (payload, criado_em, atualizado_em)"
+                " VALUES ('{}', '2026-01-01', '2026-01-01')"
+            )
+            conn.commit()
+        assert client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "ana"}).json()["campanhas"] == []
+
+
+class TestIdentificadorDono:
+    """Validação do header X-Nex-Dono em si, fora do isolamento entre pessoas."""
+
+    def test_header_ausente_e_422(self, base):
+        sem_header = TestClient(app)
+        assert sem_header.get("/api/v1/campaigns").status_code == 422
+        assert sem_header.post("/api/v1/campaigns", json={"payload": VM}).status_code == 422
+        assert sem_header.delete("/api/v1/campaigns/1").status_code == 422
+
+    def test_header_vazio_ou_so_espaco_e_422(self, base):
+        assert client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "   "}).status_code == 422
+        assert client.get("/api/v1/campaigns", headers={"X-Nex-Dono": ""}).status_code == 422
+
+    def test_header_gigante_e_422(self, base):
+        r = client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "x" * 121})
+        assert r.status_code == 422
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -188,6 +274,25 @@ class TestLimites:
         r = client.post("/api/v1/campaigns", json={"payload": {"n": 2}, "id": novo_id})
         assert r.status_code == 200
 
+    def test_teto_e_por_dono_nao_global(self, base, monkeypatch):
+        """Ana encher o próprio teto não pode travar o Bruno."""
+        monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
+
+        r_ana = client.post(
+            "/api/v1/campaigns", json={"payload": {"n": 1}}, headers={"X-Nex-Dono": "ana"}
+        )
+        assert r_ana.status_code == 200
+
+        r_ana_excede = client.post(
+            "/api/v1/campaigns", json={"payload": {"n": 2}}, headers={"X-Nex-Dono": "ana"}
+        )
+        assert r_ana_excede.status_code == 507
+
+        r_bruno = client.post(
+            "/api/v1/campaigns", json={"payload": {"n": 1}}, headers={"X-Nex-Dono": "bruno"}
+        )
+        assert r_bruno.status_code == 200
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Robustez
@@ -198,8 +303,8 @@ class TestRobustez:
         client.post("/api/v1/campaigns", json={"payload": {"name": "boa"}})
         with sqlite3.connect(base) as conn:
             conn.execute(
-                "INSERT INTO campanhas (payload, criado_em, atualizado_em)"
-                " VALUES ('{isso nao e json', '2026-01-01', '2026-01-01')"
+                "INSERT INTO campanhas (payload, dono, criado_em, atualizado_em)"
+                " VALUES ('{isso nao e json', 'equipe-teste', '2026-01-01', '2026-01-01')"
             )
             conn.commit()
 
@@ -208,7 +313,7 @@ class TestRobustez:
 
     def test_wal_ligado(self, base):
         """Sem WAL, duas pessoas analisando juntas pegam 'database is locked'."""
-        storage.salvar({"name": "x"})
+        storage.salvar({"name": "x"}, dono="ana")
         with sqlite3.connect(base) as conn:
             assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
 
@@ -217,12 +322,12 @@ class TestRobustez:
         monkeypatch.setattr(settings, "DB_PATH", str(alvo))
         monkeypatch.setattr(storage, "_iniciado", False)
 
-        storage.salvar({"name": "x"})
+        storage.salvar({"name": "x"}, dono="ana")
         assert alvo.exists()
 
     def test_dados_sobrevivem_a_reabertura(self, base):
         """Prova que grava em disco, e não em memória."""
-        storage.salvar({"name": "persistida"})
+        storage.salvar({"name": "persistida"}, dono="ana")
         storage._iniciado = False
 
         with sqlite3.connect(base) as conn:

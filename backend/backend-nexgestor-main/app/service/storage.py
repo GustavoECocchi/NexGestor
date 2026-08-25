@@ -2,26 +2,23 @@
 Persistência das campanhas analisadas — SQLite, arquivo único.
 
 ═══════════════════════════════════════════════════════════════════════════
-⚠️  ESTADO TEMPORÁRIO — BASE COMPARTILHADA, DECIDIDO PARA O PERÍODO DE TESTES
-    (14/08/2026). Não é o desenho final.
+⚠️  ISOLAMENTO POR `dono` (25/08/2026) — AINDA NÃO É LOGIN DE VERDADE.
 
-    Hoje: uma única base, sem login e sem dono. Todo mundo da equipe vê e
-    apaga as campanhas de todo mundo. Foi uma decisão consciente do usuário —
-    durante os testes, ver o diagnóstico do colega é útil, e não há dado
-    sensível em jogo.
+    Cada campanha pertence a um `dono`: uma string simples que o cliente
+    manda no header `X-Nex-Dono` (ver `app/routes/campanhas_salvas.py`), sem
+    senha nem sessão. `listar`/`salvar`/`remover` filtram por ela, então uma
+    pessoa não vê nem apaga a campanha de outra — mas enquanto for só um
+    texto que o próprio cliente informa, quem souber (ou adivinhar) o valor
+    alheio lê os dados dele. **Separação de visão, não segurança.**
 
-    Antes de abrir para usuários reais isto PRECISA virar dado por pessoa.
-    Migração prevista (as duas primeiras já bastam para isolar):
+    Autenticação de verdade (senha, sessão/token) é o próximo passo, fora do
+    escopo desta mudança.
 
-      1. `ALTER TABLE campanhas ADD COLUMN dono TEXT` (SQLite aceita em
-         tabela existente, sem recriar).
-      2. Filtrar por `dono` no `listar`/`remover` e exigir o identificador
-         nas rotas.
-      3. Trocar o identificador por autenticação de verdade — enquanto for um
-         texto que o cliente envia, quem souber o valor alheio lê os dados
-         dele. Separação de visão, não segurança.
-
-    Enquanto isso não acontece, tratar esta base como pública para a equipe.
+    Até 24/08/2026 a base era COMPARTILHADA (sem `dono`, todo mundo via tudo)
+    — decisão temporária do período de testes. Bases locais criadas antes
+    disso não tinham a coluna `dono`; `inicializar()` adiciona via
+    `ALTER TABLE` na primeira vez que rodam com este código, e as linhas
+    antigas (sem dono) ficam órfãs — invisíveis, não deletadas.
 ═══════════════════════════════════════════════════════════════════════════
 
 O `payload` é opaco para o backend: guarda o objeto que a extensão monta
@@ -112,23 +109,35 @@ def inicializar() -> None:
                 CREATE TABLE IF NOT EXISTS campanhas (
                     id           INTEGER PRIMARY KEY AUTOINCREMENT,
                     payload      TEXT NOT NULL,
+                    dono         TEXT,
                     criado_em    TEXT NOT NULL,
                     atualizado_em TEXT NOT NULL
                 )
                 """
+            )
+            # Base criada antes de 25/08/2026 não tem a coluna `dono` — soma
+            # em cima sem recriar a tabela. Idempotente: a segunda tentativa
+            # falha com "duplicate column" e é ignorada.
+            try:
+                conn.execute("ALTER TABLE campanhas ADD COLUMN dono TEXT")
+            except sqlite3.OperationalError:
+                pass
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_campanhas_dono ON campanhas(dono)"
             )
             conn.commit()
         _iniciado = True
         logger.info("Persistência pronta em %s", settings.DB_PATH)
 
 
-def listar() -> list[dict[str, Any]]:
-    """Todas as campanhas, mais recentes primeiro."""
+def listar(dono: str) -> list[dict[str, Any]]:
+    """Campanhas do `dono` informado, mais recentes primeiro."""
     inicializar()
     with _conexao() as conn:
         linhas = conn.execute(
             "SELECT id, payload, criado_em, atualizado_em"
-            " FROM campanhas ORDER BY atualizado_em DESC, id DESC"
+            " FROM campanhas WHERE dono = ? ORDER BY atualizado_em DESC, id DESC",
+            (dono,),
         ).fetchall()
 
     saida: list[dict[str, Any]] = []
@@ -151,13 +160,19 @@ def listar() -> list[dict[str, Any]]:
     return saida
 
 
-def salvar(payload: dict[str, Any], campanha_id: Optional[int] = None) -> dict[str, Any]:
+def salvar(
+    payload: dict[str, Any], dono: str, campanha_id: Optional[int] = None
+) -> dict[str, Any]:
     """
-    Insere (sem id) ou atualiza (com id). Devolve o registro gravado.
+    Insere (sem id) ou atualiza (com id) uma campanha do `dono`. Devolve o
+    registro gravado.
 
-    Atualizar um id inexistente INSERE, em vez de falhar: a extensão pode ter
-    o dado só no localStorage (analisado offline, ou base recriada) e perder
-    isso seria pior que duplicar.
+    Atualizar um id inexistente — ou que existe mas pertence a outro dono —
+    INSERE, em vez de falhar: a extensão pode ter o dado só no localStorage
+    (analisado offline, ou base recriada) e perder isso seria pior que
+    duplicar. Como efeito colateral, isso também impede que o id de outra
+    pessoa seja sequestrado por engano: a linha alheia nunca é tocada, e o
+    cliente ganha uma campanha nova.
     """
     inicializar()
 
@@ -171,14 +186,17 @@ def salvar(payload: dict[str, Any], campanha_id: Optional[int] = None) -> dict[s
     with _conexao() as conn:
         if campanha_id is not None:
             atingidas = conn.execute(
-                "UPDATE campanhas SET payload = ?, atualizado_em = ? WHERE id = ?",
-                (bruto, agora, campanha_id),
+                "UPDATE campanhas SET payload = ?, atualizado_em = ?"
+                " WHERE id = ? AND dono = ?",
+                (bruto, agora, campanha_id, dono),
             ).rowcount
             if atingidas:
                 conn.commit()
                 return {"id": campanha_id, "payload": payload, "atualizado_em": agora}
 
-        total = conn.execute("SELECT COUNT(*) FROM campanhas").fetchone()[0]
+        total = conn.execute(
+            "SELECT COUNT(*) FROM campanhas WHERE dono = ?", (dono,)
+        ).fetchone()[0]
         if total >= settings.DB_MAX_CAMPANHAS:
             raise LimiteDeCampanhas(
                 f"Base cheia ({settings.DB_MAX_CAMPANHAS} campanhas). "
@@ -186,17 +204,20 @@ def salvar(payload: dict[str, Any], campanha_id: Optional[int] = None) -> dict[s
             )
 
         cur = conn.execute(
-            "INSERT INTO campanhas (payload, criado_em, atualizado_em) VALUES (?, ?, ?)",
-            (bruto, agora, agora),
+            "INSERT INTO campanhas (payload, dono, criado_em, atualizado_em)"
+            " VALUES (?, ?, ?, ?)",
+            (bruto, dono, agora, agora),
         )
         conn.commit()
         return {"id": cur.lastrowid, "payload": payload, "atualizado_em": agora}
 
 
-def remover(campanha_id: int) -> bool:
-    """True se apagou; False se o id não existia."""
+def remover(campanha_id: int, dono: str) -> bool:
+    """True se apagou uma campanha do `dono`; False se não existia (dele)."""
     inicializar()
     with _conexao() as conn:
-        n = conn.execute("DELETE FROM campanhas WHERE id = ?", (campanha_id,)).rowcount
+        n = conn.execute(
+            "DELETE FROM campanhas WHERE id = ? AND dono = ?", (campanha_id, dono)
+        ).rowcount
         conn.commit()
     return bool(n)
