@@ -274,7 +274,7 @@ class TestLimites:
         r = client.post("/api/v1/campaigns", json={"payload": {"n": 2}, "id": novo_id})
         assert r.status_code == 200
 
-    def test_teto_e_por_dono_nao_global(self, base, monkeypatch):
+    def test_teto_por_dono_nao_trava_os_outros(self, base, monkeypatch):
         """Ana encher o próprio teto não pode travar o Bruno."""
         monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
 
@@ -292,6 +292,31 @@ class TestLimites:
             "/api/v1/campaigns", json={"payload": {"n": 1}}, headers={"X-Nex-Dono": "bruno"}
         )
         assert r_bruno.status_code == 200
+
+    def test_teto_global_impede_espaco_infinito_trocando_de_dono(self, base, monkeypatch):
+        """
+        O teto por dono sozinho não limita nada: como o dono é um texto que o
+        próprio cliente escolhe, bastaria inventar identificadores novos para
+        ganhar espaço sem fim. Quem segura o disco do VPS é o teto global.
+        """
+        monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
+        monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS_GLOBAL", 3)
+
+        # Cada dono novo cabe no próprio teto, mas o global vai enchendo.
+        for i in range(3):
+            r = client.post(
+                "/api/v1/campaigns",
+                json={"payload": {"n": i}},
+                headers={"X-Nex-Dono": f"pessoa{i}"},
+            )
+            assert r.status_code == 200
+
+        r = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"n": 99}},
+            headers={"X-Nex-Dono": "pessoa-nova-em-folha"},
+        )
+        assert r.status_code == 507
 
 
 # ─────────────────────────────────────────────────────────────────────────────

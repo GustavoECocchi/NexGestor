@@ -37,10 +37,10 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = r"chrome-extension://.*"
 
     # ── Persistência (SQLite) ────────────────────────────
-    # ⚠️ TEMPORÁRIO — combinado para o período de testes (14/08/2026).
-    # A base é COMPARTILHADA: toda a equipe vê as mesmas campanhas, sem login e
-    # sem dono. Isso vai mudar antes do lançamento — ver `app/service/storage.py`,
-    # que documenta o caminho de migração para dados por pessoa.
+    # ⚠️ Dados isolados por `dono` desde 25/08/2026, mas SEM login de verdade:
+    # o dono é uma string que o cliente manda no header `X-Nex-Dono`. Separa a
+    # visão de cada pessoa, não protege contra quem souber o valor alheio —
+    # ver `app/service/storage.py`.
     #
     # Caminho do arquivo. Default VAZIO = persistência desligada, backend
     # stateless como sempre foi — quem roda local não precisa de banco nenhum e
@@ -49,7 +49,15 @@ class Settings(BaseSettings):
     DB_PATH: str = ""
     # Tetos defensivos: a API é pública e sem autenticação, então sem limite
     # qualquer um enche o disco do VPS.
+    #
+    # São DOIS tetos, e os dois são necessários:
+    #  - POR DONO: impede que uma pessoa sozinha consuma a base inteira e deixe
+    #    o resto da equipe sem espaço.
+    #  - GLOBAL: como o dono é só um texto que o cliente escolhe, sem o teto
+    #    global bastaria inventar identificadores novos (`ana`, `ana2`, ...)
+    #    para conseguir espaço infinito. É ele que limita o disco de fato.
     DB_MAX_CAMPANHAS: int = 500
+    DB_MAX_CAMPANHAS_GLOBAL: int = 5000
     DB_MAX_PAYLOAD_BYTES: int = 64 * 1024
 
     # ── Gemini (IA) ──────────────────────────────────────

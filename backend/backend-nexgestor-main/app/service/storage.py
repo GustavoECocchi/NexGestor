@@ -116,12 +116,15 @@ def inicializar() -> None:
                 """
             )
             # Base criada antes de 25/08/2026 não tem a coluna `dono` — soma
-            # em cima sem recriar a tabela. Idempotente: a segunda tentativa
-            # falha com "duplicate column" e é ignorada.
+            # em cima sem recriar a tabela. Idempotente: quando a coluna já
+            # existe o SQLite responde "duplicate column name", que é o único
+            # erro esperado aqui. Qualquer outro (disco cheio, base somente
+            # leitura, base travada) precisa subir, e não ser engolido.
             try:
                 conn.execute("ALTER TABLE campanhas ADD COLUMN dono TEXT")
-            except sqlite3.OperationalError:
-                pass
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_campanhas_dono ON campanhas(dono)"
             )
@@ -194,13 +197,23 @@ def salvar(
                 conn.commit()
                 return {"id": campanha_id, "payload": payload, "atualizado_em": agora}
 
-        total = conn.execute(
+        do_dono = conn.execute(
             "SELECT COUNT(*) FROM campanhas WHERE dono = ?", (dono,)
         ).fetchone()[0]
-        if total >= settings.DB_MAX_CAMPANHAS:
+        if do_dono >= settings.DB_MAX_CAMPANHAS:
             raise LimiteDeCampanhas(
-                f"Base cheia ({settings.DB_MAX_CAMPANHAS} campanhas). "
+                f"Você atingiu o limite de {settings.DB_MAX_CAMPANHAS} campanhas. "
                 "Apague alguma antes de salvar outra."
+            )
+
+        # Teto global: sem ele, o teto por dono não limita nada — o dono é um
+        # texto escolhido pelo cliente, então bastaria inventar identificadores
+        # novos para conseguir espaço infinito no disco do VPS.
+        total = conn.execute("SELECT COUNT(*) FROM campanhas").fetchone()[0]
+        if total >= settings.DB_MAX_CAMPANHAS_GLOBAL:
+            raise LimiteDeCampanhas(
+                f"Base cheia ({settings.DB_MAX_CAMPANHAS_GLOBAL} campanhas no "
+                "servidor). Fale com quem administra o servidor."
             )
 
         cur = conn.execute(
