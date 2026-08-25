@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
+import { FieldHint } from "~components/FieldHint"
 import { IconCheck, IconEdit, IconRefresh } from "~components/Icons"
 import { responseToVM } from "~lib/adapt"
 import { analyzeCampaign, API_BASE, IS_LOCAL_BACKEND, isApiError } from "~lib/api"
@@ -82,7 +83,7 @@ export function normalizaCampo(chave: string, valor: number): number {
   return CAMPOS_INTEIROS.has(chave) ? Math.round(valor) : valor
 }
 
-type Field = { label: string; key: string; ph?: string; inteiro?: boolean }
+type Field = { label: string; key: string; ph?: string; inteiro?: boolean; hint: string }
 
 // Campos que o backend tipa como int (app/schema/schema.py). Enviar decimal
 // neles devolve 422 "int_from_float", que chegava ao gestor como "A análise
@@ -97,45 +98,45 @@ const CAMPOS_INTEIROS = new Set([
 ])
 
 const FIELDS_DELIVERY: Field[] = [
-  { label: "Impressões", key: "impressions", ph: "0", inteiro: true },
-  { label: "Gasto (R$)", key: "spend", ph: "0" },
-  { label: "CPM", key: "cpm", ph: "0" },
-  { label: "CPC", key: "cpc", ph: "0" },
-  { label: "CPA", key: "cpa", ph: "0" },
+  { label: "Impressões", key: "impressions", ph: "0", inteiro: true, hint: "Quantas vezes seu anúncio foi exibido, no total." },
+  { label: "Gasto (R$)", key: "spend", ph: "0", hint: "Quanto você já investiu nessa campanha." },
+  { label: "CPM", key: "cpm", ph: "0", hint: "Quanto você paga a cada 1.000 exibições do anúncio." },
+  { label: "CPC", key: "cpc", ph: "0", hint: "Quanto você paga, em média, cada vez que alguém clica no anúncio." },
+  { label: "CPA", key: "cpa", ph: "0", hint: "Quanto custou, em média, cada conversão (venda, cadastro etc.) gerada." },
   // CPL destrava o Cenário F (Lead Frio), inalcançável pelo formulário até
   // 2026-08-01: o engine lê `cpl`, mas não havia onde informá-lo.
-  { label: "CPL", key: "cpl", ph: "0" },
-  { label: "ROAS", key: "roas", ph: "0" }
+  { label: "CPL", key: "cpl", ph: "0", hint: "Quanto custou, em média, cada lead (contato captado) gerado." },
+  { label: "ROAS", key: "roas", ph: "0", hint: "Quanto voltou em receita para cada R$1 investido. 2x = dobrou o dinheiro investido." }
 ]
 const FIELDS_CREATIVE: Field[] = [
-  { label: "Hook rate (%)", key: "hook_rate", ph: "0" },
-  { label: "Hold rate (%)", key: "hold_rate", ph: "0" },
-  { label: "CTR link (%)", key: "ctr_link", ph: "0" },
-  { label: "CTR todos (%)", key: "ctr_all", ph: "0" },
-  { label: "Frequência", key: "frequency", ph: "0" },
-  { label: "Conversões", key: "conversions", ph: "0", inteiro: true },
+  { label: "Hook rate (%)", key: "hook_rate", ph: "0", hint: "De quem viu o anúncio, quantos assistiram pelo menos 3 segundos — mede se o começo prende atenção." },
+  { label: "Hold rate (%)", key: "hold_rate", ph: "0", hint: "De quem começou a assistir, quantos ficaram até a metade — mede se o anúncio segura o interesse." },
+  { label: "CTR link (%)", key: "ctr_link", ph: "0", hint: "De quem viu o anúncio, quantos clicaram para ir ao seu site/página." },
+  { label: "CTR todos (%)", key: "ctr_all", ph: "0", hint: "Como o CTR link, mas conta qualquer clique no anúncio (curtir, comentar etc.), não só o link." },
+  { label: "Frequência", key: "frequency", ph: "0", hint: "Quantas vezes, em média, a mesma pessoa viu esse anúncio. Número alto pode cansar o público." },
+  { label: "Conversões", key: "conversions", ph: "0", inteiro: true, hint: "Quantas vendas, cadastros ou outra ação que você definiu como meta já aconteceram." },
   // Cliques no link + visitas à página destravam os Cenários D (desalinhamento
   // com a landing page) e N (vazamento entre o clique e a página) — dois dos
   // quatro diagnósticos que o formulário manual não conseguia produzir.
-  { label: "Cliques no link", key: "link_clicks", ph: "0", inteiro: true },
-  { label: "Visitas à página", key: "landing_page_views", ph: "0", inteiro: true },
+  { label: "Cliques no link", key: "link_clicks", ph: "0", inteiro: true, hint: "Quantas vezes clicaram para ir do anúncio até seu site." },
+  { label: "Visitas à página", key: "landing_page_views", ph: "0", inteiro: true, hint: "Quantas dessas pessoas realmente abriram sua página de destino." },
   // Conversões/semana e fase de aprendizado entraram aqui porque o engine passou
   // a EXIGIR estado de aprendizado para abrir a janela de escala vertical (ver
   // _evidencia_faltante_para_escala no backend). Sem estes campos o formulário
   // manual não conseguia satisfazer a regra: nem a campanha mais saudável
   // recebia a análise de escala — o critério ficaria inalcançável por construção.
-  { label: "Conversões/semana", key: "weekly_conversions", ph: "0", inteiro: true }
+  { label: "Conversões/semana", key: "weekly_conversions", ph: "0", inteiro: true, hint: "Quantas conversões essa campanha costuma gerar por semana." }
 ]
 const FIELDS_TARGETS: Field[] = [
-  { label: "CPA máx.", key: "max_cpa", ph: "0" },
+  { label: "CPA máx.", key: "max_cpa", ph: "0", hint: "O quanto, no máximo, você aceita pagar por cada conversão antes de considerar caro." },
   // CPL máx. acompanha o CPL acima (Cenário F). CPM máx. destrava o Cenário J
   // (leilão caro) e é o teto que o Cenário G consulta para NÃO recomendar
   // escala num leilão já acima do limite.
-  { label: "CPL máx.", key: "max_cpl", ph: "0" },
-  { label: "CPM máx.", key: "max_cpm", ph: "25" },
-  { label: "ROAS mín.", key: "min_roas", ph: "0" },
-  { label: "CTR link mín. (%)", key: "min_ctr_link", ph: "1.5" },
-  { label: "Hook rate mín. (%)", key: "min_hook_rate", ph: "35" }
+  { label: "CPL máx.", key: "max_cpl", ph: "0", hint: "O quanto, no máximo, você aceita pagar por cada lead antes de considerar caro." },
+  { label: "CPM máx.", key: "max_cpm", ph: "25", hint: "O quanto, no máximo, você aceita pagar a cada 1.000 exibições antes de considerar caro." },
+  { label: "ROAS mín.", key: "min_roas", ph: "0", hint: "O retorno mínimo que você espera para cada R$1 investido." },
+  { label: "CTR link mín. (%)", key: "min_ctr_link", ph: "1.5", hint: "A taxa mínima de cliques que você espera do anúncio." },
+  { label: "Hook rate mín. (%)", key: "min_hook_rate", ph: "35", hint: "A taxa mínima de \"prendeu atenção nos 3s iniciais\" que você espera." }
 ]
 
 /**
@@ -543,7 +544,7 @@ export function NewCampaignModal({
               <div className="fld-grid">
                 {FIELDS_DELIVERY.map((f) => (
                   <div className="fld" key={f.key}>
-                    <label>{f.label}</label>
+                    <label>{f.label}<FieldHint text={f.hint} /></label>
                     <input inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)} />
                   </div>
                 ))}
@@ -555,7 +556,7 @@ export function NewCampaignModal({
               <div className="fld-grid">
                 {FIELDS_CREATIVE.map((f) => (
                   <div className="fld" key={f.key}>
-                    <label>{f.label}</label>
+                    <label>{f.label}<FieldHint text={f.hint} /></label>
                     <input inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)} />
                   </div>
                 ))}
@@ -564,7 +565,10 @@ export function NewCampaignModal({
                     não sabe — inventar evidência favorável é exatamente o
                     defeito que o gate do Cenário G existe para impedir. */}
                 <div className="fld" style={{ gridColumn: "1/3" }}>
-                  <label>Aprendizado limitado</label>
+                  <label>
+                    Aprendizado limitado
+                    <FieldHint text={'As plataformas de anúncio (Meta, Google...) levam um tempo "aprendendo" o público ideal para sua campanha. Marque "Sim" se ela ainda está nessa fase inicial. Deixe "Não informado" se você não sabe.'} />
+                  </label>
                   <select value={learningPhase} onChange={(e) => setLearningPhase(e.target.value)}>
                     <option value="">Não informado</option>
                     <option value="false">Não — conjunto já saiu do aprendizado</option>
@@ -579,7 +583,7 @@ export function NewCampaignModal({
               <div className="fld-grid">
                 {FIELDS_TARGETS.map((f) => (
                   <div className="fld" key={f.key}>
-                    <label>{f.label}</label>
+                    <label>{f.label}<FieldHint text={f.hint} /></label>
                     <input inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)} />
                   </div>
                 ))}

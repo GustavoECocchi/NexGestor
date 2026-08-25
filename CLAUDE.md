@@ -724,7 +724,7 @@ Frontend não tocado, `tsc --noEmit` não rodado (nada para validar).
 
     *Histórico (2026-08-10):* infraestrutura preparada aqui — O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por coisas externas ao código. **Atualização de 2026-08-12:** o **nome** do subdomínio saiu — `gestor.nexgold.com.br` — mas o **registro A nunca foi criado** (NXDOMAIN confirmado no servidor autoritativo da Hostinger, não é propagação pendente). Os bloqueios que restam são **o IP do VPS** (sem ele não há o que cadastrar no DNS, e nem o atalho `nip.io` funciona) e **o acesso SSH** (o deploy roda lá, não aqui) — os dois irredutíveis. A **coordenação da porta 443** continua indefinida, mas é contornável (opção B, ~2 min). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
 
-10. 🆕 **Dashboard web criado em 2026-08-24 — `frontend/nexgestor-dashboard` (Vite+React+TS+Tailwind), NÃO DEPLOYADO EM LUGAR NENHUM ainda.** Substitui a extensão (item 3, congelada) como alvo de desenvolvimento — decisão do usuário, motivada por feedback externo (professor) de que side panel de extensão limita a experiência; referência visual trazida pelo usuário: `fuse-react-nextjs-demo.fusetheme.com/dashboards/project` (só inspiração de layout, não copiado). Construído por dois agentes em paralelo (frontend/backend), ambos revisados por mim antes de commitar — não só aceitos de olhos fechados. Reaproveita quase tudo da extensão **por cópia**, não por link/pacote compartilhado: `types.ts`, todo `lib/`, componentes e mock são idênticos byte-a-byte (conferido por `diff`), com três adições reais — `lib/dono.ts` + `DonoGate.tsx` (tela de identificação simples, sem senha, antes de entrar) e `DashboardShell.tsx` (sidebar + layout full-screen). `lib/api.ts` manda o header `X-Nex-Dono` em toda chamada de campanhas salvas (exigido pelo backend desde o item 7). Suite portada **283/283**, build limpo, **verificado ao vivo contra o backend real**: dois donos diferentes só veem as próprias campanhas dentro do dashboard (não só via curl — testado clicando de verdade no Chrome). **O que falta, sem maquiagem:** nenhuma hospedagem definida (só rodado localmente via `vite dev`); sidebar tem 1 item de navegação só; sem tela de erro dedicada para backend fora do ar; `.env` não commitado (correto, mas precisa ser configurado manualmente em cada máquina/deploy); autenticação de verdade continua pendente (mesmo caminho do item 7).
+10. 🆕 **Dashboard web criado em 2026-08-24 — `frontend/nexgestor-dashboard` (Vite+React+TS+Tailwind), NÃO DEPLOYADO EM LUGAR NENHUM ainda.** Substitui a extensão (item 3, congelada) como alvo de desenvolvimento — decisão do usuário, motivada por feedback externo (professor) de que side panel de extensão limita a experiência; referência visual trazida pelo usuário: `fuse-react-nextjs-demo.fusetheme.com/dashboards/project` (só inspiração de layout, não copiado). Construído por dois agentes em paralelo (frontend/backend), ambos revisados por mim antes de commitar — não só aceitos de olhos fechados. Reaproveita quase tudo da extensão **por cópia**, não por link/pacote compartilhado: `types.ts`, todo `lib/`, componentes e mock são idênticos byte-a-byte (conferido por `diff`), com três adições reais — `lib/dono.ts` + `DonoGate.tsx` (tela de identificação simples, sem senha, antes de entrar) e `DashboardShell.tsx` (sidebar + layout full-screen). `lib/api.ts` manda o header `X-Nex-Dono` em toda chamada de campanhas salvas (exigido pelo backend desde o item 7). Suite portada **283/283**, build limpo, **verificado ao vivo contra o backend real**: dois donos diferentes só veem as próprias campanhas dentro do dashboard (não só via curl — testado clicando de verdade no Chrome). **O que falta, sem maquiagem:** nenhuma hospedagem definida (só rodado localmente via `vite dev`); sidebar tem 1 item de navegação só; sem tela de erro dedicada para backend fora do ar; `.env` não commitado (correto, mas precisa ser configurado manualmente em cada máquina/deploy); autenticação de verdade continua pendente (mesmo caminho do item 7). **2026-08-25**: formulário "Criar campanha" (modo manual) ganhou tooltips de ajuda em linguagem simples nos ~20 campos com jargão de tráfego pago (CPM, CPA, ROAS, Hook rate...) — ver PRD `PRD-ajuda-formulario-campanha.md` e a sessão de 2026-08-25 abaixo.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >
@@ -891,3 +891,67 @@ via `vite dev`, sem hospedagem definida). A extensão congelada vai parar de
 sincronizar campanhas assim que/se o backend novo subir pro VPS (ela não manda
 `X-Nex-Dono`) — achado nesta sessão, não corrigido de propósito (extensão está
 congelada). Ver "PRÓXIMO PASSO" no topo do roadmap para os passos concretos.
+
+## Sessão de 2026-08-25 — ajuda em linguagem simples no formulário "Criar campanha"
+
+Sessão curta, só frontend do dashboard. **1 commit na `main`**, com push pro
+`origin` (único remote deste checkout — sem `empresa` aqui). Suítes ao final:
+**backend 1402/1402** (reconferido, nenhuma mudança), **dashboard 283/283**,
+`tsc --noEmit` e `npm run build` limpos.
+
+### Contexto
+
+Reforça o Ponto 1 já registrado em 2026-08-15 ("navegação pouco intuitiva",
+referência Reportei) e o motivo do pivô de 2026-08-24 (feedback do professor,
+referência Fuse React). Entrevista estruturada (skill `grillme`, instalada
+nesta sessão como plugin pessoal — `~/.claude/skills`, fora do repo) isolou o
+achado até um ponto concreto, verificado no dashboard rodando local
+(`npm run dev`) e lendo `NewCampaignModal.tsx`: o formulário manual de "Criar
+nova campanha" tem ~20 campos (`CPM, CPC, CPA, CPL, ROAS, Hook rate, Hold
+rate, CTR link, CTR todos...`) **sem nenhuma explicação** — confirmado por
+inspeção visual e do código, não achismo.
+
+PRD escrito e commitado como registro (`PRD-ajuda-formulario-campanha.md`, na
+raiz), com escopo deliberadamente pequeno: só ajuda textual nos campos do modo
+**manual** — nada de mudar quais campos existem, validação, ou o contrato com
+o backend. Aba "Importar arquivo" (pede JSON cru), o bug de `/` recarregar na
+última campanha vista em vez da home, e onboarding geral ficam fora, registrados
+para PRs futuros.
+
+### Implementado
+
+- `components/FieldHint.tsx` — ícone `?` (reaproveita `IconInfo`, já existia
+  em `Icons.tsx` sem nenhum uso) com tooltip acessível: abre no hover **e** no
+  foco por teclado (`onFocus`/`onBlur`, não só mouse), `aria-describedby`
+  ligando o botão ao texto. Posicionado com `position:fixed` calculado via
+  `getBoundingClientRect` (não `absolute`) porque o `.modal` tem
+  `overflow-y:auto` — um tooltip `absolute` cortaria nas bordas para campos
+  perto da borda do modal; confirmado ao vivo que o do campo "CTR todos"
+  (coluna direita) não corta.
+- CSS novo em `style.css` só com tokens de tema já existentes (`--panel-2`,
+  `--line-2`, `--txt-2`, `--shadow`...) — nenhuma cor nova hardcoded, então
+  herda a validação de contraste WCAG já feita em 2026-07-25 sem trabalho
+  extra.
+- `NewCampaignModal.tsx`: `Field` ganhou campo `hint`; os ~20 campos de
+  Entrega & custo, Criativo & cliques e Metas (incluindo o select tri-estado
+  "Aprendizado limitado") ganharam texto de ajuda em português simples, sem
+  jargão. Identificação (Nome/Objetivo/Plataforma) ficou sem ícone de
+  propósito — já são autoexplicativos.
+
+### Validado
+
+`tsc --noEmit`, `npm run build` e as duas suítes (backend sem mudança,
+dashboard 283/283) rodaram limpos. **Testado ao vivo no navegador** (tema
+escuro): tooltip do CPM, do CTR todos (coluna direita — confirma o
+`position:fixed` funcionando) e do "Aprendizado limitado" (texto mais longo,
+quebra linha corretamente). **Não confirmado nesta sessão**: aparência no
+tema claro (tentativa de alternar o tema no navegador não foi verificada por
+screenshot antes do fim da sessão) e navegação por Tab ao vivo (só a lógica
+`onFocus`/`onBlur` foi lida no código, não clicada/tabulada de fato). Ambos
+ficam como primeira coisa a olhar se algo parecer errado visualmente.
+
+### Pendente
+
+- Confirmar tema claro e navegação por teclado ao vivo (ver acima).
+- Tudo do §5 do PRD (Importar arquivo, bug do reload, onboarding geral)
+  continua sem dono definido — não é bloqueante, só não esquecer.
