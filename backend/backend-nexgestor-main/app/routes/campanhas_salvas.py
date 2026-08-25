@@ -23,7 +23,7 @@ router = APIRouter(prefix="/campaigns", tags=["Campanhas salvas"])
 
 
 class CampanhaEntrada(BaseModel):
-    """O payload é opaco de propósito — quem define o formato é a extensão."""
+    """O payload é opaco de propósito — quem define o formato é o cliente (hoje, o dashboard web)."""
 
     payload: dict = Field(..., description="Objeto da campanha como a UI o guarda.")
     id: int | None = Field(
@@ -51,7 +51,7 @@ def obter_dono(x_nex_dono: str = Header(..., alias="X-Nex-Dono")) -> str:
 def _exigir_persistencia() -> None:
     if not storage.persistencia_ativa():
         # 501 e não 500: não é falha, é uma capacidade desligada por
-        # configuração (DB_PATH vazio). A extensão trata isso caindo de volta
+        # configuração (DB_PATH vazio). O cliente trata isso caindo de volta
         # para o armazenamento local, sem mostrar erro ao usuário.
         raise HTTPException(
             status_code=501,

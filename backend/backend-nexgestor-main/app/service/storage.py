@@ -21,9 +21,10 @@ Persistência das campanhas analisadas — SQLite, arquivo único.
     antigas (sem dono) ficam órfãs — invisíveis, não deletadas.
 ═══════════════════════════════════════════════════════════════════════════
 
-O `payload` é opaco para o backend: guarda o objeto que a extensão monta
-(CampaignVM) sem interpretar. Isso evita acoplar o formato da UI ao banco —
-mudança de campo na tela não exige migração aqui.
+O `payload` é opaco para o backend: guarda o objeto que o cliente monta
+(CampaignVM) sem interpretar — hoje a extensão congelada, e o dashboard web
+que a substitui. Isso evita acoplar o formato da UI ao banco — mudança de
+campo na tela não exige migração aqui.
 """
 from __future__ import annotations
 
@@ -171,7 +172,7 @@ def salvar(
     registro gravado.
 
     Atualizar um id inexistente — ou que existe mas pertence a outro dono —
-    INSERE, em vez de falhar: a extensão pode ter o dado só no localStorage
+    INSERE, em vez de falhar: o cliente pode ter o dado só em cache local
     (analisado offline, ou base recriada) e perder isso seria pior que
     duplicar. Como efeito colateral, isso também impede que o id de outra
     pessoa seja sequestrado por engano: a linha alheia nunca é tocada, e o

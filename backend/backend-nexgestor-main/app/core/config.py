@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # normaliza). Exemplos equivalentes:
     #   CORS_ORIGINS=["http://localhost:5173","https://app.nexgestor.com"]
     #   CORS_ORIGINS=http://localhost:5173,https://app.nexgestor.com
+    #
+    # localhost:5173 já é o default do Vite (dashboard web novo, em
+    # frontend/nexgestor-dashboard) e localhost:3000 cobre alternativas comuns.
+    # Se o Vite subir noutra porta (5173 ocupada), acrescente-a aqui ou via
+    # CORS_ORIGINS no .env — sem isso o navegador bloqueia a resposta antes do
+    # JS do dashboard conseguir lê-la, mesmo com o backend respondendo 200.
     CORS_ORIGINS: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
         "http://localhost:5173",

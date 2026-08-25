@@ -285,6 +285,81 @@ const uiStatus = isEscalavel ? "BLUE" : mapStatus(response.final_status);
 
 ---
 
+## Persistência de campanhas — `/api/v1/campaigns`
+
+Endpoint separado do `/campaign/analyze` acima: guarda o resultado de uma
+análise para reabrir depois, sem reanalisar. Usado hoje pela extensão
+congelada e pelo dashboard web.
+
+```
+GET    /api/v1/campaigns              → lista as campanhas do dono
+POST   /api/v1/campaigns              → cria (sem "id") ou atualiza (com "id")
+DELETE /api/v1/campaigns/{campanha_id}
+```
+
+**Toda chamada exige o header `X-Nex-Dono`** — uma string simples (ex.: nome
+ou e-mail da pessoa), sem senha nem sessão. Cada dono só lista/atualiza/apaga
+as próprias campanhas; o backend normaliza (trim + lowercase), então "Ana",
+"ana " e "ANA" são o mesmo dono. **Isso ainda não é login de verdade** —
+separa a visão de cada pessoa, não impede quem souber o valor alheio de ler
+os dados dele. O cliente decide como obter esse valor (hoje: perguntar ao
+usuário uma vez e guardar local).
+
+### `GET /api/v1/campaigns`
+
+**Request:** sem corpo, só o header.
+```
+GET /api/v1/campaigns
+X-Nex-Dono: ana
+```
+**Response 200:**
+```json
+{
+  "campanhas": [
+    {
+      "id": 7,
+      "payload": { "...": "objeto salvo no POST, devolvido como veio" },
+      "criado_em": "2026-08-25T01:12:19+00:00",
+      "atualizado_em": "2026-08-25T01:12:19+00:00"
+    }
+  ]
+}
+```
+`payload` é opaco — o backend não interpreta, só guarda e devolve o que o
+cliente mandou no `POST`.
+
+### `POST /api/v1/campaigns`
+
+**Request:**
+```json
+{ "payload": { "...": "qualquer objeto" }, "id": null }
+```
+Omita `id` (ou mande `null`) para criar; informe o `id` devolvido por um
+`POST`/`GET` anterior para atualizar. **Atualizar um `id` que não existe, ou
+que existe mas pertence a outro dono, não falha — cria uma campanha nova** e
+devolve um `id` diferente do que foi enviado. O cliente que fizer `id ===
+resposta.id` para saber se atualizou ou criou.
+
+**Response 200:** `{ "id": 8, "payload": {...}, "atualizado_em": "..." }`
+
+### `DELETE /api/v1/campaigns/{campanha_id}`
+
+**Response 200:** `{ "removida": 8 }`
+**Response 404:** id não existe **ou** pertence a outro dono — os dois casos
+respondem igual, de propósito (não revela que a campanha é de outra pessoa).
+
+### Códigos de erro específicos deste grupo
+
+| Status | Quando |
+|---|---|
+| `422` | Header `X-Nex-Dono` ausente, vazio/só espaço, ou com mais de 120 caracteres. Também: `payload` ausente/não-objeto, ou `campanha_id` não numérico no DELETE. |
+| `404` | `DELETE`/atualização de id que não existe (para aquele dono). |
+| `413` | `payload` acima do limite de bytes configurado no servidor. |
+| `501` | Persistência desligada neste servidor (`DB_PATH` vazio) — **não é erro**, é a configuração padrão de quem roda local sem banco. O cliente deve cair para armazenamento local em silêncio, sem mostrar erro ao usuário. |
+| `507` | Base cheia (teto por dono ou teto global do servidor). |
+
+---
+
 ## Notas para o frontend
 
 1. `ai_insights` **sempre existe** no response, mas vem `null` nesta fase (IA desligada). Trate como opcional.
