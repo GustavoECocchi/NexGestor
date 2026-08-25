@@ -21,3 +21,4 @@ export const IconSun = (p: P) => (<S {...p}><circle cx="12" cy="12" r="4.2" /><p
 export const IconMoon = (p: P) => (<S {...p}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" /></S>)
 export const IconTrash = (p: P) => (<S {...p}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></S>)
 export const IconAlert = (p: P) => (<S {...p}><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></S>)
+export const IconRocket = (p: P) => (<S {...p}><path d="M14.5 9.5 9 15c-.6 1.7-1.3 3-4 4 1-2.7 2.3-3.4 4-4l5.5-5.5z" /><path d="M12 15 9 12c1-4 3.5-8 9-9 1 5.5-3 8-9 9z" /><circle cx="14.5" cy="9.5" r="1.3" /></S>)

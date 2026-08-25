@@ -233,6 +233,7 @@ export function responseToVM(
     ai,
     summary: res.summary,
     opportunity,
+    primaryAction: res.primary_action,
     tiles,
     scenarios,
     actions,

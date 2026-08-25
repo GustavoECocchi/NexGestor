@@ -152,7 +152,10 @@ export function App() {
 
   return (
     <div className="app">
-      <Header onSearch={() => setPalette(true)} />
+      {/* `section` fica fixo em "Campanhas": a tela de detalhe já tem seu próprio
+          cabeçalho com nome da campanha + "Voltar" logo abaixo — repetir o nome
+          aqui em cima seria a mesma duplicação que acabamos de tirar da marca. */}
+      <Header section="Campanhas" onSearch={() => setPalette(true)} />
 
       {/* `key` distinto por tela é obrigatório, não cosmético: Home e
           CampaignDetail renderizam ambos um `<div className="scroll">` na mesma

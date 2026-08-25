@@ -29,6 +29,7 @@ function vm(id: number, name = `Campanha ${id}`): CampaignVM {
     ai: "",
     summary: "",
     opportunity: "",
+    primaryAction: "",
     tiles: [],
     scenarios: [],
     actions: [],

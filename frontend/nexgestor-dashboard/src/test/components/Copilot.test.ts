@@ -22,6 +22,7 @@ function vm(overrides: Partial<CampaignVM> = {}): CampaignVM {
     ai: "",
     summary: "",
     opportunity: "próximo passo: revisar criativo",
+    primaryAction: "",
     tiles: [],
     scenarios: [],
     actions: [],

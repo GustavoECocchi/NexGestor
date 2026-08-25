@@ -101,11 +101,10 @@ body::after{
 .scroll::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb, var(--muted) 40%, transparent)}
 
 .hd{padding:18px 20px 8px;display:flex;align-items:center;gap:11px;position:relative;z-index:2}
+.hd-section{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .logo{width:34px;height:34px;border-radius:10px;flex:none;background:var(--logo-bg);border:1px solid var(--logo-border);display:grid;place-items:center;box-shadow:0 6px 20px -6px color-mix(in srgb, var(--accent) 50%, transparent);padding:5px}
 .logo svg{width:18px;height:18px}
 .logo img{width:100%;height:100%;object-fit:contain}
-.brand h1{font-family:var(--font-display);font-weight:800;font-size:17px;letter-spacing:-.01em;line-height:1}
-.brand p{font-size:11px;color:var(--txt-2);margin-top:3px}
 .hd .spacer{flex:1}
 .icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--txt-2);display:grid;place-items:center;cursor:pointer;transition:.18s}
 .icon-btn:hover{color:var(--txt);border-color:var(--line-2);background:var(--panel-2);transform:scale(1.06)}
@@ -168,23 +167,26 @@ body::after{
    exemplo não recebiam realce nenhum de borda/fundo ao passar o mouse. */
 .card:hover{transform:translateY(-6px) scale(1.018);border-color:color-mix(in srgb, var(--accent) 45%, var(--line-2));background:linear-gradient(165deg,color-mix(in srgb, var(--accent) 7%, var(--panel-2)),var(--panel));box-shadow:0 8px 16px -10px var(--shadow),0 24px 48px -20px var(--shadow),0 22px 45px -16px color-mix(in srgb, var(--accent) 45%, transparent),0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent)}
 .card .glow{position:absolute;inset:0;opacity:.5;pointer-events:none}
-.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:13px}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
 .card-name{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.01em;line-height:1.2}
 .card-plat{font-size:11px;color:var(--txt-2);margin-top:4px;display:flex;align-items:center;gap:6px}
 .dot{width:7px;height:7px;border-radius:50%;flex:none}
 .pill{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:7px;font-weight:500;white-space:nowrap;flex:none}
-.card-mid{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
-.metrics-row{display:flex;gap:18px}
-.m{display:flex;flex-direction:column;gap:3px}
-.m .k{font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.05em}
-.m .v{font-family:var(--font-mono);font-weight:500;font-size:15px;color:var(--txt)}
-.spark-box{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+
+/* Status do card: o maior elemento visual, de propósito — é a primeira (e
+   pra maioria dos usuários, única) coisa que precisa ser lida de relance. */
+.card-status{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.card-status-ico{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center}
+.card-status-ico svg{width:18px;height:18px}
+.card-status-label{font-family:var(--font-display);font-weight:800;font-size:18px;letter-spacing:-.01em}
+
+.card-action{background:color-mix(in srgb, var(--panel-2) 60%, transparent);border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-bottom:12px}
+.ca-label{display:block;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.card-action p{font-size:12.5px;font-weight:500;color:var(--txt);line-height:1.45;margin:0}
+
+.card-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .spark-trend{font-family:var(--font-mono);font-size:10px;display:flex;align-items:center;gap:3px}
 .spark-trend.up{color:var(--green)} .spark-trend.down{color:var(--red)} .spark-trend.flat{color:var(--txt-3)}
-.ai-strip{display:flex;gap:9px;align-items:flex-start;background:color-mix(in srgb, var(--accent) 6%, transparent);border:1px solid color-mix(in srgb, var(--accent) 12%, transparent);border-radius:10px;padding:9px 11px}
-.ai-strip .sp{width:15px;height:15px;flex:none;margin-top:1px;color:var(--accent)}
-.ai-strip p{font-size:11.5px;color:var(--txt-2);line-height:1.45;margin:0}
-.ai-strip b{color:var(--txt);font-weight:600}
 
 .empty-state{margin:8px 16px 4px;padding:34px 20px;text-align:center;border:1px dashed var(--line-2);border-radius:var(--radius);background:color-mix(in srgb, var(--accent) 3%, transparent)}
 .empty-ico{width:44px;height:44px;margin:0 auto 14px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
@@ -405,14 +407,14 @@ body::after{
    A base é COMPARTILHADA no período de testes: apagar remove para todo o time,
    por isso a confirmação diz isso com todas as letras em vez de um "tem
    certeza?" genérico.
-   O espaço é RESERVADO por `.card.delible .pill{margin-right}` — a lixeira
-   aparece/some só com opacidade, nunca empurrando o layout no hover. */
+   O espaço é RESERVADO por `.card.delible .card-top{padding-right}` — a
+   lixeira aparece/some só com opacidade, nunca empurrando o layout no hover. */
 .card-del{position:absolute;top:11px;right:11px;z-index:2;width:26px;height:26px;display:grid;place-items:center;padding:0;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--txt-3);cursor:pointer;opacity:0;transition:opacity .18s ease,color .18s ease,background .18s ease,border-color .18s ease}
 .card-del svg{width:14px;height:14px}
 .card:hover .card-del,.card:focus-within .card-del{opacity:1}
 .card-del:hover{color:var(--red);background:color-mix(in srgb, var(--red) 12%, transparent);border-color:color-mix(in srgb, var(--red) 35%, transparent)}
 .card-del:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:2px}
-.card.delible .pill{margin-right:30px}
+.card.delible .card-top{padding-right:30px}
 /* Sem hover (toque): a lixeira não pode ficar inalcançável. */
 @media (hover:none){.card-del{opacity:1}}
 

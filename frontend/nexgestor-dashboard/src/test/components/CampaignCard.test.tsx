@@ -45,6 +45,87 @@ function vm(over: Partial<CampaignVM> = {}): CampaignVM {
 const lixeira = () => screen.getByRole("button", { name: /apagar campanha/i })
 const botaoApagar = () => screen.getByRole("button", { name: /^apagar$/i })
 
+/**
+ * O card tem que responder "o que eu faço agora" com uma ação concreta —
+ * nunca com um "não encontramos motivo", que contradiz o próprio status ao
+ * lado (se o engine marcou Crítico/Atenção, ele tem um porquê; a pergunta é
+ * só QUAL fonte de dado a UI usa pra mostrar esse porquê).
+ */
+describe("ação do card — sempre concreta, nunca 'motivo não encontrado'", () => {
+  it("sem cenário/ação, usa primaryAction (o engine sempre calcula uma, mesmo sem causa raiz nomeada)", () => {
+    render(
+      <CampaignCard
+        c={vm({
+          status: "YELLOW",
+          scenarios: [],
+          actions: [],
+          summary: "resumo genérico",
+          primaryAction: "Investigar CPC: está em nível crítico sem causa raiz confirmada."
+        })}
+        index={0}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/investigar cpc/i)).toBeTruthy()
+    // O resumo genérico não deveria aparecer quando há uma ação mais específica.
+    expect(screen.queryByText("resumo genérico")).toBeNull()
+  })
+
+  it("BLUE usa a ação do cenário G mesmo se `actions[0]` for outro texto", () => {
+    render(
+      <CampaignCard
+        c={vm({
+          status: "BLUE",
+          scenarios: [{ code: "G", title: "Escala Vertical", root_cause: "x", funnel_impact: "y", action: "Aumentar orçamento 15%", priority: 2 }],
+          actions: [{ title: "Ação genérica", prio: "Alta", why: "w", impact: "i" }],
+          primaryAction: "Ação genérica"
+        })}
+        index={0}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/aumentar orçamento 15%/i)).toBeTruthy()
+  })
+
+  it("sem primaryAction (dado antigo), cai para actions[0]", () => {
+    render(
+      <CampaignCard
+        c={vm({
+          status: "RED",
+          primaryAction: "",
+          actions: [{ title: "Pausar e revisar rastreamento", prio: "Alta", why: "w", impact: "i" }],
+          summary: "não deveria aparecer"
+        })}
+        index={0}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/pausar e revisar rastreamento/i)).toBeTruthy()
+  })
+
+  it("sem primaryAction nem actions, cai para summary — nunca para um texto genérico inventado", () => {
+    render(
+      <CampaignCard
+        c={vm({ status: "GREEN", primaryAction: "", actions: [], summary: "Campanha estável, sem gargalo." })}
+        index={0}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText("Campanha estável, sem gargalo.")).toBeTruthy()
+  })
+
+  it("sem NENHUM dado, o texto reconhece a ausência de registro — nunca afirma 'motivo não encontrado'", () => {
+    render(
+      <CampaignCard
+        c={vm({ status: "YELLOW", primaryAction: "", actions: [], summary: "" })}
+        index={0}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/motivo|causa.*n[ãa]o (identificad|encontrad)/i)).toBeNull()
+  })
+})
+
 describe("lixeira — quando aparece", () => {
   it("não existe em campanha de exemplo (não é de ninguém, volta no reload)", () => {
     render(<CampaignCard c={vm()} index={0} demo onOpen={vi.fn()} onDelete={vi.fn()} />)

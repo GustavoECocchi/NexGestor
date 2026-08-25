@@ -1,18 +1,19 @@
 import { IconMoon, IconSearch, IconSun } from "~components/Icons"
-import logo from "~assets/logo.png"
 import { useTheme } from "~lib/theme"
 
 const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform)
 
-export function Header({ onSearch }: { onSearch?: () => void }) {
+/**
+ * Barra de topo do dashboard. A marca (logo + "NexGestor") já vive na sidebar
+ * (`DashboardShell`) — repeti-la aqui era o mesmo elemento duas vezes na
+ * mesma tela. Esta barra só carrega o que é específico da tela atual (o rótulo
+ * da seção) e as ações utilitárias (tema, busca).
+ */
+export function Header({ section, onSearch }: { section: string; onSearch?: () => void }) {
   const { theme, toggle } = useTheme()
   return (
     <div className="hd">
-      <div className="logo"><img src={logo} alt="NexGestor" /></div>
-      <div className="brand">
-        <h1>NexGestor</h1>
-        <p>Diagnóstico inteligente para tráfego pago</p>
-      </div>
+      <div className="hd-section">{section}</div>
       <div className="spacer" />
       <button
         className="icon-btn"

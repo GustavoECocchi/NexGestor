@@ -185,6 +185,13 @@ export interface CampaignVM {
   ai: string
   summary: string
   opportunity: string
+  /**
+   * A ação recomendada pelo engine — SEMPRE concreta, mesmo sem cenário de
+   * causa raiz batendo: `_resumo_sem_cenario` (backend) aponta a pior métrica
+   * ("Investigar CPC: está em nível crítico...") em vez de devolver um "nada
+   * encontrado" genérico. É o que responde "o que eu faço agora", direto.
+   */
+  primaryAction: string
   tiles: Tile[]
   scenarios: ScenarioVM[]
   actions: PriorityActionVM[]

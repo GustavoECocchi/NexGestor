@@ -28,6 +28,8 @@ export const CAMPAIGNS: CampaignVM[] = [
       "O público já viu o anúncio vezes demais. O criativo saturou e o CPA sobe a cada dia.",
     opportunity:
       "Você está perdendo aproximadamente <b>R$ 2.300/mês</b> com fadiga criativa. O gargalo está no criativo, não no público.",
+    primaryAction:
+      "Reduzir orçamento do conjunto saturado e subir novas variações de criativo imediatamente.",
     tiles: [
       ["ROAS", "1,1x", "var(--red)", "meta 2,5x"],
       ["CPA", "R$ 92", "var(--red)", "meta R$ 60"],
@@ -82,6 +84,8 @@ export const CAMPAIGNS: CampaignVM[] = [
       "CPA bem abaixo do alvo, ROAS acima do histórico e frequência controlada. Há margem para injetar caixa com segurança.",
     opportunity:
       "Existe margem para <b>escalar até 35%</b> mantendo o CPA dentro da meta. Cada dia parado é receita não capturada.",
+    primaryAction:
+      "Aumentar orçamento 15–20% a cada 24h, sem passar de 30% para não resetar o aprendizado.",
     tiles: [
       ["ROAS", "5,2x", "var(--blue)", "meta 3,0x"],
       ["CPA", "R$ 24", "var(--blue)", "meta R$ 33"],

@@ -23,6 +23,7 @@ function vm(id: number, overrides: Partial<CampaignVM> = {}): CampaignVM {
     ai: "",
     summary: "",
     opportunity: "",
+    primaryAction: "",
     tiles: [],
     scenarios: [],
     actions: [],
