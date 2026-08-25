@@ -1,0 +1,112 @@
+import { AnimatedNumber } from "~components/AnimatedNumber"
+import { Copilot } from "~components/Copilot"
+import {
+  DiagnosisCards,
+  MetricTiles,
+  OpportunityCard,
+  PriorityActions,
+  Suggestions,
+  AIExtras
+} from "~components/DetailSections"
+import { IconBack, IconInfo } from "~components/Icons"
+import { STATUS } from "~lib/status"
+import type { CampaignVM, ScoreConfidence } from "~types"
+
+const CONF: Record<ScoreConfidence, { label: string; color: string }> = {
+  high: { label: "confiança alta", color: "var(--green)" },
+  medium: { label: "confiança média", color: "var(--amber)" },
+  low: { label: "confiança baixa", color: "var(--red)" }
+}
+
+export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => void }) {
+  const s = STATUS[c.status]
+  const circ = 2 * Math.PI * 32
+  const off = circ - (c.score / 100) * circ
+  return (
+    <>
+      <div className="scroll fade-in">
+        <div className="detail-hd">
+          <div
+            className="back"
+            role="button"
+            tabIndex={0}
+            onClick={onBack}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onBack())}>
+            <IconBack />Voltar
+          </div>
+          <div className="detail-title-row">
+            <h2>{c.name}</h2>
+            <div className="pill" style={{ background: s.bg, color: s.color }}>{s.label}</div>
+          </div>
+          <div className="detail-plat"><span className="dot" style={{ background: s.color }} />{c.platform}</div>
+        </div>
+
+        <div className="score-wrap">
+          <div className="score-ring">
+            <svg width={74} height={74}>
+              <circle cx={37} cy={37} r={32} fill="none" stroke="var(--line)" strokeWidth={6} />
+              <circle
+                cx={37} cy={37} r={32} fill="none" stroke={s.stroke} strokeWidth={6}
+                strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={off}
+                style={{ transition: "stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)" }}
+              />
+            </svg>
+            {/* Conta junto com o anel, que já anima o stroke-dashoffset em 1s. */}
+            <div className="num"><AnimatedNumber value={String(c.score)} /><small>/100</small></div>
+          </div>
+          <div className="score-txt">
+            <h3>Score de saúde</h3>
+            {c.confidence && c.coverage != null && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0 6px", fontSize: 11, color: CONF[c.confidence].color }}>
+                <span className="dot" style={{ background: CONF[c.confidence].color }} />
+                Diagnóstico com {CONF[c.confidence].label} · cobertura de dados {c.coverage}%
+              </div>
+            )}
+            <p>{c.summary}</p>
+          </div>
+        </div>
+
+        <OpportunityCard c={c} />
+
+        <div className="sec-label">Métricas <span className="ln" /></div>
+        <MetricTiles c={c} />
+
+        {/* O diagnóstico é do engine determinístico. Chamá-lo de "Diagnóstico
+            IA" quando `ai_insights` veio nulo (IA desligada, sem key ou falha)
+            atribuía à IA um texto que ela não escreveu. O selo só aparece
+            quando a camada de IA realmente participou. */}
+        <div className="sec-label">
+          Diagnóstico
+          {c.hasAI && <span className="ai-badge">complementado por IA</span>}
+          <span className="ln" />
+        </div>
+        <div className="sec-cap">
+          <IconInfo />
+          {c.hasAI
+            ? "Cruzamento entre métricas, metas e padrões de comportamento pelo engine de regras, complementado pela camada de IA."
+            : "Gerado pelo engine de regras, cruzando métricas, metas e padrões de comportamento — não pela leitura de números isolados."}
+        </div>
+        <DiagnosisCards c={c} />
+
+        <div className="sec-label">Ações prioritárias <span className="ln" /></div>
+        <PriorityActions c={c} />
+
+        <div className="sec-label">Sugestões <span className="ln" /></div>
+        <Suggestions c={c} />
+
+        {/* Só renderiza quando a IA de fato produziu algo — o próprio
+            componente devolve null se os dois blocos estiverem vazios, então
+            campanha sem IA não ganha um cabeçalho órfão. */}
+        {((c.aiInsights?.length ?? 0) > 0 || (c.aiRisks?.length ?? 0) > 0) && (
+          <div className="sec-label">
+            Observações da IA <span className="ln" />
+          </div>
+        )}
+        <AIExtras c={c} />
+
+        <Copilot c={c} />
+        <div style={{ height: 8 }} />
+      </div>
+    </>
+  )
+}

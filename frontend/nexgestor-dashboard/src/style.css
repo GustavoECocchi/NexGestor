@@ -1,0 +1,535 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+  /* Compartilhado entre temas */
+  --radius:16px;
+  --font-display:'Syne',sans-serif; --font-mono:'DM Mono',monospace; --font-body:'Hanken Grotesk',sans-serif;
+
+  /* Escuro — tema padrão da extensão */
+  color-scheme:dark;
+  --bg:#06080f; --bg-2:#080b15; --panel:#0c1120; --panel-2:#0f1526;
+  --line:rgba(120,150,220,.10); --line-2:rgba(120,150,220,.18);
+  --txt:#e8ecf6; --txt-2:#9aa6c4; --txt-3:#5e6a8c; --muted:#6b779a;
+  --accent:#5b8cff; --accent-soft:color-mix(in srgb, var(--accent) 14%, transparent);
+  --red:#ff6b78; --red-bg:color-mix(in srgb, var(--red) 12%, transparent);
+  --amber:#ffc56b; --amber-bg:color-mix(in srgb, var(--amber) 12%, transparent);
+  --green:#5fe0a8; --green-bg:color-mix(in srgb, var(--green) 12%, transparent);
+  --blue:#5b8cff; --blue-bg:color-mix(in srgb, var(--blue) 12%, transparent);
+  --violet:#9c8bff; --violet-bg:color-mix(in srgb, var(--violet) 12%, transparent);
+  --orange:#ff9a52; --orange-bg:color-mix(in srgb, var(--orange) 12%, transparent);
+  --shadow:rgba(0,0,0,.8); --scrim:rgba(4,6,12,.6);
+  --logo-bg:#0b0d12; --logo-border:transparent;
+}
+
+/* Claro — segue a preferência do sistema quando o usuário não escolheu tema no toggle */
+@media (prefers-color-scheme: light){
+  :root:where(:not([data-theme="dark"])){
+    color-scheme:light;
+    --bg:#f4f7fc; --bg-2:#eaf0fb; --panel:#ffffff; --panel-2:#fbfcff;
+    --line:rgba(16,24,56,.08); --line-2:rgba(16,24,56,.14);
+    --txt:#12172c; --txt-2:#5b6478; --txt-3:#7b8499; --muted:#646f88;
+    --accent:#3163e0; --accent-soft:color-mix(in srgb, var(--accent) 10%, transparent);
+    --red:#dc2626; --red-bg:color-mix(in srgb, var(--red) 10%, transparent);
+    --amber:#b45309; --amber-bg:color-mix(in srgb, var(--amber) 10%, transparent);
+    --green:#15803d; --green-bg:color-mix(in srgb, var(--green) 10%, transparent);
+    --blue:#3163e0; --blue-bg:color-mix(in srgb, var(--blue) 10%, transparent);
+    --violet:#7c3aed; --violet-bg:color-mix(in srgb, var(--violet) 10%, transparent);
+    --orange:#c2410c; --orange-bg:color-mix(in srgb, var(--orange) 10%, transparent);
+    --shadow:rgba(30,41,82,.16); --scrim:rgba(15,20,40,.5);
+    --logo-bg:#f2f5fb; --logo-border:var(--line);
+  }
+}
+/* Toggle explícito (persistido) — vence a preferência do sistema nos dois sentidos */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f4f7fc; --bg-2:#eaf0fb; --panel:#ffffff; --panel-2:#fbfcff;
+  --line:rgba(16,24,56,.08); --line-2:rgba(16,24,56,.14);
+  --txt:#12172c; --txt-2:#5b6478; --txt-3:#7b8499; --muted:#646f88;
+  --accent:#3163e0; --accent-soft:color-mix(in srgb, var(--accent) 10%, transparent);
+  --red:#dc2626; --red-bg:color-mix(in srgb, var(--red) 10%, transparent);
+  --amber:#b45309; --amber-bg:color-mix(in srgb, var(--amber) 10%, transparent);
+  --green:#15803d; --green-bg:color-mix(in srgb, var(--green) 10%, transparent);
+  --blue:#3163e0; --blue-bg:color-mix(in srgb, var(--blue) 10%, transparent);
+  --violet:#7c3aed; --violet-bg:color-mix(in srgb, var(--violet) 10%, transparent);
+  --orange:#c2410c; --orange-bg:color-mix(in srgb, var(--orange) 10%, transparent);
+  --shadow:rgba(30,41,82,.16); --scrim:rgba(15,20,40,.5);
+  --logo-bg:#f2f5fb; --logo-border:var(--line);
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#06080f; --bg-2:#080b15; --panel:#0c1120; --panel-2:#0f1526;
+  --line:rgba(120,150,220,.10); --line-2:rgba(120,150,220,.18);
+  --txt:#e8ecf6; --txt-2:#9aa6c4; --txt-3:#5e6a8c; --muted:#6b779a;
+  --accent:#5b8cff; --accent-soft:color-mix(in srgb, var(--accent) 14%, transparent);
+  --red:#ff6b78; --red-bg:color-mix(in srgb, var(--red) 12%, transparent);
+  --amber:#ffc56b; --amber-bg:color-mix(in srgb, var(--amber) 12%, transparent);
+  --green:#5fe0a8; --green-bg:color-mix(in srgb, var(--green) 12%, transparent);
+  --blue:#5b8cff; --blue-bg:color-mix(in srgb, var(--blue) 12%, transparent);
+  --violet:#9c8bff; --violet-bg:color-mix(in srgb, var(--violet) 12%, transparent);
+  --orange:#ff9a52; --orange-bg:color-mix(in srgb, var(--orange) 12%, transparent);
+  --shadow:rgba(0,0,0,.8); --scrim:rgba(4,6,12,.6);
+  --logo-bg:#0b0d12; --logo-border:transparent;
+}
+
+/* Texto troca de cor instantaneamente no toggle de tema — cross-fade lento em
+   negrito grande (h1, títulos de card) cria uma ilusão de "inchar"/piscar por
+   contraste. Só fundo/borda recebem o fade suave. */
+*{box-sizing:border-box;transition:background .22s ease,border-color .22s ease}
+html,body,#root{height:100%;margin:0}
+body{
+  font-family:var(--font-body);
+  background:
+    radial-gradient(900px 600px at 80% -5%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%),
+    radial-gradient(700px 500px at -10% 100%, color-mix(in srgb, var(--green) 6%, transparent), transparent 50%),
+    var(--bg);
+  color:var(--txt);-webkit-font-smoothing:antialiased;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.035;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.app{display:flex;flex-direction:column;height:100%;width:100%;position:relative;overflow:hidden}
+.app::before{content:"";position:absolute;top:0;left:0;right:0;height:120px;background:radial-gradient(400px 120px at 50% -40px, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%);pointer-events:none}
+.scroll{overflow-y:auto;overflow-x:hidden;flex:1;scrollbar-width:thin;scrollbar-color:color-mix(in srgb, var(--muted) 25%, transparent) transparent}
+.scroll::-webkit-scrollbar{width:7px}
+.scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--muted) 22%, transparent);border-radius:10px}
+.scroll::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb, var(--muted) 40%, transparent)}
+
+.hd{padding:18px 20px 8px;display:flex;align-items:center;gap:11px;position:relative;z-index:2}
+.logo{width:34px;height:34px;border-radius:10px;flex:none;background:var(--logo-bg);border:1px solid var(--logo-border);display:grid;place-items:center;box-shadow:0 6px 20px -6px color-mix(in srgb, var(--accent) 50%, transparent);padding:5px}
+.logo svg{width:18px;height:18px}
+.logo img{width:100%;height:100%;object-fit:contain}
+.brand h1{font-family:var(--font-display);font-weight:800;font-size:17px;letter-spacing:-.01em;line-height:1}
+.brand p{font-size:11px;color:var(--txt-2);margin-top:3px}
+.hd .spacer{flex:1}
+.icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--txt-2);display:grid;place-items:center;cursor:pointer;transition:.18s}
+.icon-btn:hover{color:var(--txt);border-color:var(--line-2);background:var(--panel-2);transform:scale(1.06)}
+.icon-btn:active{transform:scale(.94)}
+.icon-btn svg{width:15px;height:15px;animation:iconSwap .35s cubic-bezier(.2,.8,.2,1)}
+@keyframes iconSwap{from{transform:rotate(-80deg) scale(.5);opacity:0}to{transform:none;opacity:1}}
+
+.search-trigger{height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--txt-2);display:flex;align-items:center;gap:6px;padding:0 8px;cursor:pointer;transition:.18s;font-family:var(--font-body)}
+.search-trigger:hover{color:var(--txt);border-color:var(--line-2);background:var(--panel-2)}
+.search-trigger svg{width:14px;height:14px;flex:none}
+.search-kbd{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.03em;color:var(--txt-3);border:1px solid var(--line-2);border-radius:5px;padding:2px 5px;white-space:nowrap}
+.search-trigger:hover .search-kbd{color:var(--txt-2)}
+
+.sec-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:0 20px;margin:16px 0 10px;display:flex;align-items:center;gap:10px}
+.sec-label .ln{flex:1;height:1px;background:var(--line)}
+/* Selo de IA — só renderizado quando a resposta trouxe ai_insights de verdade
+   (ver CampaignVM.hasAI). Não é decoração: é a distinção entre o engine
+   determinístico e a camada de IA. */
+.ai-badge{font-size:9px;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--violet-bg);color:var(--violet);border:1px solid color-mix(in srgb, var(--violet) 22%, transparent);text-transform:uppercase;flex:none}
+.sec-cap{font-size:11px;color:var(--txt-3);padding:0 20px;margin:-4px 0 10px;line-height:1.45;display:flex;gap:6px;align-items:flex-start}
+.sec-cap svg{width:12px;height:12px;flex:none;margin-top:2px;color:var(--accent)}
+.mini-btn{font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb, var(--accent) 20%, transparent);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px}
+.mini-btn:hover{background:color-mix(in srgb, var(--accent) 20%, transparent)}
+.mini-btn svg{width:12px;height:12px}
+
+.summary{margin:6px 16px 4px;background:linear-gradient(160deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:15px;position:relative;overflow:hidden}
+.summary::before{content:"";position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb, var(--accent) 14%, transparent),transparent 70%)}
+.summary::after{content:"";position:absolute;left:-30px;bottom:-50px;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb, var(--orange) 8%, transparent),transparent 70%);pointer-events:none}
+.sum-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;position:relative}
+.sum-head h2{font-family:var(--font-display);font-weight:700;font-size:14.5px}
+.sum-head span{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.04em}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;position:relative}
+.chip{display:flex;align-items:center;gap:6px;font-size:11px;padding:5px 9px;border-radius:8px;font-weight:600}
+.chip .cdot{width:6px;height:6px;border-radius:50%}
+.chip b{font-family:var(--font-mono);font-weight:500}
+.fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;position:relative}
+.fin{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px;display:flex;gap:10px;align-items:flex-start;transition:border-color .18s,background .2s ease}
+.fin:hover{border-color:var(--line-2)}
+.fin-ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
+.fin-ico svg{width:13px;height:13px}
+.fin .fk{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.fin .fv{font-family:var(--font-mono);font-weight:600;font-size:16px;letter-spacing:-.01em}
+
+.feed{padding:4px 16px 8px}
+.card{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius);padding:15px;margin-bottom:11px;cursor:pointer;position:relative;overflow:hidden;transition:transform .45s cubic-bezier(.34,1.56,.64,1),border-color .3s,box-shadow .45s cubic-bezier(.34,1.56,.64,1),background .25s ease;animation:rise .5s cubic-bezier(.2,.7,.3,1) backwards}
+/* `rise` anima a PARTIR do estado inicial (`from`) com fill `backwards`, e o estado
+   final é simplesmente o natural do elemento (visível, sem transform).
+   Isso não é detalhe de estilo, é requisito de cascade: declarações de animação vencem
+   declarações normais de autor. A versão anterior (`forwards`, terminando em
+   `transform:none`) congelava o transform do card para sempre e por isso anulava
+   silenciosamente o `transform` do `:hover` — o lift/scale nunca chegava a aparecer.
+   Com `backwards` a animação deixa de contribuir assim que termina, liberando o hover;
+   durante o delay do stagger o card segue invisível, como antes. */
+@keyframes rise{from{opacity:0;transform:translateY(var(--rise-from,10px))}}
+.card:focus-visible,.pa:focus-visible,.back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Card de exemplo (demo): coloração delicada, borda tracejada — sinaliza "não é padrão" sem chamar atenção. */
+.card.demo{border-style:dashed;border-color:color-mix(in srgb, var(--accent) 28%, transparent);background:linear-gradient(165deg,color-mix(in srgb, var(--accent) 5%, transparent),var(--panel))}
+/* O `:hover` vem DEPOIS de `.card.demo` de propósito: as duas regras têm a mesma
+   especificidade (0,2,0), então quem vence é a última. Antes desta ordem os cards de
+   exemplo não recebiam realce nenhum de borda/fundo ao passar o mouse. */
+.card:hover{transform:translateY(-6px) scale(1.018);border-color:color-mix(in srgb, var(--accent) 45%, var(--line-2));background:linear-gradient(165deg,color-mix(in srgb, var(--accent) 7%, var(--panel-2)),var(--panel));box-shadow:0 8px 16px -10px var(--shadow),0 24px 48px -20px var(--shadow),0 22px 45px -16px color-mix(in srgb, var(--accent) 45%, transparent),0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent)}
+.card .glow{position:absolute;inset:0;opacity:.5;pointer-events:none}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:13px}
+.card-name{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-.01em;line-height:1.2}
+.card-plat{font-size:11px;color:var(--txt-2);margin-top:4px;display:flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.pill{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:7px;font-weight:500;white-space:nowrap;flex:none}
+.card-mid{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+.metrics-row{display:flex;gap:18px}
+.m{display:flex;flex-direction:column;gap:3px}
+.m .k{font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.05em}
+.m .v{font-family:var(--font-mono);font-weight:500;font-size:15px;color:var(--txt)}
+.spark-box{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.spark-trend{font-family:var(--font-mono);font-size:10px;display:flex;align-items:center;gap:3px}
+.spark-trend.up{color:var(--green)} .spark-trend.down{color:var(--red)} .spark-trend.flat{color:var(--txt-3)}
+.ai-strip{display:flex;gap:9px;align-items:flex-start;background:color-mix(in srgb, var(--accent) 6%, transparent);border:1px solid color-mix(in srgb, var(--accent) 12%, transparent);border-radius:10px;padding:9px 11px}
+.ai-strip .sp{width:15px;height:15px;flex:none;margin-top:1px;color:var(--accent)}
+.ai-strip p{font-size:11.5px;color:var(--txt-2);line-height:1.45;margin:0}
+.ai-strip b{color:var(--txt);font-weight:600}
+
+.empty-state{margin:8px 16px 4px;padding:34px 20px;text-align:center;border:1px dashed var(--line-2);border-radius:var(--radius);background:color-mix(in srgb, var(--accent) 3%, transparent)}
+.empty-ico{width:44px;height:44px;margin:0 auto 14px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
+.empty-ico svg{width:22px;height:22px}
+.empty-state h3{font-family:var(--font-display);font-weight:700;font-size:14.5px;margin-bottom:6px}
+.empty-state p{font-size:12px;color:var(--txt-2);line-height:1.5;margin:0}
+.empty-state-sm{padding:20px}
+
+.demo-note{display:flex;gap:10px;align-items:flex-start;margin:2px 16px 12px;padding:11px 13px;border-radius:12px;background:var(--accent-soft);border:1px solid color-mix(in srgb, var(--accent) 20%, transparent)}
+.demo-note svg{width:16px;height:16px;color:var(--accent);flex:none;margin-top:1px}
+.demo-note b{display:block;font-size:12.5px;color:var(--txt);font-weight:600;margin-bottom:2px}
+.demo-note span{font-size:11.5px;color:var(--txt-2);line-height:1.45}
+
+.demo-tag{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;vertical-align:middle;margin-left:7px;padding:2px 6px;border-radius:5px;background:var(--bg);border:1px solid var(--line-2);color:var(--muted);font-weight:500}
+
+.new-btn{width:100%;border:1px dashed var(--line-2);background:color-mix(in srgb, var(--accent) 4%, transparent);border-radius:var(--radius);padding:14px;color:var(--txt-2);cursor:pointer;font-family:var(--font-body);font-weight:600;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;transition:.2s}
+.new-btn:hover{border-color:var(--accent);color:var(--txt);background:var(--accent-soft)}
+.new-btn svg{width:16px;height:16px}
+
+.detail-hd{padding:18px 20px 8px;position:relative;z-index:2}
+.back{display:flex;align-items:center;gap:7px;color:var(--txt-2);font-size:12px;cursor:pointer;margin-bottom:14px;width:fit-content;transition:.15s;font-family:var(--font-mono)}
+.back:hover{color:var(--txt)}
+.back svg{width:14px;height:14px}
+.detail-title-row{display:flex;align-items:flex-start;gap:12px}
+.detail-title-row h2{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.01em;line-height:1.15;flex:1;margin:0}
+.detail-plat{font-size:11.5px;color:var(--txt-2);margin-top:6px;display:flex;align-items:center;gap:7px}
+
+.score-wrap{display:flex;align-items:center;gap:16px;padding:16px 20px;margin:8px 16px 4px;background:linear-gradient(160deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius)}
+/* NÃO renomear para `.ring`: este arquivo carrega `@tailwind utilities` e o
+   `content` do tailwind.config.js varre todo .ts/.tsx. Com a classe chamada
+   `ring`, o Tailwind reconhecia a string no className como o utilitário `ring`
+   dele e emitia uma segunda regra com box-shadow de foco
+   (`0 0 0 3px rgba(59,130,246,.5)`) — era o quadrado azul que aparecia em volta
+   do anel de score na tela de detalhe. */
+.score-ring{position:relative;width:74px;height:74px;flex:none}
+.score-ring svg{transform:rotate(-90deg)}
+.score-ring .num{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--font-mono);font-weight:500;font-size:20px}
+.score-ring .num small{font-size:10px;color:var(--muted)}
+.score-txt h3{font-family:var(--font-display);font-weight:700;font-size:14px;margin-bottom:4px}
+.score-txt p{font-size:11.5px;color:var(--txt-2);line-height:1.5;margin:0}
+
+.opp{margin:11px 16px 4px;border-radius:var(--radius);padding:15px;position:relative;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 15%, transparent),color-mix(in srgb, var(--violet) 7%, transparent));border:1px solid color-mix(in srgb, var(--accent) 28%, transparent)}
+.opp::before{content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb, var(--accent) 28%, transparent),transparent 70%)}
+.opp .oh{display:flex;align-items:center;gap:8px;margin-bottom:9px;position:relative}
+.opp .oh svg{width:16px;height:16px;color:var(--accent)}
+.opp .oh span{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.opp p{font-size:13px;line-height:1.5;color:var(--txt);font-weight:500;position:relative;margin:0}
+
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:6px 16px}
+.mtile{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:13px;padding:13px;--rise-from:8px;animation:rise .45s cubic-bezier(.2,.7,.3,1) backwards}
+.mtile .mk{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.mtile .mv{font-family:var(--font-mono);font-weight:500;font-size:21px;letter-spacing:-.01em}
+.mtile .md{font-size:10.5px;margin-top:5px;font-family:var(--font-mono);color:var(--muted)}
+
+.diag{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 16px 11px;border-left:3px solid var(--accent)}
+.diag .dh{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.diag .code{font-family:var(--font-mono);font-size:10px;padding:3px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);letter-spacing:.05em}
+.diag .dt{font-family:var(--font-display);font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+.diag .prio{margin-left:auto;font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:6px}
+.diag p{font-size:12px;color:var(--txt-2);line-height:1.55;margin:0 0 8px}
+.diag .lbl{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.diag .act{display:flex;gap:8px;align-items:flex-start;background:color-mix(in srgb, var(--accent) 6%, transparent);border:1px solid color-mix(in srgb, var(--accent) 12%, transparent);border-radius:9px;padding:9px 11px;margin-top:8px}
+.diag .act svg{width:14px;height:14px;color:var(--accent);flex:none;margin-top:1px}
+.diag .act p{margin:0;color:var(--txt);font-weight:500}
+
+.pa{display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px;margin:0 16px 9px;background:linear-gradient(165deg,var(--panel-2),var(--panel));transition:.18s;cursor:pointer}
+.pa:hover{border-color:var(--line-2)}
+.pa .cb{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line-2);flex:none;margin-top:1px;display:grid;place-items:center;transition:.15s}
+.pa.checked .cb{background:var(--accent);border-color:var(--accent)}
+.pa .cb svg{width:12px;height:12px;color:#fff;opacity:0}
+.pa.checked .cb svg{opacity:1}
+.pa.checked .pa-title{text-decoration:line-through;color:var(--muted)}
+.pa-body{flex:1}
+.pa-head{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.pa-title{font-weight:600;font-size:12.5px;color:var(--txt)}
+.pa-prio{font-family:var(--font-mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:5px;margin-left:auto}
+.pa-why{font-size:11.5px;color:var(--txt-2);line-height:1.45;margin-bottom:6px}
+.pa-impact{font-size:11px;color:var(--green);display:flex;gap:5px;align-items:center}
+.pa-impact svg{width:12px;height:12px;flex:none}
+
+.sug-wrap{padding:2px 16px 4px}
+.sg2{display:flex;flex-direction:column;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:8px}
+.sg2 .sn{font-size:12.5px;font-weight:600;color:var(--txt);display:flex;gap:7px;align-items:center}
+.sg2 .sn svg{width:13px;height:13px;color:var(--accent);flex:none}
+.sg2 .sm{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.03em;padding:3px 7px;border-radius:6px;background:var(--bg);border:1px solid var(--line);color:var(--txt-2)}
+.tag b{font-weight:500}
+
+.quick-asks{display:flex;flex-wrap:wrap;gap:7px;padding:0 16px 10px}
+.quick-ask{font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:6px 11px;cursor:pointer;transition:.15s}
+.quick-ask:hover{color:var(--txt);border-color:var(--accent);background:var(--accent-soft)}
+
+.chat{margin:6px 16px 0;border-top:1px solid var(--line);padding-top:14px}
+.msg{margin-bottom:11px;max-width:88%;font-size:12.5px;line-height:1.5;padding:11px 13px;border-radius:13px}
+.msg.ai{background:var(--panel-2);border:1px solid var(--line);color:var(--txt);border-bottom-left-radius:5px}
+.msg.me{background:var(--accent);color:#fff;margin-left:auto;border-bottom-right-radius:5px}
+.chat-input{display:flex;gap:8px;align-items:center;padding:12px 16px 16px;border-top:1px solid var(--line)}
+.chat-input input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 13px;color:var(--txt);font-family:var(--font-body);font-size:12.5px;outline:none}
+.chat-input input:focus{border-color:var(--accent)}
+.send{width:38px;height:38px;border-radius:11px;border:none;background:var(--accent);color:#fff;cursor:pointer;display:grid;place-items:center;flex:none;transition:.18s}
+.send:hover{background:color-mix(in srgb, var(--accent) 85%, white)}
+.send svg{width:16px;height:16px}
+
+.overlay{position:absolute;inset:0;z-index:50;background:var(--scrim);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center}
+.modal{width:100%;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line-2);border-top-left-radius:22px;border-top-right-radius:22px;padding:18px 18px 22px;box-shadow:0 -20px 60px -10px var(--shadow);max-height:92%;overflow-y:auto;animation:slideUp .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes slideUp{from{transform:translateY(24px)}to{transform:none}}
+.modal-grab{width:36px;height:4px;border-radius:4px;background:var(--line-2);margin:0 auto 16px}
+.modal h2{font-family:var(--font-display);font-weight:700;font-size:18px;letter-spacing:-.01em;margin-bottom:4px}
+.modal .sub{font-size:12px;color:var(--txt-2);margin-bottom:16px}
+
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:18px}
+.seg button{flex:1;border:none;background:transparent;color:var(--txt-2);font-family:var(--font-body);font-weight:600;font-size:12.5px;padding:9px;border-radius:9px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:7px}
+.seg button svg{width:14px;height:14px}
+.seg button.active{background:var(--accent);color:#fff;box-shadow:0 6px 16px -8px color-mix(in srgb, var(--accent) 90%, transparent)}
+
+.detect{display:flex;align-items:center;gap:10px;background:var(--green-bg);border:1px solid color-mix(in srgb, var(--green) 20%, transparent);border-radius:11px;padding:11px 13px;margin-bottom:14px}
+.detect .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);position:relative;flex:none}
+.detect .pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--green);animation:ping 1.8s ease-out infinite}
+@keyframes ping{0%{transform:scale(.6);opacity:.8}100%{transform:scale(1.8);opacity:0}}
+.detect span{font-size:12px;color:var(--txt-2)} .detect b{color:var(--txt);font-weight:600}
+/* Gradiente derivado das variáveis de tema (antes era hex fixo com as cores do
+   tema escuro, que no tema claro destoava do resto da paleta).
+   O `color-mix` a 75% com preto não é estética: com as cores puras o texto branco
+   de 14px/700 fica abaixo do AA em ambos os temas (accent escuro 3.16:1, violet
+   escuro 2.78:1 — o mínimo para este tamanho é 4.5:1, já que "texto grande" só
+   vale a partir de 18.66px). A 75% as quatro paradas (accent/violet × claro/escuro)
+   ficam entre 4.68:1 e 8.51:1. A 80% o violeta do tema escuro ainda reprova (4.19). */
+.collect-btn{width:100%;border:none;border-radius:13px;padding:15px;cursor:pointer;background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 75%, #000),color-mix(in srgb, var(--violet) 75%, #000));color:#fff;font-family:var(--font-body);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 12px 30px -12px color-mix(in srgb, var(--accent) 90%, transparent);transition:.2s}
+.collect-btn:hover{transform:translateY(-1px)}
+.collect-btn svg{width:17px;height:17px}
+.collect-hint{font-size:11px;color:var(--muted);text-align:center;margin-top:11px;line-height:1.5}
+.loadseq{padding:6px 2px}
+.lrow{display:flex;align-items:center;gap:12px;padding:11px 0;opacity:.35;transition:.35s}
+.lrow.active{opacity:1} .lrow.done{opacity:.6}
+.lrow .ico{width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line)}
+.lrow.active .ico{border-color:var(--accent);background:var(--accent-soft)}
+.lrow .ico svg{width:13px;height:13px;color:var(--txt-2)}
+.lrow.active .ico svg{color:var(--accent)}
+.lrow.done .ico{border-color:color-mix(in srgb, var(--green) 40%, transparent);background:var(--green-bg)}
+.lrow.done .ico svg{color:var(--green)}
+.lrow .lt{font-size:13px;color:var(--txt-2)} .lrow.active .lt{color:var(--txt)}
+.spin{width:13px;height:13px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.grp{margin-bottom:14px}
+.grp-h{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.fld-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.fld{display:flex;flex-direction:column;gap:5px}
+.fld label{font-size:11px;color:var(--txt-2)}
+.fld input,.fld select{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--txt);font-family:var(--font-mono);font-size:12.5px;outline:none;transition:.18s;width:100%}
+.fld input:focus,.fld select:focus{border-color:var(--accent);background:var(--panel)}
+.fld input::placeholder{color:var(--txt-3)}
+.file-drop{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--txt);font-family:var(--font-mono);font-size:12px;outline:none;transition:.18s;resize:vertical}
+.file-drop:focus{border-color:var(--accent);background:var(--panel)}
+.file-input{width:100%;font-size:11.5px;color:var(--txt-2);margin-bottom:9px}
+.preview-list{list-style:none;padding:0;margin:6px 0 0;font-family:var(--font-mono);font-size:11.5px;color:var(--txt-2);display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
+.preview-list li{display:flex;justify-content:space-between;gap:8px}
+.submit{width:100%;border:none;border-radius:12px;padding:14px;cursor:pointer;margin-top:6px;background:var(--accent);color:#fff;font-family:var(--font-body);font-weight:700;font-size:13.5px;transition:.2s}
+.submit:hover{background:color-mix(in srgb, var(--accent) 85%, white)}
+
+.cmp-selects{display:flex;gap:9px;margin-bottom:14px}
+.cmp-selects select{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;color:var(--txt);font-family:var(--font-body);font-size:11.5px;outline:none}
+.cmp-selects select:focus{border-color:var(--accent)}
+.cmp-table{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:13px}
+.cmp-row{display:grid;grid-template-columns:1.2fr 1fr 1fr;border-bottom:1px solid var(--line)}
+.cmp-row:last-child{border-bottom:none}
+.cmp-row.head{background:var(--panel-2)}
+.cmp-row>div{padding:9px 10px}
+.cmp-k{color:var(--txt-2);font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;text-transform:uppercase;display:flex;align-items:center}
+.cmp-v{font-family:var(--font-mono);font-size:12px;color:var(--txt-3);text-align:right}
+.cmp-v.win{color:var(--green);font-weight:500}
+.cmp-row.head .cmp-v{color:var(--txt);font-family:var(--font-display);font-weight:700;font-size:10.5px;text-align:right;line-height:1.2}
+.cmp-verdict{display:flex;gap:9px;background:var(--accent-soft);border:1px solid color-mix(in srgb, var(--accent) 20%, transparent);border-radius:11px;padding:12px}
+.cmp-verdict svg{width:15px;height:15px;color:var(--accent);flex:none;margin-top:1px}
+.cmp-verdict p{font-size:12px;line-height:1.55;color:var(--txt-2);margin:0} .cmp-verdict b{color:var(--txt);font-weight:600}
+
+.fade-in{animation:fadeIn .35s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* ===== Chips do Resumo como filtro ===== */
+.chip-btn{border:none;cursor:pointer;font-family:var(--font-body);font-size:11px;font-weight:600;transition:.15s;outline:1px solid transparent}
+.chip-btn:hover{filter:brightness(1.18)}
+.chip-btn.active{outline:1px solid currentColor}
+.chip-btn.dim{opacity:.38}
+.filter-tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:10px;letter-spacing:.03em;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line-2);border-radius:7px;padding:3px 8px;cursor:pointer;margin-left:4px;text-transform:none}
+.filter-tag:hover{color:var(--txt);border-color:var(--accent)}
+.filter-tag span{color:var(--muted)}
+
+/* ===== Command Palette (⌘K) ===== */
+.cmdk-overlay{position:absolute;inset:0;z-index:60;background:var(--scrim);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;justify-content:center;align-items:flex-start;padding:72px 16px 16px;animation:fadeIn .18s ease}
+.cmdk{width:100%;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line-2);border-radius:16px;box-shadow:0 30px 70px -20px var(--shadow);overflow:hidden;animation:cmdkIn .2s cubic-bezier(.2,.8,.2,1)}
+@keyframes cmdkIn{from{transform:translateY(-8px);opacity:.6}to{transform:none;opacity:1}}
+.cmdk-search{display:flex;align-items:center;gap:9px;padding:13px 14px;border-bottom:1px solid var(--line)}
+.cmdk-search svg{width:16px;height:16px;color:var(--muted);flex:none}
+.cmdk-search input{flex:1;background:transparent;border:none;outline:none;color:var(--txt);font-family:var(--font-body);font-size:13.5px}
+.cmdk-search input::placeholder{color:var(--txt-3)}
+.cmdk-kbd{font-family:var(--font-mono);font-size:9.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:5px;padding:2px 6px}
+.cmdk-list{max-height:300px;overflow-y:auto;padding:6px}
+.cmdk-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
+.cmdk-item.active{background:var(--accent-soft)}
+.cmdk-ic{width:20px;display:grid;place-items:center;color:var(--txt-2);flex:none}
+.cmdk-ic svg{width:14px;height:14px}
+.cmdk-dot{width:8px;height:8px;border-radius:50%;display:block}
+.cmdk-label{flex:1;font-size:12.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmdk-tag{font-family:var(--font-mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:6px;flex:none}
+.cmdk-tag.ghost{background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+.cmdk-empty{padding:18px;text-align:center;color:var(--muted);font-size:12px}
+
+
+/* ===== Apagar campanha (lixeira no canto do card) =====
+   A base é COMPARTILHADA no período de testes: apagar remove para todo o time,
+   por isso a confirmação diz isso com todas as letras em vez de um "tem
+   certeza?" genérico.
+   O espaço é RESERVADO por `.card.delible .pill{margin-right}` — a lixeira
+   aparece/some só com opacidade, nunca empurrando o layout no hover. */
+.card-del{position:absolute;top:11px;right:11px;z-index:2;width:26px;height:26px;display:grid;place-items:center;padding:0;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--txt-3);cursor:pointer;opacity:0;transition:opacity .18s ease,color .18s ease,background .18s ease,border-color .18s ease}
+.card-del svg{width:14px;height:14px}
+.card:hover .card-del,.card:focus-within .card-del{opacity:1}
+.card-del:hover{color:var(--red);background:color-mix(in srgb, var(--red) 12%, transparent);border-color:color-mix(in srgb, var(--red) 35%, transparent)}
+.card-del:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:2px}
+.card.delible .pill{margin-right:30px}
+/* Sem hover (toque): a lixeira não pode ficar inalcançável. */
+@media (hover:none){.card-del{opacity:1}}
+
+.card-del-confirm{position:absolute;top:8px;right:8px;left:8px;z-index:3;display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel-2);border:1px solid color-mix(in srgb, var(--red) 40%, var(--line));box-shadow:0 10px 24px -12px var(--shadow)}
+.card-del-confirm span{flex:1;font-size:11.5px;color:var(--txt-2);line-height:1.25}
+.card-del-confirm button{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--txt-2)}
+.card-del-confirm button:disabled{opacity:.6;cursor:default}
+.del-yes{border-color:color-mix(in srgb, var(--red) 45%, transparent)!important;background:color-mix(in srgb, var(--red) 14%, transparent)!important;color:var(--red)!important}
+.del-yes:hover:not(:disabled){background:color-mix(in srgb, var(--red) 22%, transparent)!important}
+.del-no:hover:not(:disabled){border-color:var(--line-2);color:var(--txt)}
+
+
+/* ===== Observações da IA (insights cruzados + alertas de risco) =====
+   Blocos que o backend já devolvia e a tela descartava até 14/08/2026.
+   Texto puro, sem HTML injetado: é conteúdo gerado por modelo. */
+.ai-extras{display:flex;flex-direction:column;gap:9px;padding:0 16px 4px}
+.ai-extra{background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:12px 13px}
+.ai-extra-h{display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-weight:700;font-size:12.5px;letter-spacing:-.01em;color:var(--txt);margin-bottom:5px}
+.ai-extra-h svg{width:14px;height:14px;flex:none;color:var(--accent)}
+.ai-extra p{font-size:12px;line-height:1.5;color:var(--txt-2);margin:0}
+/* Risco puxa para o laranja: é alerta preventivo, não erro consumado — por
+   isso não usa o vermelho de "está quebrado agora". */
+.ai-extra.risco{border-color:color-mix(in srgb, var(--orange) 34%, var(--line));background:linear-gradient(165deg,color-mix(in srgb, var(--orange) 7%, var(--panel-2)),var(--panel))}
+.ai-extra.risco .ai-extra-h svg{color:var(--orange)}
+.ai-prazo{margin-left:auto;flex:none;font-family:var(--font);font-size:10px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:999px;color:var(--orange);background:color-mix(in srgb, var(--orange) 15%, transparent);border:1px solid color-mix(in srgb, var(--orange) 30%, transparent)}
+
+/* ===== Movimento reduzido =====
+   Respeita quem pede menos animação no SO. `.card`/`.mtile` já nascem visíveis
+   (o `rise` só anima o estado inicial via `from` + fill `backwards`), então não é
+   mais preciso forçar o estado final aqui. O `animation-delay` precisa ser zerado:
+   ele não é coberto pela regra de duração acima e, com fill `backwards`, manteria o
+   elemento invisível durante todo o stagger.
+   O `transform` do hover é neutralizado de propósito — sem transição, o lift viraria
+   um salto seco de 6px. O realce de borda/sombra/fundo continua valendo, então o
+   card segue dando retorno visual ao mouse, só que sem movimento. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    animation-delay:0ms !important;
+    transition-duration:.01ms !important;
+  }
+  .card:hover{transform:none}
+  .detect .pulse::after{display:none}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DASHBOARD — camada nova sobre o sistema visual da extensão.
+   Tudo acima é herdado como estava (tokens de cor, fontes, componentes).
+   Este bloco só resolve o que muda de side panel (~400px) para full-screen:
+   uma casca com sidebar, grade de cards em vez de lista única, e modais
+   centralizados em vez de bottom sheet.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.dash-shell{display:flex;height:100%;width:100%}
+
+.dash-side{
+  width:240px;flex:none;display:flex;flex-direction:column;
+  background:var(--panel);border-right:1px solid var(--line);
+  padding:20px 14px;gap:22px;
+}
+.dash-side-brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+.dash-side-brand span{font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--txt)}
+.dash-side-nav{flex:1;display:flex;flex-direction:column;gap:4px}
+.dash-side-item{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+  color:var(--txt-2);font-family:var(--font-body);font-weight:600;font-size:13.5px;
+}
+.dash-side-item svg{width:16px;height:16px}
+.dash-side-item.active{background:var(--accent-soft);color:var(--accent)}
+.dash-side-foot{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:6px}
+.dash-side-dono{
+  font-family:var(--font-mono);font-size:12px;color:var(--txt-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 6px;
+}
+.dash-side-trocar{
+  background:none;border:none;color:var(--txt-3);font-size:11.5px;text-align:left;
+  cursor:pointer;padding:0 6px;font-family:var(--font-body);
+}
+.dash-side-trocar:hover{color:var(--txt-2);text-decoration:underline}
+
+.dash-main{flex:1;min-width:0;height:100%;overflow:hidden;position:relative}
+/* `.app` (componente portado) já é flex column 100%×100% — dentro do
+   `.dash-main` ele passa a preencher a área ao lado da sidebar em vez da
+   janela inteira do side panel. */
+.dash-main .app{position:relative}
+
+/* Grade de cards a partir de ~720px (a lista em coluna única, herdada da
+   extensão, continua valendo em telas estreitas). */
+@media (min-width:720px){
+  .feed{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:4px 24px 8px}
+  .card{margin-bottom:0}
+  .sec-label,.hd{padding-left:24px;padding-right:24px}
+}
+
+/* Modais como bottom sheet fazem sentido a ~400px; numa tela larga viram
+   diálogo centralizado. */
+@media (min-width:720px){
+  .overlay{align-items:center}
+  .modal{width:100%;max-width:640px;border-radius:22px;max-height:85vh}
+  .modal-grab{display:none}
+  .cmdk{max-width:560px}
+}
+
+/* Portão de identificação (X-Nex-Dono) — tela cheia, sem sidebar. */
+.dono-gate{
+  height:100%;width:100%;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);padding:20px;
+}
+.dono-gate-card{
+  width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);padding:28px 26px;text-align:center;
+  box-shadow:0 20px 60px -20px var(--shadow);
+}
+.dono-gate-card h1{font-family:var(--font-display);font-size:19px;color:var(--txt);margin:0 0 10px}
+.dono-gate-card p{font-family:var(--font-body);font-size:13px;color:var(--txt-2);line-height:1.5;margin:0 0 18px}
+.dono-gate-card input{
+  width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  padding:11px 13px;color:var(--txt);font-family:var(--font-body);font-size:14px;
+  outline:none;margin-bottom:12px;box-sizing:border-box;
+}
+.dono-gate-card input:focus{border-color:var(--accent)}
+.dono-gate-erro{color:var(--red);font-size:12px;margin:-4px 0 12px;text-align:left}
+.dono-gate-card button{
+  width:100%;border:none;border-radius:10px;padding:12px;cursor:pointer;
+  background:var(--accent);color:#fff;font-family:var(--font-body);font-weight:700;font-size:13.5px;
+}

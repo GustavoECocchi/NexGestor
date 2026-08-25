@@ -1,0 +1,95 @@
+import { IconBolt, IconCompare, IconSpark, IconTrendUp } from "~components/Icons"
+import { brl, brlCents, dec } from "~lib/format"
+import { STATUS } from "~lib/status"
+import { isLiveId } from "~lib/store"
+import type { CampaignVM, UIStatus } from "~types"
+
+export function Summary({
+  campaigns,
+  filter,
+  onToggle
+}: {
+  campaigns: CampaignVM[]
+  filter?: UIStatus | null
+  onToggle?: (s: UIStatus) => void
+}) {
+  // Contagem por status considera tudo na tela (bate com a lista/filtro abaixo,
+  // que mistura campanhas vivas e exemplos). Já os totais financeiros somam só
+  // campanhas vivas — dinheiro fake dos exemplos não pode inflar o resumo real.
+  const a = campaigns.reduce(
+    (acc, c) => {
+      acc[c.status]++
+      if (isLiveId(c.id)) {
+        acc.invest += c.invest
+        acc.revenue += c.revenue
+        // Média só entre quem TEM a métrica. Somar campanha sem ROAS/CPA como
+        // se valesse 0 e dividir pelo total puxava a média para baixo — o CPA
+        // médio ficava artificialmente ótimo justamente por falta de dado.
+        if (c.roasNum != null) {
+          acc.roas += c.roasNum
+          acc.roasN++
+        }
+        if (c.cpaNum != null) {
+          acc.cpa += c.cpaNum
+          acc.cpaN++
+        }
+        acc.liveN++
+      }
+      return acc
+    },
+    { RED: 0, YELLOW: 0, GREEN: 0, BLUE: 0, invest: 0, revenue: 0, roas: 0, cpa: 0, liveN: 0, roasN: 0, cpaN: 0 } as any
+  )
+  const n = campaigns.length
+  const roasMed = a.roasN ? a.roas / a.roasN : 0
+  const cpaMed = a.cpaN ? a.cpa / a.cpaN : 0
+
+  const chip = (count: number, label: string, key: UIStatus) => {
+    if (!count) return null
+    const s = STATUS[key]
+    const activeF = filter === key
+    const dim = filter != null && !activeF
+    return (
+      <button
+        key={key}
+        className={`chip chip-btn${activeF ? " active" : ""}${dim ? " dim" : ""}`}
+        style={{ background: s.bg, color: s.color }}
+        onClick={() => onToggle?.(key)}>
+        <span className="cdot" style={{ background: s.color }} />
+        <b>{count}</b> {label}
+      </button>
+    )
+  }
+
+  return (
+    <div className="summary">
+      <div className="sum-head">
+        <h2>{n} campanha{n === 1 ? "" : "s"} ativa{n === 1 ? "" : "s"}</h2>
+        <span>últimos 7 dias</span>
+      </div>
+      <div className="chips">
+        {chip(a.RED, "crítico", "RED")}
+        {chip(a.YELLOW, "atenção", "YELLOW")}
+        {chip(a.GREEN, "saudável", "GREEN")}
+        {chip(a.BLUE, "escalável", "BLUE")}
+      </div>
+      <div className="fin-grid">
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}><IconBolt /></div>
+          <div><div className="fk">Investimento</div><div className="fv">R$ {brl(a.invest)}</div></div>
+        </div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--green-bg)", color: "var(--green)" }}><IconTrendUp /></div>
+          <div><div className="fk">Receita</div><div className="fv" style={{ color: "var(--green)" }}>R$ {brl(a.revenue)}</div></div>
+        </div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--violet-bg)", color: "var(--violet)" }}><IconSpark /></div>
+          <div><div className="fk">ROAS médio</div><div className="fv">{dec(roasMed)}x</div></div>
+        </div>
+        <div className="fin">
+          <div className="fin-ico" style={{ background: "var(--orange-bg)", color: "var(--orange)" }}><IconCompare /></div>
+          <div><div className="fk">CPA médio</div><div className="fv">R$ {brlCents(cpaMed)}</div></div>
+        </div>
+      </div>
+    </div>
+  )
+}
