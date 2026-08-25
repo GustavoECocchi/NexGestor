@@ -85,6 +85,84 @@ def _preprocess(m: Metrics) -> Metrics:
 # HELPER
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _meta(valor: float) -> str:
+    """
+    Meta formatada para texto SEM perder precisão.
+
+    Substitui o `:.0f` que era usado nas metas de Hook/Hold Rate. Com
+    `min_hold_rate=3.4` e `hold_rate=3.1` a frase saía literalmente
+    "Hold Rate 3.1% abaixo da meta de 3%" — aritmeticamente falsa na própria
+    linha. Pior que a frase: a meta EXIBIDA (3) não era a que o gestor
+    configurou (3,4), então a nota do tile mentia sobre o alvo dele.
+
+    Casas decimais só aparecem quando existem: 35.0 → "35", 3.4 → "3.4".
+    """
+    return f"{valor:.2f}".rstrip("0").rstrip(".") or "0"
+
+
+def _pct(valor: float) -> str:
+    """
+    Percentual de desvio, preservando desvios menores que 1 ponto.
+
+    `{delta:.0f}%` transformava um CPA 0,4% acima da meta no aviso
+    "⚠ CPA 0% acima da meta" — um alerta que declara desvio zero. Abaixo de
+    1 ponto o número só significa alguma coisa com uma casa decimal.
+    """
+    return f"{valor:.1f}" if abs(valor) < 1 else f"{valor:.0f}"
+
+
+def _limiar_red_hold_rate(t: Targets) -> float:
+    """
+    Piso de Hold Rate abaixo do qual a retenção é crítica.
+
+    Fonte ÚNICA para o semáforo da métrica e para a prioridade do Cenário B —
+    antes cada um tinha o seu: o semáforo usava esta fórmula (corrigida em
+    26/07/2026) e o detector mantinha um `< 10.0` cru. Com metas diferentes do
+    default os dois discordavam e a severidade chegava a inverter: Hold 12
+    contra meta 30 (40% da meta) saía prioridade 2, enquanto Hold 9 contra meta
+    11 (82% da meta) saía prioridade 1 — a campanha pior recebia o veredito
+    mais brando, contrariando o próprio score (62 contra 88).
+
+    O piso absoluto de 10 é política deliberada (vídeo que retém menos de 10%
+    está morto independente da meta); o `min` com 70% do alvo é o que impede o
+    limiar de RED de subir ACIMA da própria meta quando o gestor define um alvo
+    baixo, o que inverteria o semáforo.
+    """
+    return min(10.0, t.min_hold_rate * 0.7)
+
+
+def _limiar_red_ctr_link(t: Targets) -> float:
+    """
+    Piso de CTR Link abaixo do qual o clique é crítico.
+
+    Fonte ÚNICA para o semáforo, para o Cenário C e para a nota de CTR Todos.
+    Era `< 0.7` cru nos três pontos, ignorando `min_ctr_link`: um gestor com
+    meta de 0,5% via um CTR de 0,65% (30% ACIMA da meta dele) ser chamado de
+    "crítico" pelo cenário enquanto o semáforo ao lado, que já usava o alvo,
+    marcava GREEN — as duas leituras do mesmo número na mesma tela.
+
+    Espelha o `fator_red=0.5` de `_METRIC_EVAL_CONFIG`, então cenário e
+    semáforo passam a significar a mesma coisa por construção.
+    """
+    return t.min_ctr_link * 0.5
+
+
+def _limiar_roas_inflado(t: Targets) -> float:
+    """
+    ROAS a partir do qual o retorno é "alto demais para ser real" (Cenário K).
+
+    Era `> 10.0` cru, sem olhar `min_roas`. Com meta de 15x, um ROAS de 12x
+    disparava K ("ilusão estatística... ROAS alto mascarando problema") ao
+    mesmo tempo que o Cenário O dizia "ROAS 12.0x abaixo da meta de 15.0x":
+    dois cards, na mesma resposta, discordando sobre o mesmo número.
+
+    Não dá para chamar de inflado um retorno que nem alcançou a meta, então o
+    limiar nunca fica abaixo dela. Com meta ausente ou até 10x o valor é o
+    mesmo de antes — K e O passam a ser mutuamente exclusivos por construção.
+    """
+    return max(10.0, t.min_roas) if t.min_roas is not None else 10.0
+
+
 def _status(value: float, red: float, yellow: float, inverted: bool = False) -> CampaignStatus:
     """
     Converte um valor numérico em CampaignStatus (GREEN/YELLOW/RED) com thresholds.
@@ -185,8 +263,12 @@ def _detect_weak_hook(m: Metrics, t: Targets) -> ScenarioDetail | None:
         code=ScenarioCode.WEAK_HOOK,
         title="Cenário A — Gancho Fraco (Falta de Atenção)",
         root_cause=(
-            f"Hook Rate {m.hook_rate:.1f}% está {'criticamente ' if critico else ''}"
-            f"abaixo da meta de {t.min_hook_rate:.0f}%. "
+            # Valor e meta na MESMA regra de precisão. Com o valor em `.1f` e a
+            # meta em precisão livre, um hold de 39.65 contra meta 39.7 saía
+            # "39.7% abaixo da meta de 39.7%" — o arredondamento do valor para
+            # cima empatava com a meta e a frase negava a si mesma.
+            f"Hook Rate {_meta(m.hook_rate)}% está {'criticamente ' if critico else ''}"
+            f"abaixo da meta de {_meta(t.min_hook_rate)}%. "
             f"O público ignora o anúncio nos primeiros 3 segundos. {suporte}"
         ),
         funnel_impact=(
@@ -197,7 +279,7 @@ def _detect_weak_hook(m: Metrics, t: Targets) -> ScenarioDetail | None:
         execution_rule=(
             "Refazer abertura com 'Pattern Interrupt': headline visual agressiva, cores de alto contraste "
             "ou movimento rápido. Trocar abordagem institucional por dor imediata do usuário. "
-            f"Meta: Hook Rate acima de {t.min_hook_rate:.0f}% antes de reativar."
+            f"Meta: Hook Rate acima de {_meta(t.min_hook_rate)}% antes de reativar."
         ),
         priority=1 if critico else 2,
     )
@@ -214,7 +296,8 @@ def _detect_low_retention(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if not (hook_ok and hold_ruim):
         return None
 
-    critico = m.hold_rate < 10.0
+    # Mesmo limiar do semáforo da métrica — ver _limiar_red_hold_rate.
+    critico = m.hold_rate < _limiar_red_hold_rate(t)
 
     evidencias = []
     if m.thruplays is not None and m.video_views_3s and m.video_views_3s > 0:
@@ -227,9 +310,9 @@ def _detect_low_retention(m: Metrics, t: Targets) -> ScenarioDetail | None:
         code=ScenarioCode.LOW_RETENTION,
         title="Cenário B — Retenção Baixa (Vídeo Entediante ou Longo)",
         root_cause=(
-            f"Hook Rate {m.hook_rate:.1f}% capta atenção inicial. "
-            f"Porém Hold Rate {m.hold_rate:.1f}% {'criticamente ' if critico else ''}"
-            f"abaixo da meta de {t.min_hold_rate:.0f}% — o vídeo perde o público logo após a abertura. {suporte}"
+            f"Hook Rate {_meta(m.hook_rate)}% capta atenção inicial. "
+            f"Porém Hold Rate {_meta(m.hold_rate)}% {'criticamente ' if critico else ''}"
+            f"abaixo da meta de {_meta(t.min_hold_rate)}% — o vídeo perde o público logo após a abertura. {suporte}"
         ),
         funnel_impact=(
             "Usuário entra no funil mas abandona antes de ver a oferta e a CTA. "
@@ -240,7 +323,7 @@ def _detect_low_retention(m: Metrics, t: Targets) -> ScenarioDetail | None:
             "Encurtar criativo eliminando introduções corporativas. "
             "Aplicar cortes dinâmicos a cada 2–3 segundos. "
             "Adicionar B-rolls, legendas dinâmicas e capturas de tela da ferramenta em uso. "
-            f"Meta: Hold Rate acima de {t.min_hold_rate:.0f}% antes de escalar."
+            f"Meta: Hold Rate acima de {_meta(t.min_hold_rate)}% antes de escalar."
         ),
         priority=1 if critico else 2,
     )
@@ -251,7 +334,9 @@ def _detect_click_bait(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if m.ctr_all is None or m.ctr_link is None:
         return None
 
-    if not (m.ctr_all > t.max_ctr_all_ratio and m.ctr_link < 0.7):
+    # O limiar de "CTR Link crítico" vem do alvo do gestor, não de um número
+    # fixo — ver _limiar_red_ctr_link.
+    if not (m.ctr_all > t.max_ctr_all_ratio and m.ctr_link < _limiar_red_ctr_link(t)):
         return None
 
     ratio = round(m.ctr_all / m.ctr_link, 1) if m.ctr_link > 0 else 0
@@ -503,7 +588,7 @@ def _detect_vertical_scale(m: Metrics, t: Targets) -> ScenarioDetail | None:
         code=ScenarioCode.VERTICAL_SCALE,
         title="Cenário G — Janela de Escala Vertical Ativa (Alta Performance)",
         root_cause=(
-            f"CPA R${m.cpa:.2f} está {margem_pct:.0f}% abaixo da meta de R${t.max_cpa:.2f}.{roas_info}{freq_info} "
+            f"CPA R${m.cpa:.2f} está {_pct(margem_pct)}% abaixo da meta de R${t.max_cpa:.2f}.{roas_info}{freq_info} "
             "Criativo com tração máxima. Leilão favorável. Margem para injetar orçamento sem estourar o CPA."
         ),
         funnel_impact=(
@@ -534,8 +619,15 @@ def _detect_horizontal_scale(m: Metrics, t: Targets) -> ScenarioDetail | None:
         return None
 
     cpm_info = f" CPM R${m.cpm:.2f} subindo — leilão ficando mais caro." if (m.cpm is not None and m.cpm > t.max_cpm) else ""
-    estimativa = round((t.max_frequency_fatigue - m.frequency) / 0.3)
-    prazo = f" Estimativa: {estimativa} dia(s) antes do colapso se não agir." if estimativa > 0 else ""
+    # NÃO prever "N dias até o colapso". A versão anterior dividia a distância
+    # até o limite de fadiga por 0,3 — uma taxa de crescimento diário de
+    # frequência que não vem de dado nenhum (não há série histórica no input).
+    # A distância em si é medida e serve ao mesmo propósito sem inventar prazo.
+    margem = t.max_frequency_fatigue - m.frequency
+    prazo = (
+        f" Faltam {margem:.1f} ponto(s) de frequência até o limite de fadiga "
+        f"({t.max_frequency_fatigue})."
+    ) if margem > 0 else ""
 
     return ScenarioDetail(
         code=ScenarioCode.HORIZONTAL_SCALE,
@@ -567,13 +659,27 @@ def _detect_learning_phase(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if not (em_aprendizado or volume_baixo):
         return None
 
+    # O déficit só existe quando o volume está ABAIXO da meta. Sem esta
+    # distinção, uma campanha com 80 conversões contra meta de 50 — que entra
+    # aqui pelo `learning_phase=True`, não por volume — era descrita como
+    # "(meta: 50+ — deficit de -30)", enquanto o semáforo de Conversões/semana
+    # dizia "✓ Volume suficiente" na mesma resposta. Era o achado mais
+    # frequente da varredura: 10,2% das análises.
     conv_info = ""
     if m.weekly_conversions is not None:
         deficit = t.min_weekly_conversions - m.weekly_conversions
-        conv_info = (
-            f" {m.weekly_conversions} conversões nos últimos 7 dias "
-            f"(meta: {t.min_weekly_conversions}+ — deficit de {deficit})."
-        )
+        if deficit > 0:
+            conv_info = (
+                f" {m.weekly_conversions} conversões nos últimos 7 dias "
+                f"(meta: {t.min_weekly_conversions}+ — deficit de {deficit})."
+            )
+        else:
+            conv_info = (
+                f" {m.weekly_conversions} conversões nos últimos 7 dias — volume acima "
+                f"da meta de {t.min_weekly_conversions}, então o gargalo não é falta de "
+                "evento: o conjunto está em aprendizado por outro motivo (edição recente, "
+                "estrutura fragmentada ou orçamento redistribuído)."
+            )
 
     gasto_info = f" Gasto R${m.spend:.2f} com CPA instável de R${m.cpa:.2f}." if (m.spend is not None and m.cpa is not None) else ""
 
@@ -613,10 +719,16 @@ def _detect_overspending(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if not (cpm_alto and lp_saudavel and cpa_alto):
         return None
 
+    # NÃO prever o CPA pós-corte. O texto anterior ("Com redução de 15% do
+    # orçamento, CPA estimado: R$X") dividia 85% do gasto pelas MESMAS
+    # conversões — assume que cortar verba não custa conversão nenhuma, o que
+    # por construção prometia sempre um CPA exatamente 15% menor. É promessa de
+    # resultado, justamente o que o Princípio 0 do prompt proíbe à IA.
+    # O que dá para afirmar é o excesso de CPM já medido, sem prever o futuro.
     economia = ""
-    if m.spend is not None and m.conversions is not None and m.conversions > 0:
-        cpa_estimado = (m.spend * 0.85) / m.conversions
-        economia = f" Com redução de 15% do orçamento, CPA estimado: R${cpa_estimado:.2f}."
+    if t.max_cpm > 0:
+        excedente = (m.cpm / t.max_cpm - 1) * 100
+        economia = f" O CPM está {_pct(excedente)}% acima do teto definido."
 
     return ScenarioDetail(
         code=ScenarioCode.OVERSPENDING,
@@ -879,7 +991,9 @@ def _detect_retargeting_cannibal(m: Metrics, t: Targets) -> ScenarioDetail | Non
     if m.roas is None or m.frequency is None:
         return None
 
-    if not (m.roas > 10.0 and m.frequency > t.max_frequency_critical):
+    # "ROAS alto demais para ser real" precisa ser alto em relação à meta do
+    # gestor, não a um 10x fixo — ver _limiar_roas_inflado.
+    if not (m.roas > _limiar_roas_inflado(t) and m.frequency > t.max_frequency_critical):
         return None
 
     topo_info = ""
@@ -922,20 +1036,20 @@ def _detect_retargeting_cannibal(m: Metrics, t: Targets) -> ScenarioDetail | Non
 # - notas_por_status: textos para GREEN/YELLOW/RED — usar {meta} e {value} como placeholders
 _METRIC_EVAL_CONFIG = [
     ("hook_rate", "Hook Rate", "min_hook_rate", 0.7, False, {
-        "GREEN":  "Meta: >{meta:.0f}%. ✓ Criativo capta atenção no feed.",
-        "YELLOW": "Meta: >{meta:.0f}%. ⚠ Gancho fraco — público rola sem parar.",
-        "RED":    "Meta: >{meta:.0f}%. ✗ Crítico — criativo invisível no feed. Refazer abertura.",
+        "GREEN":  "Meta: >{meta_txt}%. ✓ Criativo capta atenção no feed.",
+        "YELLOW": "Meta: >{meta_txt}%. ⚠ Gancho fraco — público rola sem parar.",
+        "RED":    "Meta: >{meta_txt}%. ✗ Crítico — criativo invisível no feed. Refazer abertura.",
     }),
     # Hold Rate usa threshold fixo de 10% (não proporcional ao target)
     ("hold_rate", "Hold Rate", "min_hold_rate", None, False, {
-        "GREEN":  "Meta: >{meta:.0f}%. ✓ Vídeo mantém atenção até a oferta.",
-        "YELLOW": "Meta: >{meta:.0f}%. ⚠ Abandono precoce — revisar ritmo do vídeo.",
-        "RED":    "Meta: >{meta:.0f}%. ✗ Crítico — público abandona antes da CTA.",
+        "GREEN":  "Meta: >{meta_txt}%. ✓ Vídeo mantém atenção até a oferta.",
+        "YELLOW": "Meta: >{meta_txt}%. ⚠ Abandono precoce — revisar ritmo do vídeo.",
+        "RED":    "Meta: >{meta_txt}%. ✗ Crítico — público abandona antes da CTA.",
     }),
     ("ctr_link", "CTR Link", "min_ctr_link", 0.5, False, {
-        "GREEN":  "Meta: >{meta:.1f}%. ✓ Intenção de clique saudável.",
-        "YELLOW": "Meta: >{meta:.1f}%. ⚠ CTR Link abaixo do esperado.",
-        "RED":    "Meta: >{meta:.1f}%. ✗ Sem intenção comercial — CTA ausente ou fraca.",
+        "GREEN":  "Meta: >{meta_txt}%. ✓ Intenção de clique saudável.",
+        "YELLOW": "Meta: >{meta_txt}%. ⚠ CTR Link abaixo do esperado.",
+        "RED":    "Meta: >{meta_txt}%. ✗ Sem intenção comercial — CTA ausente ou fraca.",
     }),
     ("cpa", "CPA", "max_cpa", 1.3, True, None),  # CPA tem nota customizada com delta %
     ("cpl", "CPL", "max_cpl", 1.3, True, {
@@ -944,9 +1058,9 @@ _METRIC_EVAL_CONFIG = [
         "RED":    "Meta: <R${meta:.2f}. ✗ CPL crítico — lead saindo caro demais.",
     }),
     ("roas", "ROAS", "min_roas", 0.7, False, {
-        "GREEN":  "Meta: >{meta:.1f}x. ✓ ROAS {value:.1f}x — retorno saudável.",
-        "YELLOW": "Meta: >{meta:.1f}x. ⚠ ROAS abaixo da meta.",
-        "RED":    "Meta: >{meta:.1f}x. ✗ ROAS crítico — campanha destruindo caixa.",
+        "GREEN":  "Meta: >{meta_txt}x. ✓ ROAS {value:.1f}x — retorno saudável.",
+        "YELLOW": "Meta: >{meta_txt}x. ⚠ ROAS abaixo da meta.",
+        "RED":    "Meta: >{meta_txt}x. ✗ ROAS crítico — campanha destruindo caixa.",
     }),
     ("cpc", "CPC", "max_cpc", 1.3, True, {
         "GREEN":  "Meta: <R${meta:.2f}. ✓ Custo por clique dentro do teto.",
@@ -954,9 +1068,9 @@ _METRIC_EVAL_CONFIG = [
         "RED":    "Meta: <R${meta:.2f}. ✗ CPC crítico — cada clique caro demais.",
     }),
     ("lp_conversion_rate", "Conversão LP", "min_lp_conversion_rate", 0.5, False, {
-        "GREEN":  "Meta: >{meta:.1f}%. ✓ Landing Page convertendo bem.",
-        "YELLOW": "Meta: >{meta:.1f}%. ⚠ Conversão abaixo do esperado.",
-        "RED":    "Meta: >{meta:.1f}%. ✗ LP com problema crítico — gargalo fora da campanha.",
+        "GREEN":  "Meta: >{meta_txt}%. ✓ Landing Page convertendo bem.",
+        "YELLOW": "Meta: >{meta_txt}%. ⚠ Conversão abaixo do esperado.",
+        "RED":    "Meta: >{meta_txt}%. ✗ LP com problema crítico — gargalo fora da campanha.",
     }),
 ]
 
@@ -969,15 +1083,14 @@ def _evaluate_one(field: str, label: str, target_attr: str, fator_red,
     if value is None or target is None:
         return None
 
-    # Hold Rate usa um piso absoluto de 10% para RED em vez de proporção ao target.
-    # O `min` com 70% do target é o que mantém as faixas ordenadas: com um piso fixo
-    # de 10, um gestor que baixasse min_hold_rate para menos de 10 teria o limiar de
-    # RED ACIMA da própria meta, invertendo o semáforo — um valor que SUPERA a meta
-    # saía RED com score 100 (métrica "crítica" e "perfeita" na mesma tela).
-    # Com o default (target 15) o resultado continua exatamente 10.0.
-    threshold_red = (target * fator_red) if fator_red is not None else min(10.0, target * 0.7)
+    # `fator_red=None` = Hold Rate, que usa o piso compartilhado com o detector
+    # do Cenário B (ver _limiar_red_hold_rate).
+    threshold_red = (target * fator_red) if fator_red is not None else _limiar_red_hold_rate(t)
     st = _status(value, threshold_red, target, inverted=inverted)
-    note = notas[st.value].format(meta=target, value=value)
+    # `meta_txt` existe porque `{meta:.0f}` arredondava a meta exibida: quem
+    # configurasse min_hold_rate=3.4 lia "Meta: >3%" no tile — o alvo mostrado
+    # não era o dele. As notas que precisam de casas fixas seguem usando `meta`.
+    note = notas[st.value].format(meta=target, meta_txt=_meta(target), value=value)
     score = _calc_score(value, target, inverted=inverted)
     return MetricEvaluation(
         metric=label, value=float(value), status=st,
@@ -1005,10 +1118,17 @@ def _evaluate_metrics(m: Metrics, t: Targets) -> list[MetricEvaluation]:
     if m.cpa is not None and t.max_cpa is not None:
         st = _status(m.cpa, t.max_cpa * 1.3, t.max_cpa, inverted=True)
         delta = ((m.cpa / t.max_cpa) - 1) * 100
+        # CPA exatamente na meta: "0.0% abaixo da meta" é verdade mas lê como
+        # erro de cálculo. O estado tem nome próprio.
+        verde = (
+            f"Meta: <R${t.max_cpa:.2f}. ✓ CPA no limite exato da meta."
+            if abs(delta) < 0.05
+            else f"Meta: <R${t.max_cpa:.2f}. ✓ CPA {_pct(abs(delta))}% abaixo da meta."
+        )
         notas_cpa = {
-            CampaignStatus.GREEN:  f"Meta: <R${t.max_cpa:.2f}. ✓ CPA {abs(delta):.0f}% abaixo da meta.",
-            CampaignStatus.YELLOW: f"Meta: <R${t.max_cpa:.2f}. ⚠ CPA {delta:.0f}% acima da meta.",
-            CampaignStatus.RED:    f"Meta: <R${t.max_cpa:.2f}. ✗ CPA {delta:.0f}% acima — campanha no vermelho.",
+            CampaignStatus.GREEN:  verde,
+            CampaignStatus.YELLOW: f"Meta: <R${t.max_cpa:.2f}. ⚠ CPA {_pct(delta)}% acima da meta.",
+            CampaignStatus.RED:    f"Meta: <R${t.max_cpa:.2f}. ✗ CPA {_pct(delta)}% acima — campanha no vermelho.",
         }
         score = _calc_score(m.cpa, t.max_cpa, inverted=True)
         evals.append(MetricEvaluation(
@@ -1018,7 +1138,8 @@ def _evaluate_metrics(m: Metrics, t: Targets) -> list[MetricEvaluation]:
 
     # CTR Todos — lógica especial (cruza com CTR Link para detectar click-bait)
     if m.ctr_all is not None:
-        if m.ctr_link is not None and m.ctr_all > t.max_ctr_all_ratio and m.ctr_link < 0.7:
+        if m.ctr_link is not None and m.ctr_all > t.max_ctr_all_ratio \
+                and m.ctr_link < _limiar_red_ctr_link(t):
             st = CampaignStatus.RED
             note = f"✗ Click-Bait detectado: CTR Todos {m.ctr_all:.1f}% vs CTR Link {m.ctr_link:.2f}%."
         elif m.ctr_all > t.max_ctr_all_ratio:
@@ -1150,11 +1271,19 @@ def _score_confidence(coverage: int, m: Metrics | None = None) -> str:
 #
 # Hierarquia de supressão:
 #   I  (Learning Phase)    → suprime G e H (não faz sentido escalar sem aprendizado)
-#   E  (Fadiga Plena)      → suprime H (H é fadiga iminente, E já é o estado crítico)
+#   E  (Fadiga Plena)      → suprime H e G (H é fadiga iminente; G mandaria aumentar o orçamento que E manda reduzir)
 #   D  (LP Mismatch)       → suprime F (não acusar lead frio quando o gargalo é a LP)
 #   A  (Gancho Fraco)      → suprime B (se não capta atenção, retenção é irrelevante)
 #   K  (Retargeting Caníbal) → suprime G (ROAS alto do retargeting não é janela de escala real)
 #   G  (Escala Vertical)   → suprime H (escala vertical e horizontal são mutuamente exclusivas)
+#   M  (Amostra Insuficiente) → suprime G e H (sem volume não se afirma que suporta mais verba)
+#   L  (Gasto sem Retorno) → suprime M, D, G e H (zero conversão não sustenta gastar mais)
+#   A  (Gancho Fraco)      → suprime G (não escalar criativo reprovado)
+#   C  (Click-Bait)        → suprime G (idem)
+#
+# Princípio: nenhuma resposta pode conter, ao mesmo tempo, um card mandando
+# ampliar investimento e outro mandando parar/trocar. Quando as duas leituras
+# são verdadeiras, vence a que protege o dinheiro do gestor.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _apply_conflict_rules(scenarios: list[ScenarioDetail]) -> list[ScenarioDetail]:
@@ -1173,8 +1302,15 @@ def _apply_conflict_rules(scenarios: list[ScenarioDetail]) -> list[ScenarioDetai
     suppression_rules = [
         # I (Learning Phase) → suprime G e H: não escalar sem aprendizado
         (ScenarioCode.LEARNING_PHASE, {ScenarioCode.VERTICAL_SCALE, ScenarioCode.HORIZONTAL_SCALE}),
-        # E (Fadiga Plena) → suprime H: E já engloba o estado crítico
-        (ScenarioCode.CREATIVE_FATIGUE, {ScenarioCode.HORIZONTAL_SCALE}),
+        # E (Fadiga Plena) → suprime H e G. H porque E já engloba o estado
+        # crítico. G porque é contradição no MESMO botão: E manda "reduzir
+        # orçamento do conjunto saturado" e G manda "aumentar orçamento agora".
+        # Com os defaults os dois nunca coexistiam (teto de escala 1.8 < fadiga
+        # 2.8), o que escondia o conflito — mas os dois limiares são
+        # configuráveis, e um gestor que suba scale_frequency_ceiling acima de
+        # max_frequency_fatigue recebia as duas ordens na mesma resposta.
+        (ScenarioCode.CREATIVE_FATIGUE, {ScenarioCode.HORIZONTAL_SCALE,
+                                         ScenarioCode.VERTICAL_SCALE}),
         # D (LP Mismatch) → suprime F: gargalo é a LP, não a persona
         (ScenarioCode.LP_MISMATCH, {ScenarioCode.COLD_LEAD}),
         # A (Gancho Fraco) → suprime B: sem atenção inicial, retenção é secundária
@@ -1190,6 +1326,29 @@ def _apply_conflict_rules(scenarios: list[ScenarioDetail]) -> list[ScenarioDetai
         # L (Gasto sem Retorno) → suprime M: zero conversão já é o diagnóstico;
         # dizer "amostra pequena" ao lado seria suavizar o que é crítico.
         (ScenarioCode.NO_RETURN, {ScenarioCode.LOW_SAMPLE}),
+        # ── Regras acrescentadas em 25/08/2026 ────────────────────────────────
+        # Achadas varrendo o engine atrás de recomendações contraditórias: as
+        # três abaixo produziam, na MESMA resposta, um card mandando gastar mais
+        # e outro mandando parar. Num produto que orienta decisão de verba para
+        # quem não entende de tráfego, isso é pior que não responder.
+        #
+        # L (Gasto sem Retorno) → suprime D, G e H: com ZERO conversão sobre
+        # gasto relevante, nada justifica manter ou ampliar investimento. D
+        # chegava a afirmar "Pausar seria um erro" ao lado de L dizendo
+        # "Pausar a veiculação", e H mandava duplicar a estrutura. L é o
+        # diagnóstico mais fundamental (pode ser rastreamento quebrado, o que
+        # invalida a própria leitura de conversão da LP que sustenta D).
+        (ScenarioCode.NO_RETURN, {ScenarioCode.LP_MISMATCH,
+                                  ScenarioCode.VERTICAL_SCALE,
+                                  ScenarioCode.HORIZONTAL_SCALE}),
+        # A (Gancho Fraco) → suprime G: A manda "pausar o criativo atual" e G
+        # manda "aumentar orçamento agora". Com A em prioridade 2 e G em 1, G
+        # virava a ação principal — o engine recomendava escalar exatamente o
+        # criativo que ele mesmo acabara de reprovar.
+        (ScenarioCode.WEAK_HOOK, {ScenarioCode.VERTICAL_SCALE}),
+        # C (Click-Bait) → suprime G: mesma contradição, com "substituir
+        # criativo" no lugar de "pausar".
+        (ScenarioCode.CLICK_BAIT, {ScenarioCode.VERTICAL_SCALE}),
     ]
 
     for parent, children in suppression_rules:
@@ -1418,6 +1577,35 @@ def _nota_escala_bloqueada(m: Metrics, t: Targets, scenarios: list[ScenarioDetai
     )
 
 
+def _nota_score_alto_com_status_critico(
+    status: CampaignStatus, scenarios: list[ScenarioDetail], overall_score: int | None
+) -> str:
+    """
+    Explica a combinação "Crítico" + score alto, que aparece em ~8% das análises.
+
+    Os dois números medem coisas diferentes: o score é a média ponderada das
+    métricas RECEBIDAS, enquanto o status considera também a causa raiz
+    detectada. Uma campanha com CPA ótimo e conjunto travado em aprendizado sai
+    legitimamente com score 97 e status Crítico — mas, lado a lado na mesma
+    tela e sem explicação, isso lê como erro do produto para quem não conhece
+    a distinção. Aqui não se muda número nenhum: só se diz por que divergem.
+    """
+    if status != CampaignStatus.RED or overall_score is None or overall_score < 70:
+        return ""
+    culpados = [
+        s.title.split("—")[0].strip()
+        for s in scenarios
+        if s.priority == 1 and s.code != ScenarioCode.VERTICAL_SCALE
+    ]
+    if not culpados:
+        return ""
+    return (
+        f" O score {overall_score}/100 reflete só as métricas recebidas, que estão boas; "
+        f"o status é Crítico por causa de {', '.join(culpados)} — problema de causa raiz, "
+        "que nenhuma métrica isolada mostra."
+    )
+
+
 def _build_summary(
     scenarios: list[ScenarioDetail],
     status: CampaignStatus,
@@ -1425,6 +1613,7 @@ def _build_summary(
     m: Metrics | None = None,
     coverage: int = 100,
     t: Targets | None = None,
+    overall_score: int | None = None,
 ) -> str:
     """Monta o resumo textual da análise — achados principais + ressalva de cobertura."""
     nota_parcial = ""
@@ -1432,6 +1621,7 @@ def _build_summary(
         nota_parcial = _partial_diagnosis_note(m, metric_evals, coverage, scenarios)
     if m is not None and t is not None:
         nota_parcial += _nota_escala_bloqueada(m, t, scenarios)
+    nota_parcial += _nota_score_alto_com_status_critico(status, scenarios, overall_score)
 
     if not scenarios:
         base, _ = _resumo_sem_cenario(metric_evals)
@@ -1506,7 +1696,8 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
     overall_score, score_coverage = _calc_overall_score(metric_evals)
     score_confidence = _score_confidence(score_coverage, m)
     final_status   = _resolve_final_status(scenarios, metric_evals, overall_score)
-    summary        = _build_summary(scenarios, final_status, metric_evals, m, score_coverage, t)
+    summary        = _build_summary(scenarios, final_status, metric_evals, m, score_coverage, t,
+                                    overall_score)
     if scenarios:
         primary_action = scenarios[0].action
     else:
@@ -1656,9 +1847,16 @@ def _apply_minimal_fallback(response: CampaignAnalysisResponse, data: AnalyzeInp
     if saudaveis and not criticos and not atencao:
         partes.append(f"{len(saudaveis)} métrica(s) saudável(eis)")
 
+    # A ressalva de cobertura parcial é preservada: sobrescrever o summary do
+    # engine descartava o "Diagnóstico parcial (cobertura X%) — envie Y" que ele
+    # tinha acabado de montar, justamente no caminho em que os dados são mais
+    # escassos (nem cenário, nem IA).
+    ressalva = _partial_diagnosis_note(
+        _preprocess(data.metrics), evals, response.score_coverage, response.scenarios
+    )
     response.summary = (
         f"Análise baseada nas métricas individuais ({len(evals)} avaliadas). "
-        + ". ".join(partes) + "."
+        + ". ".join(partes) + "." + ressalva
     )
 
     # Ação principal: focar na pior métrica

@@ -73,12 +73,12 @@ _SCENARIO_CATALOG: list[dict] = [
         "title": "Cenário B — Retenção Baixa",
         "trigger": "Hook ok E Hold Rate < min_hold_rate (default 15%)",
         "metrics": ["hook_rate", "hold_rate", "thruplays"],
-        "priority": "1 se Hold <10% | 2 entre 10–15%",
+        "priority": "1 se Hold < min(10%, 70% da meta) | 2 caso contrário",
     },
     {
         "code": ScenarioCode.CLICK_BAIT,
         "title": "Cenário C — Click-Bait",
-        "trigger": "CTR Todos > 3.5% E CTR Link < 0.7%",
+        "trigger": "CTR Todos > max_ctr_all_ratio E CTR Link < 50% da meta (default <0.75%)",
         "metrics": ["ctr_all", "ctr_link"],
         "priority": "1 crítico",
     },
@@ -106,8 +106,13 @@ _SCENARIO_CATALOG: list[dict] = [
     {
         "code": ScenarioCode.VERTICAL_SCALE,
         "title": "Cenário G — Janela de Escala Vertical",
-        "trigger": "CPA ≤ max_cpa*0.75 E freq < 1.8 E ROAS ok E não learning",
-        "metrics": ["cpa", "roas", "frequency", "learning_phase"],
+        "trigger": (
+            "CPA ≤ max_cpa*scale_cpa_margin E freq < scale_frequency_ceiling E ROAS ok "
+            "E não learning E CPM ≤ max_cpm. Exige evidência mínima presente "
+            "(frequência, aprendizado/volume, ROAS quando há meta, ≥10 conversões); "
+            "sem ela o cenário não dispara. Suprimido por I, K, M, L, A e C."
+        ),
+        "metrics": ["cpa", "roas", "frequency", "learning_phase", "cpm", "conversions"],
         "priority": "1 oportunidade",
     },
     {
@@ -134,7 +139,7 @@ _SCENARIO_CATALOG: list[dict] = [
     {
         "code": ScenarioCode.RETARGETING_CANNIBAL,
         "title": "Cenário K — Canibalização de Retargeting",
-        "trigger": "ROAS > 10x E frequency > max_frequency_critical (default 6)",
+        "trigger": "ROAS > max(10x, min_roas) E frequency > max_frequency_critical (default 6)",
         "metrics": ["roas", "frequency", "ctr_link"],
         "priority": "1 crítico",
     },
