@@ -1,3 +1,4 @@
+import { AIStatusBadge } from "~components/AIStatusBadge"
 import { IconMoon, IconSearch, IconSun } from "~components/Icons"
 import { useTheme } from "~lib/theme"
 
@@ -15,6 +16,7 @@ export function Header({ section, onSearch }: { section: string; onSearch?: () =
     <div className="hd">
       <div className="hd-section">{section}</div>
       <div className="spacer" />
+      <AIStatusBadge />
       <button
         className="icon-btn"
         title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}

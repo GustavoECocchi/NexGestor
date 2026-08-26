@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routes import routes, campanhas_salvas
+from app.routes import routes, campanhas_salvas, status
 from app.core.config import settings
 
 
@@ -89,3 +89,6 @@ app.include_router(routes.router, prefix=settings.API_V1_STR)
 
 # Persistência das campanhas (base COMPARTILHADA — temporária, ver storage.py).
 app.include_router(campanhas_salvas.router, prefix=settings.API_V1_STR)
+
+# Estado das capacidades opcionais (IA, persistência) — lido pelo dashboard.
+app.include_router(status.router, prefix=settings.API_V1_STR)
