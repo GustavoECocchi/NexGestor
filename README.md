@@ -175,7 +175,8 @@ explicitamente (há exemplos em `test_ai_integration.py`).
 | `COMO-USAR.md` (raiz) | Guia da equipe — instalar a extensão e usar o **backend compartilhado** (sem instalar nada) |
 | `deploy/README.md` | Runbook do **backend compartilhado no VPS** (Docker + HTTPS automático) |
 | `CLAUDE.md` (raiz) | Estado do projeto, decisões de arquitetura e histórico das sessões |
-| `backend/.../CONTRATO_API_FRONTEND.md` | Contrato completo da API — payloads de entrada e resposta |
+| `docs/CONTRATO_API_FRONTEND.md` | Contrato completo da API — payloads de entrada e resposta |
+| `docs/PRD.md` | PRD guarda-chuva — índice de API e índice de fases (cada fase com seu PRD pequeno em `docs/prds/`) |
 | `backend/.../AUDITORIA.md` | Auditoria de segurança e qualidade do backend |
 | `frontend/.../README.md` | Detalhes da extensão (estrutura, componentes, testes) |
 

@@ -29,7 +29,7 @@ sem jargão de tráfego pago, acessível sem precisar já saber o que o campo si
 
 **Não-objetivos** (explicitamente fora):
 - Não muda quais campos existem, são obrigatórios, ou seus nomes/`key` — o
-  contrato com o backend (`CONTRATO_API_FRONTEND.md`) não é tocado.
+  contrato com o backend (`../CONTRATO_API_FRONTEND.md`) não é tocado.
 - Não muda validação, formatação numérica (`num()`, `normalizaCampo()`) nem o
   fluxo de análise (`runAnalyze`).
 - Não mexe na aba "Importar arquivo", no bug de navegação da home (reload cair
@@ -134,6 +134,6 @@ Sem ajuda — nome, objetivo e plataforma já são autoexplicativos.
 
 Entrevista estruturada (skill `grillme`) nesta sessão, 2026-08-24 — resumo e
 achados de código documentados na conversa. Reforça o Ponto 1 já registrado em
-`CLAUDE.md` (sessão de 2026-08-15, feedback do time + referência Reportei) e o
+`../../CLAUDE.md` (sessão de 2026-08-15, feedback do time + referência Reportei) e o
 motivo do pivô extensão→dashboard (sessão de 2026-08-24, feedback do professor
 + referência Fuse React, `fuse-react-nextjs-demo.fusetheme.com`).
