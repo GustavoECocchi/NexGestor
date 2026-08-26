@@ -187,9 +187,9 @@ Nenhum arquivo de `backend/backend-nexgestor-main` é tocado (consistente com
 Gerado a partir de `prompt.md` desta sessão. Contexto:
 `../../CLAUDE.md` — Ponto 1 da sessão de 2026-08-15 (feedback do time,
 referência Reportei) e sessão de 2026-08-24 (pivô extensão→dashboard,
-referência Fuse React). Índice de rotas em `../PRD.md` (seção "Índice de
-API"). PRD irmão: `fase-1-ajuda-formulario-campanha.md` (intuitividade
-dentro do formulário de criação, já implementado).
+referência Fuse React). Índice de rotas em `../PRD.md` (§4 "Contrato HTTP
+completo (Índice de API)"). PRD irmão: `fase-1-ajuda-formulario-campanha.md`
+(intuitividade dentro do formulário de criação, já implementado).
 
 ## Sobreposições a resolver
 
