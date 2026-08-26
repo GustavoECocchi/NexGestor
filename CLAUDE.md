@@ -847,6 +847,135 @@ criativo atual" (A) é complementar — troca-se o criativo E expande-se. Só fo
 tratados como conflito os pares que mexem no **mesmo** botão de orçamento em
 direções opostas.
 
+## Sessão de 2026-08-26 — selo de estado da IA, PRD retroativo, e o achado de que produção roda sem IA
+
+Suítes ao final: **backend 1450 → 1457** (+7), **dashboard 288 → 331** (+43),
+`tsc` e `vite build` limpos. Todas rodadas de fato.
+
+### Começou errado: sessão inteira feita sobre um checkout de 15/08
+
+Esta pasta (`~/Downloads/NexGestor-main`) **nunca deu `pull`** desde 2026-08-15.
+Trabalhei a sessão toda achando que a extensão era o produto — sem saber do pivô
+para o dashboard web (24/08), do isolamento por dono, nem da varredura de
+veracidade. Só descobri **no `git push`**, rejeitado por 11 commits de diferença.
+
+Nada se perdeu: o commit foi preservado numa branch antes de qualquer coisa, o
+rebase foi abortado em vez de forçado, e o trabalho foi **reconstruído sobre o
+`origin`** — com o selo indo para `frontend/nexgestor-dashboard`, não para a
+extensão congelada. **Lição: `git fetch` no começo da sessão, não no fim.**
+
+> Nota: o usuário achou que o dashboard "não tinha sido commitado". Estava
+> commitado sim (`d57f596`, 24/08, 67 arquivos, no `origin`) — o que faltava era
+> o `pull` **nesta pasta**.
+
+### 🔴 O achado: produção não tem IA nem persistência
+
+Medido com 5 requisições reais contra `https://gestor.nexgold.com.br`:
+
+| Verificação | Resultado |
+|---|---|
+| `GET /api/v1/campaign/scenarios` | 200, `total: 15` — engine de 07-28 no ar |
+| `GET /api/v1/campaigns` | **404** — persistência nunca implantada |
+| `POST /api/v1/campaign/analyze` | 200, **`ai_insights: null`** — chave vazia no servidor |
+| `GET /docs` | 404 **do nginx** (roteamento, não hardening da app) |
+| `GET /` | HTML do painel compilado |
+
+**A equipe avalia o produto sem a camada de IA, sem saber.** O `README.md` e este
+arquivo afirmavam "IA ligada com chave compartilhada" — **errado**; o
+`deploy/.env.example` (que dizia chave vazia) estava certo. O limite de R$15
+provavelmente nunca foi tocado. A chave do `.env` **local** é válida —
+confirmada com chamada real ao Gemini, resposta coerente e ancorada nos números.
+
+### Selo de estado da IA no dashboard
+
+Pedido do usuário: *"a ferramenta tem que estar com a ia ligada, mas vamos criar
+um botão, o botão mostra se a ia está ligada, ia on ou off"*.
+
+- **Backend:** `GET /api/v1/status` (`app/routes/status.py`). `enabled` e
+  `available` são campos separados de propósito: `enabled=true, available=false`
+  é "toggle ligado, falta a chave" — o estado exato da produção. Rota pública,
+  então reporta **só capacidade binária e o nome do modelo**; nunca a chave nem
+  o `DB_PATH` (coberto por teste). Sem header de dono: capacidade do servidor
+  não é dado de ninguém.
+- **Dashboard:** selo no header com **quatro** estados —
+  `IA on` / `IA off` / `IA falhando` / `IA ?`.
+
+**Por que `falhando` precisou existir.** `/status` só prova que a IA está
+*configurada* (toggle + chave não-vazia + SDK). **Nada disso prova que a chave
+autentica.** Verificado subindo o backend com chave sintética inválida:
+`/status` respondeu `available: true` enquanto a análise voltava
+`ai_insights: null`. Sem esse estado, o selo mentiria exatamente no caso que
+este projeto já viveu (chave revogada em julho, 401 no uso).
+
+Detecção de **custo zero**: em vez de o servidor testar a chave a cada abertura
+(uma chamada paga por vez), o frontend observa o desfecho de cada análise
+(`src/lib/aiHealth.ts`). Regras: observação vence declaração; `off` vence
+observação (quem não prometeu não descumpriu); a falha **não gruda** (a análise
+seguinte com IA devolve o selo a "on"); nada é acusado antes de sabermos o que o
+servidor oferece; estado **em memória**, não `localStorage` (persistir deixaria
+aviso velho depois do problema resolvido).
+
+**Validado ao vivo no dashboard real** (`vite preview` + backend real, passando
+pelo `DonoGate`): selo "IA on" com contraste 11,39:1, header sem estouro,
+popover dentro da janela. O ciclo completo `IA on → chave inválida → IA falhando
+→ chave válida → IA on` foi validado **sem recarregar a página** (na versão
+anterior do frontend, antes do porte).
+
+### Três defeitos que a validação pegou (nenhum aparecia em teste)
+
+1. **Promise sem tratamento** — o teste de falha na busca estourou "unhandled
+   rejection". Corrigido com `.catch()`.
+2. **Cabeçalho estourava 20px** na largura estreita, esmagando o botão de tema
+   de 32px para **17px** — faltava `flex:none` nos controles. *(Correção aplicada
+   na extensão; no dashboard o header é largo e tem sidebar, então só o
+   `flex:none` do próprio selo foi portado.)*
+3. **Contraste abaixo do WCAG AA.** Medidos os 6 casos (3 estados × 2 temas):
+   `--txt-3` dá 3,51:1 e `--muted` 4,24:1 sobre `--panel` no tema escuro, contra
+   o mínimo de 4,5:1 — e o texto tem 10px. Trocado por `--txt-2`.
+
+> **Lição, nos dois sentidos.** A captura de tela sugeriu o título cortado
+> ("NexGesto"); minha primeira medição disse que não — mas **a medição estava
+> errada** (o clone ficou fora de `.brand` e não herdou a fonte: mediu 77px onde
+> o real era 145px). Estava cortado mesmo. Screenshot não prova, e medição no
+> contexto de estilo errado também não.
+
+### `PRD.md` criado na raiz
+
+Documento de requisitos retroativo gerado lendo o **código**. Cobre produto, 12
+decisões de arquitetura com o porquê, regras de negócio (15 cenários, pesos das
+métricas, supressão de conflitos, `final_status` como pior de duas fontes),
+stack, funcional vs. pendente, cobertura de testes, segurança e o passo a passo
+do deploy pendente.
+
+**⚠️ Escrito antes de eu descobrir o pivô, então descreve a extensão como se
+fosse o frontend atual.** Ganhou um aviso no topo mapeando o que ler com
+ressalva (side panel → dashboard; base compartilhada → isolada por dono; a
+"decisão em aberto" sobre app web → já decidida). O corpo **não** foi reescrito:
+o dashboard reaproveita a extensão por cópia, então a maior parte segue válida.
+**Revisão completa do PRD contra o dashboard fica pendente.**
+
+Registra duas lacunas conceituais nunca documentadas:
+1. **Não existe histórico no produto.** `spark` é `Array(7).fill(score)` (linha
+   reta) e `trend` é sempre 0 para campanha real — **só os 2 mocks têm série de
+   verdade**. "Últimos 7 dias" no Resumo é texto fixo. Qualquer roadmap de
+   evolução/tendência **começa do zero**.
+2. **A regra do BLUE tem TRÊS condições**, não duas: além de `GREEN` + cenário
+   G, exige `score_confidence !== "low"`. O `CONTRATO_API_FRONTEND.md` documenta
+   só as duas primeiras.
+
+E uma seção de **divergências entre documentação e código** (10 itens, nenhum
+corrigido). A pior: **`COMO-USAR.md` se contradiz sobre privacidade** dentro do
+mesmo arquivo — a seção "O que esperar" diz *"seus dados ficam só no seu
+navegador"* enquanto a anterior explica que a base é compartilhada.
+
+### Pendente, guardado a pedido do usuário
+
+Passo a passo para colocar produção em dia (precisa de SSH), no **`PRD.md`
+seção 5**: `git pull && docker compose up -d --build` em `deploy/`, depois
+preencher `GEMINI_API_KEY` no `.env` **do servidor**. **Não puxar por iniciativa
+própria.** Armadilha registrada: se subir por uvicorn/systemd em vez do compose,
+o volume e o `DB_PATH` não se aplicam — e o sintoma é **501 em vez de 404**.
+
 ## Status atual / Roadmap
 
 1. ✅ Backend: engine de diagnóstico + API validados. Suite **109 → 1450/1450** (1354 até 2026-07-29; +26 de persistência e +13 de robustez em 2026-08-14; +9 do isolamento por dono em 2026-08-24; **+48 da varredura de veracidade em 2026-08-25**), sem falhas ambientais e **sem nenhuma chamada de rede** (ver `conftest.py`). **2026-08-25 (parte 2): 13 defeitos de veracidade/coerência corrigidos** — limiares hardcoded que ignoravam o `Target` do gestor (o cenário chamava de "crítico" o que o semáforo marcava GREEN), texto que contradizia o dado ("deficit de -30" em 10,2% das análises), severidade invertida no Hold Rate, quatro pares de cenários recomendando gastar mais e parar na mesma resposta, e duas previsões fabricadas. Achados por fuzz de invariantes (80k casos, 0 crashes); todos com teste de mutação (19/19 detectadas). Ver "Sessão de 2026-08-25 (parte 2)". Três bugs do engine corrigidos em 2026-07-26 (achados por fuzz). **2026-07-28 (parte 2)**: auditoria externa (`teste.md`) confirmou 5 achados adicionais (3 subestimados no relatório original) + 4 achados próprios (NaN/Infinity derrubando o handler de 422, zeros fabricados, `if valor` tratando 0 como ausente, escala sem evidência vazando por 3 portas além do detector G). Todas corrigidas e validadas por teste de mutação. **4 cenários novos (L–O)** fecham lacunas reais de tráfego pago (zero conversão, amostra insuficiente, vazamento clique→LP, ROAS baixo com custo ok) — nenhum campo de schema novo. Confiança do score agora combina cobertura E volume de amostra. Ver "Sessão de 2026-07-28 (parte 2)" para o detalhamento completo. **2026-07-29**: `CampaignPlatform` estendido para TikTok Ads e LinkedIn Ads (além de Meta/Google); aviso de "não recomende recurso exclusivo do Meta" no prompt da IA generalizado para valer em qualquer plataforma não-Meta (antes só disparava pro Google).
@@ -857,11 +986,14 @@ direções opostas.
 6. ✅ Testes isolados do `.env` de dev (`_env_file=None` / fixture `autouse` mockando `is_ai_available`) — ver sessão de 2026-07-16 parte 3. PR #1 mergeado na `main`. **Completado em 2026-07-26**: aquele isolamento cobria só `TestIADesativada`; os testes de endpoint ainda faziam 6 chamadas reais ao Gemini por execução. O `conftest.py` agora desliga a IA em toda a suíte (provado com sockets bloqueados: 0 tentativas de rede).
 7. ✅ **Persistência isolada por `dono` desde 2026-08-24 — passo 1+2 da migração, AINDA SEM LOGIN DE VERDADE.** A base compartilhada de 2026-08-14 (item obsoleto abaixo) foi substituída: toda rota de `/api/v1/campaigns*` exige o header `X-Nex-Dono` (string simples, sem senha — normalizada trim+lowercase, tanto no backend quanto no cliente), e `storage.py` filtra `listar`/`salvar`/`remover` por ele. **Dois tetos de campanhas** (não um): por dono (500) e global (5000) — o global existe porque, sem login, bastaria inventar identificadores novos para furar um teto só-por-dono; achei essa regressão eu mesmo revisando meu próprio código antes de reportar como pronto, e o teste que a cobre foi confirmado por mutação (desliguei o teto global, o teste quebrou, religuei, voltou a passar). Suite **1393 → 1402/1402**. Autenticação de verdade (senha/sessão) continua fora de escopo, é o passo 3 já esboçado no próprio `storage.py`. **Continua sem estar no ar** — o VPS (item 9) está numa versão ainda mais antiga que antes (nem a persistência compartilhada de 08-14 chegou lá; `GET /api/v1/campaigns` respondia 404 em produção quando checado em 2026-08-24).
 8. ✅ **Publicado no repositório da empresa** (2026-07-26) — `NexGoldCompany/NexGestor` (privado), com README de onboarding na raiz. Histórico auditado antes: sem segredos reais. **Sincronizado em 2026-08-15**: `empresa/main` estava 10 commits atrás de `origin/main` (os pendentes de 2026-07-28/29, 2026-08-10 e 2026-08-14); `git push empresa main` resolveu com fast-forward simples (confirmado via `git merge-base --is-ancestor` antes de empurrar). `origin` e `empresa` estão no mesmo commit desde então (conferir com `git rev-list --count empresa/main..main` — deve ser 0). O `push` em si nunca precisou de admin — só a chave de deploy exige (ver item 9).
-9. 🟡 **Distribuição para a equipe — o deploy JÁ FOI FEITO (por outra pessoa), mas está DESATUALIZADO.** *(Atualizado em 2026-08-14; o texto de 2026-08-10/12 abaixo ficou obsoleto — os "bloqueios irredutíveis" de IP e SSH não se aplicam mais ao deploy inicial, que aconteceu sem nós.)* `https://gestor.nexgold.com.br` responde, com HTTPS válido até 11/11/2026, atrás do **nginx do próprio VPS** (não do Caddy deste repo) e com **limite de requisições ativo** (60r/m + burst 10, devolvendo 429). **O que está no ar é o código de antes de 2026-08-14**: verificado, `GET /api/v1/campaigns` responde **404** lá. Ou seja, **sem persistência e sem lixeira para a equipe** até alguém com acesso rodar `git pull && docker compose up -d --build` na pasta `deploy/`. Só depois disso faz sentido gerar o pacote (`build-team.sh https://gestor.nexgold.com.br`) — antes, distribuiria uma extensão falando com um backend que não tem essas rotas. **Pendente no servidor, com correção pronta e testada em nginx 1.24 real:** o 429 sai sem cabeçalho CORS (bloco `error_page 429` + `location @limite` em `deploy/nginx-gestor.conf.exemplo`); deixou de ser bloqueante porque o `host_permissions` resolve pelo lado da extensão, mas conserta a causa na origem e cobre o preflight. **A IA está ligada** com chave única compartilhada (limite de R$15 dividido pela equipe) — a chave do `.env` local foi confirmada válida em 2026-08-14.
+9. 🟡 **Distribuição para a equipe — o deploy JÁ FOI FEITO (por outra pessoa), mas está DESATUALIZADO.** *(Atualizado em 2026-08-14; o texto de 2026-08-10/12 abaixo ficou obsoleto — os "bloqueios irredutíveis" de IP e SSH não se aplicam mais ao deploy inicial, que aconteceu sem nós.)* `https://gestor.nexgold.com.br` responde, com HTTPS válido até 11/11/2026, atrás do **nginx do próprio VPS** (não do Caddy deste repo) e com **limite de requisições ativo** (60r/m + burst 10, devolvendo 429). **O que está no ar é o código de antes de 2026-08-14**: verificado, `GET /api/v1/campaigns` responde **404** lá. Ou seja, **sem persistência e sem lixeira para a equipe** até alguém com acesso rodar `git pull && docker compose up -d --build` na pasta `deploy/`. Só depois disso faz sentido gerar o pacote (`build-team.sh https://gestor.nexgold.com.br`) — antes, distribuiria uma extensão falando com um backend que não tem essas rotas. **Pendente no servidor, com correção pronta e testada em nginx 1.24 real:** o 429 sai sem cabeçalho CORS (bloco `error_page 429` + `location @limite` em `deploy/nginx-gestor.conf.exemplo`); deixou de ser bloqueante porque o `host_permissions` resolve pelo lado da extensão, mas conserta a causa na origem e cobre o preflight. **🔴 CORRIGIDO EM 2026-08-26: a IA está DESLIGADA em produção.** Medido com `POST /analyze` real — `ai_insights` volta `null`, ou seja `GEMINI_API_KEY` está vazia no VPS. O que este item dizia antes ("A IA está ligada com chave única compartilhada") era **falso**; o `deploy/.env.example` estava certo. A equipe avaliou o produto sem a camada de IA, e o limite de R$15 provavelmente nunca foi tocado. A chave do `.env` **local** é válida (confirmada com chamada real). Passo a passo para ligar: `PRD.md` seção 5.
 
     *Histórico (2026-08-10):* infraestrutura preparada aqui — O modo "cada um roda Python na própria máquina" foi **aposentado**; o modelo agora é **um backend compartilhado num VPS Hostinger** (Docker + Caddy com HTTPS automático) e a extensão entregue como **zip pré-buildado**. Imagem, container, Caddyfile e CORS de extensão foram **validados de fato** com Podman (ver a sessão de 2026-08-10); o `docker compose` como conjunto e a emissão real do certificado **não** foram — sobem pela primeira vez no VPS. Bloqueado por coisas externas ao código. **Atualização de 2026-08-12:** o **nome** do subdomínio saiu — `gestor.nexgold.com.br` — mas o **registro A nunca foi criado** (NXDOMAIN confirmado no servidor autoritativo da Hostinger, não é propagação pendente). Os bloqueios que restam são **o IP do VPS** (sem ele não há o que cadastrar no DNS, e nem o atalho `nip.io` funciona) e **o acesso SSH** (o deploy roda lá, não aqui) — os dois irredutíveis. A **coordenação da porta 443** continua indefinida, mas é contornável (opção B, ~2 min). A IA fica **ligada com chave única compartilhada** — muda o modelo anterior de "AI-off por padrão" e faz o limite de R$15 ser dividido pela equipe.
 
 10. 🆕 **Dashboard web criado em 2026-08-24 — `frontend/nexgestor-dashboard` (Vite+React+TS+Tailwind), NÃO DEPLOYADO EM LUGAR NENHUM ainda.** Substitui a extensão (item 3, congelada) como alvo de desenvolvimento — decisão do usuário, motivada por feedback externo (professor) de que side panel de extensão limita a experiência; referência visual trazida pelo usuário: `fuse-react-nextjs-demo.fusetheme.com/dashboards/project` (só inspiração de layout, não copiado). Construído por dois agentes em paralelo (frontend/backend), ambos revisados por mim antes de commitar — não só aceitos de olhos fechados. Reaproveita quase tudo da extensão **por cópia**, não por link/pacote compartilhado: `types.ts`, todo `lib/`, componentes e mock são idênticos byte-a-byte (conferido por `diff`), com três adições reais — `lib/dono.ts` + `DonoGate.tsx` (tela de identificação simples, sem senha, antes de entrar) e `DashboardShell.tsx` (sidebar + layout full-screen). `lib/api.ts` manda o header `X-Nex-Dono` em toda chamada de campanhas salvas (exigido pelo backend desde o item 7). Suite portada **283/283**, build limpo, **verificado ao vivo contra o backend real**: dois donos diferentes só veem as próprias campanhas dentro do dashboard (não só via curl — testado clicando de verdade no Chrome). **O que falta, sem maquiagem:** nenhuma hospedagem definida (só rodado localmente via `vite dev`); sidebar tem 1 item de navegação só; sem tela de erro dedicada para backend fora do ar; `.env` não commitado (correto, mas precisa ser configurado manualmente em cada máquina/deploy); autenticação de verdade continua pendente (mesmo caminho do item 7). **2026-08-25**: formulário "Criar campanha" (modo manual) ganhou tooltips de ajuda em linguagem simples nos ~20 campos com jargão de tráfego pago (CPM, CPA, ROAS, Hook rate...) — ver PRD `PRD-ajuda-formulario-campanha.md` e a sessão de 2026-08-25 abaixo. **2026-08-25 (parte 2)**: marca deixou de aparecer duas vezes (o `Header` repetia logo + "NexGestor" que já estão na sidebar) e o card de campanha foi reorganizado em torno da decisão — status como elemento dominante (ícone + rótulo grande) e uma frase de ação em português simples ("Como escalar"/"Como resolver"), com CPA/ROAS crus saindo do card para a tela de detalhe. `primary_action` do backend passou a ser exposto na `CampaignVM` (o adapter descartava o campo, e por isso o card caía num texto genérico dizendo que não havia motivo identificado — contradizendo a etiqueta de status ao lado). Suite **283 → 288/288**. Referência de layout: Fuse React; identidade visual inalterada.
+
+11. ✅ **`PRD.md` criado (2026-08-26)** — documento de requisitos retroativo gerado lendo o código: produto, 12 decisões de arquitetura com o porquê, regras de negócio (15 cenários, pesos das métricas, supressão de conflitos, `final_status` como pior de duas fontes de evidência), stack, funcional vs. pendente, cobertura de testes, segurança, e o passo a passo do deploy pendente. Registra duas lacunas nunca documentadas: **não existe histórico/série temporal no produto** (`spark` é linha reta, "últimos 7 dias" é texto fixo — só os mocks têm série) e a **regra do BLUE tem 3 condições, não 2**. Mais uma seção de **divergências entre documentação e código** (10 itens, nenhum corrigido; a pior é o `COMO-USAR.md` se contradizendo sobre privacidade). **⚠️ Escrito sobre um checkout de 15/08, então descreve a extensão como frontend atual** — ganhou aviso no topo mapeando o que ler com ressalva; **revisão completa contra o dashboard fica pendente**.
+12. ✅ **Selo de estado da IA no dashboard (2026-08-26)** — `GET /api/v1/status` no backend + selo de 4 estados no header do dashboard (`IA on` / `IA off` / `IA falhando` / `IA ?`). O estado `falhando` existe porque `/status` só prova que a IA está *configurada*, não que a chave *autentica* — comprovado subindo o backend com chave inválida (status dizia `available: true`, análise voltava sem IA). Detecção de custo zero, por observação do desfecho de cada análise (`src/lib/aiHealth.ts`), sem chamada paga extra. Validado ao vivo no dashboard real, passando pelo `DonoGate`. Suítes: backend **1450 → 1457**, dashboard **288 → 331**.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { FieldHint } from "~components/FieldHint"
 import { IconCheck, IconEdit, IconRefresh } from "~components/Icons"
 import { responseToVM } from "~lib/adapt"
+import { registrarAnalise } from "~lib/aiHealth"
 import { analyzeCampaign, API_BASE, IS_LOCAL_BACKEND, isApiError } from "~lib/api"
 import { nextLiveId } from "~lib/store"
 import type { AnalyzeInput, CampaignVM, Metrics, Targets } from "~types"
@@ -347,6 +348,10 @@ export function NewCampaignModal({
       const res = await analyzeCampaign(input)
       clearTimeout(timer.current)
       setStep(2)
+      // Único ponto do produto que sabe se a IA REALMENTE respondeu. O
+      // `/status` só diz se ela está configurada — chave revogada ou cota
+      // estourada passam por lá como "disponível". Ver ~lib/aiHealth.
+      registrarAnalise(res.ai_insights != null)
       const vm = responseToVM(res, input)
       timer.current = setTimeout(() => onAnalyzed(vm), 450)
     } catch (e) {

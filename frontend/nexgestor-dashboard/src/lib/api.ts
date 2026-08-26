@@ -129,6 +129,74 @@ export async function analyzeCampaign(
 }
 
 // =============================================================================
+// Estado das capacidades do servidor (IA, persistência).
+// =============================================================================
+
+/**
+ * O que o indicador de IA do cabeçalho pode mostrar.
+ *
+ * `desconhecido` é um estado de primeira classe, não um detalhe: um servidor
+ * antigo (sem a rota `/status`) e um servidor fora do ar são indistinguíveis
+ * daqui, e nos dois casos afirmar "IA desligada" seria inventar uma informação
+ * que não temos. O indicador diz que não sabe.
+ *
+ * `falhando` = o servidor DIZ ter a IA, mas a última análise voltou sem ela.
+ * Ver ~lib/aiHealth para por que essa distinção precisa existir.
+ */
+export type EstadoIA = "on" | "off" | "falhando" | "desconhecido"
+
+export interface StatusServidor {
+  ai: { enabled: boolean; available: boolean; model: string }
+  persistence: { enabled: boolean }
+}
+
+/**
+ * Lê as capacidades ligadas no servidor. `null` quando não deu para saber.
+ *
+ * Timeout curto de propósito: isto alimenta um selo no cabeçalho, não o fluxo
+ * principal. Se o servidor demorar, o selo fica "desconhecido" e a pessoa segue
+ * usando o produto — travar 30s por um indicador seria pior que não tê-lo.
+ *
+ * Sem header de dono: capacidade do servidor não é dado de ninguém.
+ */
+export async function buscarStatus(): Promise<StatusServidor | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/status`, {
+      signal: AbortSignal.timeout(8000)
+    })
+    // 404 = servidor anterior a esta rota. Não é erro de rede, mas o efeito
+    // para o dashboard é o mesmo: não dá para afirmar nada sobre a IA.
+    if (!res.ok) return null
+
+    const dados = (await res.json()) as Partial<StatusServidor>
+    // Validação defensiva: um proxy mal configurado pode devolver 200 com HTML.
+    if (!dados || typeof dados.ai !== "object" || dados.ai === null) return null
+    if (typeof dados.ai.available !== "boolean") return null
+
+    return dados as StatusServidor
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Traduz o que sabemos no estado que o selo exibe.
+ *
+ * `saude` é o que a última análise DE FATO mostrou (ver ~lib/aiHealth) e tem
+ * precedência sobre a promessa do servidor: `/status` só confirma que a IA está
+ * configurada — chave revogada ou cota estourada continuam respondendo
+ * `available: true` de lá. Observação vence declaração.
+ */
+export function estadoDaIA(
+  status: StatusServidor | null,
+  saude: "ok" | "falhou" | null = null
+): EstadoIA {
+  if (status === null) return "desconhecido"
+  if (!status.ai.available) return "off"
+  return saude === "falhou" ? "falhando" : "on"
+}
+
+// =============================================================================
 // Campanhas salvas no servidor.
 //
 // ⚠️ Isoladas por `dono` (25/08/2026), AINDA SEM LOGIN DE VERDADE: cada
