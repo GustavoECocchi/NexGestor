@@ -1225,3 +1225,105 @@ ficam como primeira coisa a olhar se algo parecer errado visualmente.
 - Confirmar tema claro e navegação por teclado ao vivo (ver acima).
 - Tudo do §5 do PRD (Importar arquivo, bug do reload, onboarding geral)
   continua sem dono definido — não é bloqueante, só não esquecer.
+
+## Sessão de 2026-08-26 (parte 2) — documentação de PRD organizada em `docs/`, reconciliada com trabalho concorrente, e fase-2 auditada
+
+Sessão só de documentação — **nenhum arquivo de aplicação foi alterado**.
+3 commits na `main`, todos com push pro `origin`: `2c821ea` (reorganização),
+`3b7754e` (merge), `05290ce` (reconciliação do PRD retroativo). Suite backend
+reconferida ao final: **1457 passed, 0 failed** (sem mudança — só sanity
+check, nenhum código tocado). Frontend não tocado, sem suíte rodada.
+
+### Reorganização (pedida via `prompt-organizar-prds.md`, arquivo fora do
+repo, uma pasta acima)
+
+`PRD.md` (só "Índice de API", criado numa sessão anterior sem `git add`),
+`PRD-ajuda-formulario-campanha.md` e `CONTRATO_API_FRONTEND.md` (esse último
+estava em `backend/backend-nexgestor-main/`, não na raiz como o prompt
+supunha) foram movidos para uma hierarquia nova, com `git mv` preservando
+histórico onde havia histórico a preservar:
+
+```
+docs/
+  PRD.md
+  CONTRATO_API_FRONTEND.md
+  prds/
+    fase-1-ajuda-formulario-campanha.md
+    fase-2-dashboard-intuitividade.md   (novo PRD desta sessão, ver abaixo)
+```
+
+`docs/PRD.md` ganhou uma seção **"Fases"** no topo (fase 1 implementada, fase
+2 planejada, link relativo pra cada uma). Todas as referências cruzadas nos
+três documentos, no `CLAUDE.md` e no `README.md` foram atualizadas para os
+caminhos novos — **exceto comentários em código de aplicação**
+(`NewCampaignModal.tsx` da extensão e do dashboard continuam citando
+`CONTRATO_API_FRONTEND.md` sem caminho; fora de escopo por instrução
+explícita do prompt).
+
+**Novo PRD escrito nesta sessão**: `docs/prds/fase-2-dashboard-intuitividade.md`
+— navegação/intuitividade do dashboard (Central de Ajuda, "Nova campanha" e
+Copiloto mais visíveis na navegação, não só dentro de cada tela). Rascunho,
+**nada implementado**. Inclui inventário de telas (MVP vs. Depois), critérios
+de aceite, contrato de API (conclusão: nenhuma rota nova — todos os fluxos já
+existem), escopo de arquivos por PR, e uma seção "Sobreposições a resolver"
+comparando com a fase-1 (pedida explicitamente para registro, sem decidir
+qual abordagem vence).
+
+### Trabalho concorrente descoberto no push — merge real, sem force
+
+O primeiro `git push` foi rejeitado: **outra sessão (Claude Opus 5) tinha
+empurrado `d63ee20` em paralelo** — o selo de estado da IA no header
+(`AIStatusBadge.tsx` + `GET /api/v1/status`, ver seção acima) **e** um
+`PRD.md` retroativo de 501 linhas criado direto na raiz, sem saber da
+reorganização em andamento aqui. Isso teria recriado o problema que a
+reorganização existia pra resolver (dois `PRD.md` competindo).
+
+Resolvido com `git fetch` + `git merge` normal (sem `--force`, sem reescrever
+histórico) e, **com confirmação explícita do usuário** sobre como
+reconciliar, movi o `PRD.md` retroativo deles para `docs/PRD.md`,
+incorporando ali dentro a seção "Fases" e o índice de API (como coluna nova
+"O que faz" na tabela "Contrato HTTP completo" que eles já tinham, que
+inclui a rota `/status` nova) — uma fonte só, em vez de duas. Corrigidas as
+referências a `PRD.md`/`CONTRATO_API_FRONTEND.md` que o commit deles deixou
+apontando pra raiz, em `CLAUDE.md` (5 pontos) e no PRD irmão `fase-2`.
+
+### Auditoria da fase-2 (pedida via `docs/rascunho_prompt.md`, que apareceu
+no disco por conta própria — provavelmente outra sessão ou o usuário direto
+no editor)
+
+Revisão só de leitura (**nada implementado, arquivo não alterado**,
+respeitando a instrução explícita do prompt) de `fase-2-dashboard-intuitividade.md`
+contra o código real, incluindo o que `d63ee20` trouxe (que a fase-2 não
+conhecia por ter sido escrita antes). Achados entregues como análise na
+conversa, não commitados em lugar nenhum:
+
+- **AC2 e AC3** (critérios de "checar análise" e "excluir") descrevem
+  comportamento que já existe hoje em vez de definir o que muda, e usam
+  termos subjetivos ("óbvio", "sem termo técnico") — reescritos na análise
+  pra virarem testáveis.
+- **AC4 ("como usar a IA") ficou ambíguo depois de `d63ee20`**: o
+  `AIStatusBadge` no header já mostra "IA on/off/falhando" em toda tela, mas
+  isso é sobre a **camada** (servidor tem IA ligada?), não sobre o
+  **Copiloto** (`Copilot.tsx`, o assistente que responde perguntas sobre a
+  campanha, ainda enterrado no fim do scroll do detalhe). A fase-2 não
+  distingue os dois — risco de a equipe achar o AC4 "já resolvido" olhando
+  só a badge nova.
+- **"Vira tela" (a opção de "Nova campanha" deixar de ser modal, §4 da
+  fase-2) provavelmente não cabe no orçamento de 2 PRs** que a hierarquia de
+  fases exige: `NewCampaignModal.tsx` usa `onClick` de overlay pra fechar
+  (padrão de modal), incompatível com layout de tela cheia — viraria reescrita
+  de verdade, não troca de prop.
+- Overlap adicional em `style.css` não coberto pela seção "Sobreposições a
+  resolver" da própria fase-2 (que só compara com a fase-1): `d63ee20`
+  também adicionou ~30 linhas na mesma região de "controles do header" que o
+  PR B da fase-2 pretende tocar.
+
+### Pendente desta sessão
+
+- **`docs/rascunho_prompt.md` segue no repo, não commitado nem removido** —
+  é um prompt de tarefa, não um artefato de produto; decisão do usuário se
+  deve virar um registro permanente em `docs/` ou ser descartado depois de
+  lido.
+- A auditoria da fase-2 não alterou o PRD (por instrução) — se o time
+  aceitar os achados, `fase-2-dashboard-intuitividade.md` ainda precisa ser
+  editado à parte.
