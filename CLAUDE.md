@@ -994,6 +994,13 @@ o volume e o `DB_PATH` não se aplicam — e o sintoma é **501 em vez de 404**.
 
 11. ✅ **`docs/PRD.md` criado (2026-08-26)** — documento de requisitos retroativo gerado lendo o código: produto, 12 decisões de arquitetura com o porquê, regras de negócio (15 cenários, pesos das métricas, supressão de conflitos, `final_status` como pior de duas fontes de evidência), stack, funcional vs. pendente, cobertura de testes, segurança, e o passo a passo do deploy pendente. Registra duas lacunas nunca documentadas: **não existe histórico/série temporal no produto** (`spark` é linha reta, "últimos 7 dias" é texto fixo — só os mocks têm série) e a **regra do BLUE tem 3 condições, não 2**. Mais uma seção de **divergências entre documentação e código** (10 itens, nenhum corrigido; a pior é o `COMO-USAR.md` se contradizendo sobre privacidade). **⚠️ Escrito sobre um checkout de 15/08, então descreve a extensão como frontend atual** — ganhou aviso no topo mapeando o que ler com ressalva; **revisão completa contra o dashboard fica pendente**.
 12. ✅ **Selo de estado da IA no dashboard (2026-08-26)** — `GET /api/v1/status` no backend + selo de 4 estados no header do dashboard (`IA on` / `IA off` / `IA falhando` / `IA ?`). O estado `falhando` existe porque `/status` só prova que a IA está *configurada*, não que a chave *autentica* — comprovado subindo o backend com chave inválida (status dizia `available: true`, análise voltava sem IA). Detecção de custo zero, por observação do desfecho de cada análise (`src/lib/aiHealth.ts`), sem chamada paga extra. Validado ao vivo no dashboard real, passando pelo `DonoGate`. Suítes: backend **1450 → 1457**, dashboard **288 → 331**.
+13. ✅ **Fase-2 implementada (2026-08-27): navegação da sidebar + Central de Ajuda + atalho do Copiloto.** `docs/prds/fase-2-dashboard-intuitividade.md`, PR A + PR B, **os 2 PRs do orçamento da fase consumidos**. Sidebar (`DashboardShell.tsx`) ganhou navegação de verdade — "Campanhas", "Ajuda" (tela nova, `HelpCenter.tsx`, texto estático respondendo às 4 perguntas do time) e "Nova campanha" como ação em destaque, não item de menu (nunca fica "ativa", então não devia parecer um destino). Copiloto ganhou atalho "Perguntar ao Copiloto" no topo do detalhe (`CampaignDetail.tsx`) — ele continua no fim da página, o atalho rola até lá e foca o campo (`focus({preventScroll:true})` antes do `scrollIntoView`, nessa ordem, senão o salto do foco cancela a rolagem suave). Suítes: backend sem mudança (**1457**), dashboard **331 → 346** (+15, com **teste de mutação 6/6** confirmando que nenhum é vácuo). **Validado ao vivo no navegador, nos dois temas** — com dois enganos meus corrigidos na hora: (1) uma leitura de contraste que dava 6 falsas falhas no tema claro porque eu tinha trocado `data-theme` via JS numa aba oculta e o `background` computado não repintou — recarregando a página já no tema certo, zero falhas; (2) a animação suave da rolagem não pôde ser confirmada ao vivo porque a janela estava ocluída (`visibilityState: hidden`, 0 frames de `requestAnimationFrame` em 500ms — sem rAF o Chrome não anima `scrollIntoView`) — o alvo da rolagem foi provado (chega a 425px, âncora no topo), a suavidade da transição em si não. **Pendente para fechar a fase**: teste manual com alguém do time simulando cliente leigo (§8 do PRD) — nenhum teste automatizado mede "uma pessoa acha o caminho sozinha".
+14. 🟡 **`fase-2-dashboard-intuitividade.md` §11 (2026-08-27) — cards de status de métrica, especificado, não implementado.** Pedido novo do time via `docs/rascunho_prompt.md`. Achado central: os cards **já existem** — são os tiles de "Métricas" no detalhe, alimentados por `metric_evaluations` (o engine já avalia as 6 métricas pedidas contra as metas do gestor). O gap real é `lib/adapt.ts:76` (`tileNote`) descartar o veredito em português do engine, guardando só o prefixo "meta X" — confirmado com o regex exato e reproduzido ao vivo no navegador. Achado extra não previsto no pedido: as 6 métricas **não se comportam igual** quando a meta fica em branco — CPA/CPL/ROAS (sem default no schema) somem em silêncio dos tiles; CTR Link/Hook Rate/CPM (com default) são avaliadas contra um número que o gestor nunca escolheu, sem aviso. Os dois casos são resolvíveis sem dado novo, porque o frontend já tem `input.targets` no momento de montar os tiles. Registrada, sem decidir, uma tensão com a hierarquia de fases: implementar isto seria um 3º PR, e este PRD já usou os 2 do orçamento — ou vira `fase-3`, ou o limite é tratado como orientação para este caso pontual.
+15. 🟡 **`fase-2b-benchmark-mercado.md` criado (2026-08-27) — benchmark de mercado via Gemini com grounding, para as métricas do item 14 sem meta definida. Só especificação, nada implementado.** Pedido via `docs/rascunho_prompt.md` (2ª vez que o arquivo mudou de conteúdo na sessão). Dois achados que corrigem a premissa do próprio pedido:
+    - **O campo `niche` já existe** (`Campaign.niche`, `schema.py:63`) — `Optional[str]`, texto livre, sem UI no formulário manual, só alcançável hoje pelo modo "Importar arquivo". Não é "campo novo": é campo existente que precisa virar `Literal` fechado e obrigatório — o que quebra qualquer chamador que hoje omite o campo (passa a receber 422).
+    - **Benchmark público real (pesquisado nesta sessão via WebSearch/WebFetch, fonte nomeada — WordStream — por item, não memória do modelo) existe por CTR para os 14 nichos candidatos, mas NÃO existe por Hook Rate/Hold Rate (vídeo) segmentado por indústria em fonte nenhuma** — múltiplas fontes confirmam que hook rate é métrica custom sem benchmark oficial por indústria, só faixas genéricas iguais para qualquer nicho. ROAS também só existe como média global. Ou seja: das 6 métricas do item 14, só CTR Link/CPA/CPL/CPM têm caminho real de benchmark por nicho — ROAS e Hook Rate vão cair no estado "não encontrado" quase sempre, o que é o comportamento correto já decidido (nunca forçar número sem fonte), mas muda a expectativa de "a feature funciona" pra essas duas.
+    - Risco técnico registrado: a integração Gemini atual (`ai_service.py:137`) usa `response_schema` pra forçar JSON — tipicamente incompatível com grounding de busca na mesma chamada. `_execute_call` não é reaproveitável como está.
+    - Autocorreção durante a escrita: cheguei a propor reaproveitar `pickEnum` 1:1 pra validar nicho no import de JSON, e ao conferir a assinatura (`padrao: T` obrigatório, não aceita `undefined`) percebi que não serve como está — nicho não tem default seguro (inventar um seria o mesmo erro de "zero fabricado" já corrigido no engine). Corrigido no documento antes de fechar.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >
@@ -1327,3 +1334,192 @@ conversa, não commitados em lugar nenhum:
 - A auditoria da fase-2 não alterou o PRD (por instrução) — se o time
   aceitar os achados, `fase-2-dashboard-intuitividade.md` ainda precisa ser
   editado à parte.
+
+## Sessão de 2026-08-27 — fase-2 implementada (PR A + PR B), §11 de cards de métrica especificada, e novo PRD de benchmark de mercado
+
+3 tarefas na mesma sessão, cada uma pedida separadamente. Suítes ao final:
+**backend 1457/1457** (sem mudança de código), **dashboard 331 → 346/346**.
+2 commits nesta sessão: um de código (fase-2, PR A+PR B) e um de documentação
+(§11 + `fase-2b`).
+
+### Parte 1 — Fase-2 implementada: navegação da sidebar, Central de Ajuda, atalho do Copiloto
+
+Pedido: executar `docs/prds/fase-2-dashboard-intuitividade.md`. Implementados
+os 2 PRs do orçamento da fase — **este PRD está fechado agora, sem mais PRs
+disponíveis** (relevante pra Parte 2, ver abaixo).
+
+**PR A.** `DashboardShell.tsx`: os itens da sidebar eram `<div>` decorativos
+(só "Campanhas" existia) e viraram `<button>` de navegação de verdade, com
+`aria-current`. "Nova campanha" é ação em destaque, não item de menu — nunca
+fica "ativa" (abre modal, volta pra onde a pessoa estava), então um item que
+nunca acende ao lado de dois que acendem ensinaria a coisa errada sobre o
+menu. `HelpCenter.tsx` (novo) responde às 4 perguntas do time em português
+simples, com uma regra editorial explícita: explica **fluxo** ("onde clico
+pra apagar"), nunca **campo** ("o que é CPA") — isso já tem dono, é o
+`FieldHint` da fase-1; duplicar criaria duas respostas pra mesma pergunta com
+risco real de divergirem. `App.tsx`: `Screen` ganhou a variante `help`;
+`Modal` não mudou — "Nova campanha" segue modal nesta fase (decisão já
+tomada na revisão do PRD, não reaberta aqui).
+
+**PR B.** Botão "Perguntar ao Copiloto" no topo do detalhe
+(`CampaignDetail.tsx`), porque o Copiloto real (`Copilot.tsx`) fica no fim da
+página, depois de 4 seções — ninguém achava sem rolar tudo. O atalho foca o
+campo **antes** de rolar, com `preventScroll:true` (`irParaCopiloto`,
+`CampaignDetail.tsx`): focar um elemento fora da tela faz o navegador saltar
+até ele na hora, e esse salto cancelaria a rolagem suave que vem depois —
+na ordem errada, a pessoa chegaria ao Copiloto sem a transição que mostra que
+a página se moveu. Prefixo de classe `copilot-`, não `ai-`, de propósito:
+`.ai-badge`/`.ai-badge-btn` (selo de estado da IA, `d63ee20`) já significam
+outras duas coisas, e confundir os três é exatamente o erro que o AC4 do PRD
+existe pra evitar.
+
+**Validação.** `tsc`, `npm test` (346/346, +15 testes novos) e `npm run
+build` limpos. **Teste de mutação: 6/6 detectadas** — nenhum teste novo é
+vácuo (convenção do projeto desde 2026-08-25). **Ao vivo no navegador
+(Chrome via automação), nos dois temas** — dois enganos meus, achados e
+corrigidos antes de reportar como pronto:
+
+1. Medi contraste do tema claro trocando `document.documentElement.dataset`
+   por JS numa aba já renderizada (e oculta) — deu **6 falsas falhas**
+   (`razao: 1.05`, texto quase igual ao fundo). A causa: o `background`
+   computado de elementos com `color-mix()` não repinta sozinho quando o
+   `data-theme` muda via script numa aba `visibilityState: hidden`.
+   Recarregando a página já com `nex:theme=light` no `localStorage`, **zero
+   falhas** — os números reais (5,22–17,78:1) todos acima do WCAG AA.
+2. A animação suave do `scrollIntoView` **não pôde ser confirmada ao vivo**:
+   a janela do Chrome usada pela automação está ocluída,
+   `document.visibilityState` volta `hidden` em qualquer aba, e medi **0
+   frames de `requestAnimationFrame` em 500ms** — sem rAF o Chrome não avança
+   `behavior:"smooth"`. O que ficou provado: o alvo da rolagem é o certo
+   (`scrollIntoView` instantâneo leva a 425px, âncora no topo); a suavidade
+   da transição em si fica pendente de alguém confirmar numa aba em primeiro
+   plano de verdade.
+
+**Pendente pra fechar a fase**: teste manual com alguém do time simulando
+cliente leigo (§8 do PRD) — os critérios de aceite são sobre uma pessoa achar
+o caminho sozinha, e isso nenhum teste automatizado mede.
+
+### Parte 2 — `fase-2-dashboard-intuitividade.md` §11: cards de status de métrica, especificado
+
+Pedido novo do time, via `docs/rascunho_prompt.md` (arquivo que muda de
+conteúdo entre sessões — 3ª vez que isso acontece neste projeto). Restrição
+do próprio pedido: **NÃO implementar, só especificar** — seção nova no PRD já
+fechado.
+
+**Achado central: os cards pedidos já existem.** São os tiles de "Métricas"
+no detalhe (`MetricTiles`, `CampaignDetail.tsx`), e as 6 métricas pedidas
+(CPA, CPL, CPM, ROAS, CTR Link, Hook Rate) já chegam prontas em
+`metric_evaluations` — o engine (`_evaluate_metrics`, `service.py:1101`) já
+avalia cada uma contra o `Targets` do gestor, com `status` semafórico e uma
+`note` em português (`"Meta: >35%. ✗ Crítico — criativo invisível no
+feed."`). Nenhum cálculo novo era necessário — a verificação obrigatória do
+próprio pedido (conferir a rota real antes de propor algo) já resolvia a
+tarefa 1 sozinha.
+
+**O gap real é de apresentação, não de dado.** `lib/adapt.ts:76`
+(`tileNote`) descarta o veredito inteiro do engine, guardando só o prefixo
+"meta X" — confirmado com o regex exato (`.split(/\.(?=\s|$)/)[0]` corta
+**antes** do "✓/⚠/✗ + explicação") e reproduzido ao vivo: o tile de ROAS
+mostrava só `"meta 2,5x"`, nunca o porquê.
+
+**Achado extra, fora do que foi pedido**: o pedido tratava as 6 métricas
+como simétricas quanto a "meta em branco" — não são. `CPA/CPL/ROAS`
+(`max_cpa`/`max_cpl`/`min_roas`, `Optional[float] = None`) somem em silêncio
+dos tiles quando a meta não é preenchida (`target is None` →
+`_evaluate_one` devolve `None` → a métrica nunca entra em
+`metric_evaluations`). `CTR Link/Hook Rate/CPM` têm default no schema (1.5,
+35.0, 50.0) — meta em branco não impede a avaliação, só faz o engine avaliar
+contra um número que o gestor nunca confirmou, sem a tela dizer isso. Os
+dois casos são resolvíveis sem rota nova: o frontend já tem `input.targets`
+no momento de montar os tiles.
+
+**Registrado, não decidido**: implementar isto seria um 3º PR, e o PRD já
+usou os 2 do orçamento (Parte 1 acima) — fica como decisão do usuário se vira
+`fase-3` ou se o limite de 2 PRs é tratado como orientação, não regra rígida,
+pra este caso pontual (o trabalho é pequeno: um arquivo de lógica + um de
+apresentação, zero rota nova).
+
+### Parte 3 — `fase-2b-benchmark-mercado.md`: PRD novo de benchmark de mercado, só especificação
+
+`docs/rascunho_prompt.md` mudou de conteúdo de novo (mesma sessão), pedindo
+um PRD pequeno novo: buscar benchmark de mercado via Gemini com grounding de
+busca pras métricas do item acima sem meta definida, com decisões já tomadas
+pelo usuário (nicho por lista fixa, cache de 14 dias, transparência de
+origem, nunca forçar número sem fonte) — meu trabalho era só especificar as
+6 tarefas do prompt, com verificação obrigatória contra o código real e
+contra fontes de benchmark reais (não inventar nichos nem fontes).
+
+**Dois achados que corrigem a premissa do próprio pedido, achados antes de
+escrever qualquer coisa:**
+
+- **O campo `niche` já existe** (`Campaign.niche`, `schema.py:63`) —
+  `Optional[str]`, texto livre, **sem UI no formulário manual**, só
+  alcançável hoje pelo modo "Importar arquivo" (`nicheFromFile`,
+  `NewCampaignModal.tsx:251`) e consumido cru pelo prompt da IA
+  (`prompts.py:138`). O pedido presumia campo novo; é campo existente que
+  precisa virar `Literal` fechado e obrigatório — mudança que quebra
+  qualquer chamador que hoje omite o campo (passa a receber 422 em
+  `POST /api/v1/campaign/analyze`).
+- **Benchmark público real existe por métrica, não uniformemente por
+  nicho** — pesquisado nesta sessão via WebSearch/WebFetch (não memória do
+  modelo), fonte nomeada (WordStream, citada por praticamente todo
+  agregador do setor) por item da tabela do PRD:
+  - **CTR**: benchmark segmentado por indústria existe e foi confirmado
+    pra todos os 14 nichos candidatos (com 2 marcados de confiança menor —
+    Pet e Moda — por terem vindo só de agregador, a página oficial da
+    WordStream devolveu 403 no fetch direto).
+  - **Hook Rate/Hold Rate (vídeo): não existe benchmark segmentado por
+    indústria em fonte nenhuma.** Múltiplas fontes pesquisadas confirmam
+    isso explicitamente ("there is no official Meta benchmark for hook
+    rate... usually a custom metric") — só faixas genéricas iguais pra
+    qualquer nicho. Buscar "hook rate pro nicho Beleza e Estética" via
+    Gemini vai cair no estado "não encontrado" quase sempre, não por falha
+    de busca, mas porque a informação não existe publicada.
+  - **ROAS**: só achei como média global (2,19–2,79x, dependendo da
+    fonte), nunca segmentado por indústria numa fonte nomeada confiável —
+    mesmo destino do Hook Rate.
+  - Achado de bônus, fora do que foi pedido: **CPA/CPL/CPM têm caminho tão
+    viável quanto CTR** via a mesma WordStream (CPC/CPL publicados por
+    indústria) — relevante pro escopo real de métricas do PR B do PRD
+    novo, mesmo não fazendo parte do item 1 do pedido.
+  - Consequência prática registrada no PRD: das 6 métricas que motivam a
+    feature, só CTR Link/CPA/CPL/CPM têm caminho de benchmark real — ROAS
+    e Hook Rate vão cair no fallback (decisão já tomada de nunca forçar
+    número sem fonte) na maioria das buscas. Isso é o comportamento
+    correto, não um bug, mas muda a expectativa de "a feature funciona"
+    pra essas duas métricas especificamente.
+
+**Risco técnico registrado, não resolvido**: a integração Gemini atual
+(`_execute_call`, `ai_service.py:137`) usa `response_schema` pra forçar JSON
+estruturado — tipicamente incompatível com grounding de busca no mesmo
+request na API do Gemini (as duas ferramentas disputam o mesmo mecanismo de
+tool-calling). `_execute_call` não é reaproveitável como está; quem
+implementar precisa validar contra a versão exata do SDK.
+
+**Autocorreção durante a escrita, não depois**: cheguei a citar
+`pickEnum(rawCampaign.niche, NICHE_VALUES, undefined, ...)` como o jeito de
+validar nicho no import de JSON, reaproveitando o padrão já usado pra
+`platform`. Ao conferir a assinatura real (`NewCampaignModal.tsx:181`),
+`padrao` é `T` obrigatório — **não aceita `undefined`**. Corrigido no
+documento: nicho não tem default seguro (inventar um seria reintroduzir o
+mesmo "zero fabricado" já corrigido no engine em 2026-07-28), então o helper
+precisa de uma variante nova, não é reaproveitável 1:1 como propus na
+primeira versão do texto.
+
+**Índice de fases** (`docs/PRD.md`) ganhou a linha da fase 2b. Nenhum outro
+PRD teve conteúdo alterado (só a fase-2 ganhou a §11, por instrução
+explícita do próprio pedido daquela parte).
+
+### Pendente desta sessão
+
+- **Teste manual da fase-2** com pessoa leiga do time (Parte 1, §8 do PRD) —
+  segue sem dono.
+- **Decisão sobre o orçamento de 2 PRs** da §11 — vira `fase-3` ou é tratado
+  como orientação pra este caso (Parte 2).
+- **`fase-2b-benchmark-mercado.md` é só especificação** — nada foi
+  implementado; decisões de código (schema `CampaignNiche`, tabela
+  `benchmarks_mercado`, rota nova, UI de nicho no formulário) seguem em
+  aberto pra quando o time aprovar o documento.
+- **`docs/rascunho_prompt.md` segue no repo** — mudou de conteúdo 2 vezes
+  nesta sessão sozinha; decisão do usuário sobre o destino dele continua
+  pendente (mesma nota da sessão anterior).

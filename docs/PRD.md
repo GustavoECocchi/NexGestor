@@ -40,7 +40,8 @@ A partir de 26/08/2026 o projeto adota a hierarquia: este PRD grande
 | Fase | Nome | Status | PRD |
 |---|---|---|---|
 | 1 | Ajuda em linguagem simples no formulário "Criar campanha" | implementado | [`prds/fase-1-ajuda-formulario-campanha.md`](prds/fase-1-ajuda-formulario-campanha.md) |
-| 2 | Dashboard: telas dedicadas e navegação intuitiva | planejado | [`prds/fase-2-dashboard-intuitividade.md`](prds/fase-2-dashboard-intuitividade.md) |
+| 2 | Dashboard: telas dedicadas e navegação intuitiva | implementado (falta o teste manual com usuário leigo, §8 do PRD) | [`prds/fase-2-dashboard-intuitividade.md`](prds/fase-2-dashboard-intuitividade.md) |
+| 2b | Benchmark de mercado para metas não definidas | rascunho — só especificação, nada implementado | [`prds/fase-2b-benchmark-mercado.md`](prds/fase-2b-benchmark-mercado.md) |
 
 ---
 
