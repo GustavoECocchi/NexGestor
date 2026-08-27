@@ -1,5 +1,5 @@
 import { AnimatedNumber } from "~components/AnimatedNumber"
-import { Copilot } from "~components/Copilot"
+import { COPILOT_ANCHOR_ID, COPILOT_INPUT_ID, Copilot } from "~components/Copilot"
 import {
   DiagnosisCards,
   MetricTiles,
@@ -8,7 +8,7 @@ import {
   Suggestions,
   AIExtras
 } from "~components/DetailSections"
-import { IconBack, IconInfo } from "~components/Icons"
+import { IconBack, IconChat, IconInfo } from "~components/Icons"
 import { STATUS } from "~lib/status"
 import type { CampaignVM, ScoreConfidence } from "~types"
 
@@ -22,6 +22,26 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
   const s = STATUS[c.status]
   const circ = 2 * Math.PI * 32
   const off = circ - (c.score / 100) * circ
+
+  /**
+   * Leva ao Copiloto, que fica no FIM desta página (depois de diagnóstico,
+   * ações, sugestões e observações da IA). Sem este atalho, só encontrava o
+   * assistente quem rolasse a página inteira — era a pergunta nº4 da equipe
+   * ("como usar a IA") sem resposta visível (fase-2, AC4).
+   *
+   * O foco vem ANTES da rolagem, com `preventScroll`: focar um elemento fora da
+   * tela faz o navegador saltar até ele instantaneamente, e o salto cancelaria a
+   * rolagem suave logo abaixo. Assim o campo já está pronto para digitar quando
+   * a rolagem termina — sem `setTimeout` adivinhando a duração da animação.
+   */
+  const irParaCopiloto = () => {
+    document.getElementById(COPILOT_INPUT_ID)?.focus({ preventScroll: true })
+    document.getElementById(COPILOT_ANCHOR_ID)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    })
+  }
+
   return (
     <>
       <div className="scroll fade-in">
@@ -38,7 +58,13 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
             <h2>{c.name}</h2>
             <div className="pill" style={{ background: s.bg, color: s.color }}>{s.label}</div>
           </div>
-          <div className="detail-plat"><span className="dot" style={{ background: s.color }} />{c.platform}</div>
+          <div className="detail-plat-row">
+            <div className="detail-plat"><span className="dot" style={{ background: s.color }} />{c.platform}</div>
+            <button className="copilot-atalho" onClick={irParaCopiloto}>
+              <IconChat />
+              Perguntar ao Copiloto
+            </button>
+          </div>
         </div>
 
         <div className="score-wrap">

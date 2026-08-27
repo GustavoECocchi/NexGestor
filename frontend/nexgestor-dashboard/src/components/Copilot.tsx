@@ -6,6 +6,19 @@ import type { CampaignVM } from "~types"
 
 type Msg = { role: "ai" | "me"; html: string }
 
+/**
+ * Ids compartilhados com o atalho "Perguntar ao Copiloto" do topo do detalhe
+ * (`CampaignDetail`). Exportados como constante em vez de string solta nos dois
+ * arquivos: assim renomear um lado quebra o build, não o atalho em silêncio.
+ *
+ * O prefixo é `copilot-` e não `ai-` de propósito — `.ai-badge` (pílula
+ * "complementado por IA") e `.ai-badge-btn` (selo de estado da camada, no
+ * cabeçalho) já existem significando outras duas coisas. Uma terceira família
+ * `ai-` aqui apagaria justamente a distinção que o AC4 precisa deixar clara.
+ */
+export const COPILOT_ANCHOR_ID = "copiloto"
+export const COPILOT_INPUT_ID = "copiloto-pergunta"
+
 const QUICK: { label: string; q: string }[] = [
   { label: "Por que isso está acontecendo?", q: "Por que isso está acontecendo?" },
   { label: "O que eu faço agora?", q: "O que eu faço agora?" },
@@ -151,6 +164,10 @@ export function Copilot({ c }: { c: CampaignVM }) {
 
   return (
     <>
+      {/* Âncora do atalho no topo do detalhe (fase-2, AC4). O id fica no
+          wrapper e não no `.chat` para que a rolagem pare no cabeçalho
+          "Copiloto", não na primeira mensagem. */}
+      <div id={COPILOT_ANCHOR_ID} className="copilot-anchor" />
       <div className="chat">
         <div className="sec-label" style={{ padding: 0, margin: "0 0 12px" }}>Copiloto <span className="ln" /></div>
         {msgs.map((m, i) => (
@@ -165,8 +182,10 @@ export function Copilot({ c }: { c: CampaignVM }) {
       </div>
       <div className="chat-input">
         <input
+          id={COPILOT_INPUT_ID}
           value={text}
           placeholder="Pergunte algo sobre sua campanha…"
+          aria-label="Pergunte algo sobre sua campanha"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
         />

@@ -510,12 +510,37 @@ body::after{
 .dash-side-brand{display:flex;align-items:center;gap:10px;padding:0 6px}
 .dash-side-brand span{font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--txt)}
 .dash-side-nav{flex:1;display:flex;flex-direction:column;gap:4px}
+/* Os itens viraram <button> na fase-2 (antes eram <div> decorativos, já que
+   nada navegava): daí o reset de aparência de botão nativo. */
 .dash-side-item{
   display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
   color:var(--txt-2);font-family:var(--font-body);font-weight:600;font-size:13.5px;
+  background:none;border:none;width:100%;text-align:left;cursor:pointer;transition:.15s;
 }
-.dash-side-item svg{width:16px;height:16px}
+.dash-side-item svg{width:16px;height:16px;flex:none}
+.dash-side-item:hover{background:var(--panel-2);color:var(--txt)}
 .dash-side-item.active{background:var(--accent-soft);color:var(--accent)}
+/* `.active` depois de `:hover` de propósito: as duas regras têm a mesma
+   especificidade (0,2,0), então quem vem por último vence. Na ordem inversa,
+   passar o mouse sobre o item ativo o apagaria para a cor neutra — o mesmo
+   defeito de ordenação que os cards da Home tiveram em 2026-07-26. */
+.dash-side-item.active:hover{background:var(--accent-soft);color:var(--accent)}
+
+/* Ação, não destino — ver o comentário em DashboardShell.tsx.
+   O `75%, #000` não é estética: `--accent` puro sob texto branco dá 3,16:1 no
+   tema escuro, e este rótulo tem 13,5px/700 — longe do "texto grande" que
+   permitiria 3:1, então reprovaria no WCAG AA. Escurecido a 75% dá 5,23:1 no
+   escuro e 8,00:1 no claro. Mesmo remédio já aplicado ao `.collect-btn`. */
+.dash-side-novo{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 12px;border-radius:10px;margin-bottom:10px;
+  background:color-mix(in srgb, var(--accent) 75%, #000);
+  color:#fff;border:none;width:100%;cursor:pointer;
+  font-family:var(--font-body);font-weight:700;font-size:13.5px;transition:.15s;
+}
+.dash-side-novo svg{width:16px;height:16px;flex:none}
+.dash-side-novo:hover{filter:brightness(1.08)}
+.dash-side-novo:active{transform:translateY(1px)}
 .dash-side-foot{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:6px}
 .dash-side-dono{
   font-family:var(--font-mono);font-size:12px;color:var(--txt-2);
@@ -573,3 +598,70 @@ body::after{
   width:100%;border:none;border-radius:10px;padding:12px;cursor:pointer;
   background:var(--accent);color:#fff;font-family:var(--font-body);font-weight:700;font-size:13.5px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FASE 2 — Central de Ajuda (AC5) e atalho do Copiloto (AC4).
+   Só tokens de tema já existentes, nenhuma cor nova: assim herda a validação
+   de contraste feita em 2026-07-25 sem repetir o trabalho.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.help-intro{padding:22px 24px 6px;max-width:760px}
+.help-intro h2{font-family:var(--font-display);font-weight:800;font-size:21px;color:var(--txt);margin:0 0 8px;letter-spacing:-.01em}
+.help-intro p{font-family:var(--font-body);font-size:13.5px;line-height:1.6;color:var(--txt-2);margin:0}
+
+.help-bloco{
+  margin:16px 24px 0;max-width:760px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;
+}
+.help-bloco-hd{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.help-bloco-hd h3{font-family:var(--font-display);font-weight:700;font-size:15.5px;color:var(--txt);margin:0}
+.help-ico{
+  width:32px;height:32px;flex:none;border-radius:9px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);
+}
+.help-ico svg{width:16px;height:16px}
+
+.help-passos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+.help-passos li{display:flex;gap:11px;align-items:flex-start;font-family:var(--font-body);font-size:13px;line-height:1.55;color:var(--txt)}
+.help-n{
+  width:21px;height:21px;flex:none;border-radius:50%;display:grid;place-items:center;
+  background:var(--panel-2);border:1px solid var(--line);
+  font-family:var(--font-mono);font-size:10.5px;color:var(--txt-2);margin-top:1px;
+}
+.help-passos b{color:var(--txt);font-weight:700}
+/* `--txt-2` e não `--txt-3`: a nota é texto corrido de 12px que precisa ser
+   lido, não uma legenda decorativa (mesma medição do selo de IA). */
+.help-nota{display:block;font-size:12px;color:var(--txt-2);margin-top:3px;line-height:1.5}
+
+.help-rodape{
+  margin-top:14px;padding-top:13px;border-top:1px solid var(--line);
+  font-family:var(--font-body);font-size:12.5px;line-height:1.55;color:var(--txt-2);
+}
+.help-rodape b{color:var(--txt)}
+.help-cta{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+  background:var(--accent-soft);color:var(--accent);
+  border:1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius:10px;padding:9px 14px;
+  font-family:var(--font-body);font-weight:700;font-size:12.5px;transition:.15s;
+}
+.help-cta svg{width:14px;height:14px}
+.help-cta:hover{background:color-mix(in srgb, var(--accent) 20%, transparent)}
+
+/* Atalho para o Copiloto, no topo do detalhe. Prefixo `copilot-` e não `ai-`:
+   `.ai-badge` e `.ai-badge-btn` já significam outras duas coisas, e o AC4
+   existe justamente para separar "a camada de IA está no ar" de "converse com
+   o Copiloto sobre esta campanha". */
+.detail-plat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.copilot-atalho{
+  display:inline-flex;align-items:center;gap:7px;flex:none;cursor:pointer;
+  background:var(--accent-soft);color:var(--accent);
+  border:1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius:9px;padding:6px 11px;
+  font-family:var(--font-body);font-weight:700;font-size:12px;transition:.15s;
+}
+.copilot-atalho svg{width:14px;height:14px;flex:none}
+.copilot-atalho:hover{background:color-mix(in srgb, var(--accent) 20%, transparent)}
+/* Alvo da rolagem. `scroll-margin-top` evita que o cabeçalho "Copiloto" pare
+   colado no topo da área rolável, sem nada de respiro acima. */
+.copilot-anchor{scroll-margin-top:14px}

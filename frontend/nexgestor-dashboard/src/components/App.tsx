@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { CampaignDetail } from "~components/CampaignDetail"
 import { CommandPalette } from "~components/CommandPalette"
 import { CompareModal } from "~components/CompareModal"
+import { DashboardShell, type NavKey } from "~components/DashboardShell"
 import { Header } from "~components/Header"
+import { HelpCenter } from "~components/HelpCenter"
 import { Home } from "~components/Home"
 import { NewCampaignModal } from "~components/NewCampaignModal"
 import { CAMPAIGNS } from "~data/mock"
@@ -11,7 +13,7 @@ import { apagarCampanha, idLocalDoServidor, listarCampanhasSalvas, salvarCampanh
 import { loadLive, marcarComoSalva, mesclarComServidor, removeLive, upsertLive } from "~lib/store"
 import type { CampaignVM } from "~types"
 
-type Screen = { name: "home" } | { name: "detail"; id: number }
+type Screen = { name: "home" } | { name: "detail"; id: number } | { name: "help" }
 type Modal = "none" | "new" | "compare"
 
 const STORE_KEY = "nex:screen"
@@ -146,80 +148,103 @@ export function App() {
   }
   const goHome = () => setScreen({ name: "home" })
 
+  /**
+   * Navegação da sidebar. "Nova campanha" abre o formulário SEM trocar de tela
+   * — quem estava vendo uma campanha volta para ela ao fechar o modal, em vez
+   * de ser jogado na Home por ter clicado num item de menu.
+   */
+  const navegar = (destino: NavKey) => {
+    setPalette(false)
+    if (destino === "nova") {
+      setModal("new")
+      return
+    }
+    setModal("none")
+    setScreen(destino === "ajuda" ? { name: "help" } : { name: "home" })
+  }
+
   // Tela persistida pode apontar para campanha que não existe mais.
   const detail =
     screen.name === "detail" ? campaigns.find((c) => c.id === screen.id) : undefined
 
   return (
-    <div className="app">
-      {/* `section` fica fixo em "Campanhas": a tela de detalhe já tem seu próprio
-          cabeçalho com nome da campanha + "Voltar" logo abaixo — repetir o nome
-          aqui em cima seria a mesma duplicação que acabamos de tirar da marca. */}
-      <Header section="Campanhas" onSearch={() => setPalette(true)} />
-
-      {/* `key` distinto por tela é obrigatório, não cosmético: Home e
-          CampaignDetail renderizam ambos um `<div className="scroll">` na mesma
-          posição da árvore, então o React reaproveita o MESMO nó do DOM ao
-          trocar de tela — e o nó carrega junto o `scrollTop` da tela anterior.
-          Quem tinha rolado a lista da Home via o detalhe abrir no meio da
-          página e só depois saltar para o topo (medido: 531 → 0 em ~0,5s).
-          Com keys diferentes o nó é recriado e já nasce no topo. */}
-      {screen.name === "home" || !detail ? (
-        <Home
-          key="home"
-          campaigns={campaigns}
-          liveCount={live.length}
-          onOpenCampaign={openCampaign}
-          onNew={() => setModal("new")}
-          onCompare={() => setModal("compare")}
-          onDelete={apagar}
+    <DashboardShell ativo={screen.name === "help" ? "ajuda" : "campanhas"} onNavegar={navegar}>
+      <div className="app">
+        {/* Fora da Ajuda, `section` fica fixo em "Campanhas": a tela de detalhe já
+            tem seu próprio cabeçalho com nome da campanha + "Voltar" logo abaixo
+            — repetir o nome aqui em cima seria a mesma duplicação que acabamos de
+            tirar da marca. */}
+        <Header
+          section={screen.name === "help" ? "Ajuda" : "Campanhas"}
+          onSearch={() => setPalette(true)}
         />
-      ) : (
-        <CampaignDetail key={`detail-${detail.id}`} c={detail} onBack={goHome} />
-      )}
 
-      {modal === "new" && (
-        <NewCampaignModal
-          onClose={() => setModal("none")}
-          onAnalyzed={(vm) => {
-            // Mostra imediatamente, sem esperar o servidor: a análise já está
-            // pronta e prender a tela numa gravação seria pior que salvar
-            // depois. Se o servidor não responder, a campanha fica só neste
-            // navegador (sem `serverId`) e a mesclagem seguinte a preserva.
-            setLive(upsertLive(vm))
-            setModal("none")
-            openCampaign(vm.id)
+        {/* `key` distinto por tela é obrigatório, não cosmético: Home,
+            CampaignDetail e HelpCenter renderizam todos um `<div className="scroll">`
+            na mesma posição da árvore, então o React reaproveita o MESMO nó do DOM
+            ao trocar de tela — e o nó carrega junto o `scrollTop` da tela anterior.
+            Quem tinha rolado a lista da Home via o detalhe abrir no meio da
+            página e só depois saltar para o topo (medido: 531 → 0 em ~0,5s).
+            Com keys diferentes o nó é recriado e já nasce no topo. */}
+        {screen.name === "help" ? (
+          <HelpCenter key="help" onNova={() => setModal("new")} />
+        ) : screen.name === "home" || !detail ? (
+          <Home
+            key="home"
+            campaigns={campaigns}
+            liveCount={live.length}
+            onOpenCampaign={openCampaign}
+            onNew={() => setModal("new")}
+            onCompare={() => setModal("compare")}
+            onDelete={apagar}
+          />
+        ) : (
+          <CampaignDetail key={`detail-${detail.id}`} c={detail} onBack={goHome} />
+        )}
 
-            // Reancorar o id é obrigatório: na base compartilhada quem
-            // identifica é o servidor. Sem isto, a campanha da Ana e a do Bruno
-            // nasceriam ambas com id 1000 e uma sobrescreveria a outra na
-            // próxima sincronização.
-            salvarCampanha(vm).then((serverId) => {
-              if (serverId !== null) setLive(reancorar(vm, serverId))
-            })
-          }}
-        />
-      )}
+        {modal === "new" && (
+          <NewCampaignModal
+            onClose={() => setModal("none")}
+            onAnalyzed={(vm) => {
+              // Mostra imediatamente, sem esperar o servidor: a análise já está
+              // pronta e prender a tela numa gravação seria pior que salvar
+              // depois. Se o servidor não responder, a campanha fica só neste
+              // navegador (sem `serverId`) e a mesclagem seguinte a preserva.
+              setLive(upsertLive(vm))
+              setModal("none")
+              openCampaign(vm.id)
 
-      {modal === "compare" && (
-        <CompareModal campaigns={campaigns} onClose={() => setModal("none")} />
-      )}
+              // Reancorar o id é obrigatório: na base compartilhada quem
+              // identifica é o servidor. Sem isto, a campanha da Ana e a do Bruno
+              // nasceriam ambas com id 1000 e uma sobrescreveria a outra na
+              // próxima sincronização.
+              salvarCampanha(vm).then((serverId) => {
+                if (serverId !== null) setLive(reancorar(vm, serverId))
+              })
+            }}
+          />
+        )}
 
-      {palette && (
-        <CommandPalette
-          campaigns={campaigns}
-          onClose={() => setPalette(false)}
-          onSelectCampaign={openCampaign}
-          onNew={() => {
-            setPalette(false)
-            setModal("new")
-          }}
-          onCompare={() => {
-            setPalette(false)
-            setModal("compare")
-          }}
-        />
-      )}
-    </div>
+        {modal === "compare" && (
+          <CompareModal campaigns={campaigns} onClose={() => setModal("none")} />
+        )}
+
+        {palette && (
+          <CommandPalette
+            campaigns={campaigns}
+            onClose={() => setPalette(false)}
+            onSelectCampaign={openCampaign}
+            onNew={() => {
+              setPalette(false)
+              setModal("new")
+            }}
+            onCompare={() => {
+              setPalette(false)
+              setModal("compare")
+            }}
+          />
+        )}
+      </div>
+    </DashboardShell>
   )
 }
