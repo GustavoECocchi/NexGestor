@@ -1,6 +1,5 @@
 import { useState } from "react"
 
-import { AnimatedNumber } from "~components/AnimatedNumber"
 import { IconAlert, IconBolt, IconBulb, IconTrendUp } from "~components/Icons"
 import { loadDoneActions, toggleDoneAction } from "~lib/store"
 import { sanitizeHtml } from "~lib/sanitize"
@@ -12,24 +11,6 @@ export function OpportunityCard({ c }: { c: CampaignVM }) {
     <div className="opp">
       <div className="oh"><IconBulb /><span>Oportunidade detectada</span></div>
       <p dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.opportunity) }} />
-    </div>
-  )
-}
-
-export function MetricTiles({ c }: { c: CampaignVM }) {
-  return (
-    <div className="mgrid">
-      {c.tiles.map((t, i) => (
-        <div className="mtile" key={t[0]} style={{ animationDelay: `${i * 55}ms` }}>
-          <div className="mk">{t[0]}</div>
-          {/* Mesmo escalonamento da entrada do tile (55ms), para o número
-              começar a contar junto com o card em que ele aparece. */}
-          <div className="mv" style={{ color: t[2] }}>
-            <AnimatedNumber value={t[1]} delay={i * 55} />
-          </div>
-          <div className="md">{t[3]}</div>
-        </div>
-      ))}
     </div>
   )
 }

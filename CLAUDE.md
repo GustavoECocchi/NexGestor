@@ -995,20 +995,49 @@ o volume e o `DB_PATH` não se aplicam — e o sintoma é **501 em vez de 404**.
 11. ✅ **`docs/PRD.md` criado (2026-08-26)** — documento de requisitos retroativo gerado lendo o código: produto, 12 decisões de arquitetura com o porquê, regras de negócio (15 cenários, pesos das métricas, supressão de conflitos, `final_status` como pior de duas fontes de evidência), stack, funcional vs. pendente, cobertura de testes, segurança, e o passo a passo do deploy pendente. Registra duas lacunas nunca documentadas: **não existe histórico/série temporal no produto** (`spark` é linha reta, "últimos 7 dias" é texto fixo — só os mocks têm série) e a **regra do BLUE tem 3 condições, não 2**. Mais uma seção de **divergências entre documentação e código** (10 itens, nenhum corrigido; a pior é o `COMO-USAR.md` se contradizendo sobre privacidade). **⚠️ Escrito sobre um checkout de 15/08, então descreve a extensão como frontend atual** — ganhou aviso no topo mapeando o que ler com ressalva; **revisão completa contra o dashboard fica pendente**.
 12. ✅ **Selo de estado da IA no dashboard (2026-08-26)** — `GET /api/v1/status` no backend + selo de 4 estados no header do dashboard (`IA on` / `IA off` / `IA falhando` / `IA ?`). O estado `falhando` existe porque `/status` só prova que a IA está *configurada*, não que a chave *autentica* — comprovado subindo o backend com chave inválida (status dizia `available: true`, análise voltava sem IA). Detecção de custo zero, por observação do desfecho de cada análise (`src/lib/aiHealth.ts`), sem chamada paga extra. Validado ao vivo no dashboard real, passando pelo `DonoGate`. Suítes: backend **1450 → 1457**, dashboard **288 → 331**.
 13. ✅ **Fase-2 implementada (2026-08-27): navegação da sidebar + Central de Ajuda + atalho do Copiloto.** `docs/prds/fase-2-dashboard-intuitividade.md`, PR A + PR B, **os 2 PRs do orçamento da fase consumidos**. Sidebar (`DashboardShell.tsx`) ganhou navegação de verdade — "Campanhas", "Ajuda" (tela nova, `HelpCenter.tsx`, texto estático respondendo às 4 perguntas do time) e "Nova campanha" como ação em destaque, não item de menu (nunca fica "ativa", então não devia parecer um destino). Copiloto ganhou atalho "Perguntar ao Copiloto" no topo do detalhe (`CampaignDetail.tsx`) — ele continua no fim da página, o atalho rola até lá e foca o campo (`focus({preventScroll:true})` antes do `scrollIntoView`, nessa ordem, senão o salto do foco cancela a rolagem suave). Suítes: backend sem mudança (**1457**), dashboard **331 → 346** (+15, com **teste de mutação 6/6** confirmando que nenhum é vácuo). **Validado ao vivo no navegador, nos dois temas** — com dois enganos meus corrigidos na hora: (1) uma leitura de contraste que dava 6 falsas falhas no tema claro porque eu tinha trocado `data-theme` via JS numa aba oculta e o `background` computado não repintou — recarregando a página já no tema certo, zero falhas; (2) a animação suave da rolagem não pôde ser confirmada ao vivo porque a janela estava ocluída (`visibilityState: hidden`, 0 frames de `requestAnimationFrame` em 500ms — sem rAF o Chrome não anima `scrollIntoView`) — o alvo da rolagem foi provado (chega a 425px, âncora no topo), a suavidade da transição em si não. **Pendente para fechar a fase**: teste manual com alguém do time simulando cliente leigo (§8 do PRD) — nenhum teste automatizado mede "uma pessoa acha o caminho sozinha".
-14. 🟡 **`fase-2-dashboard-intuitividade.md` §11 (2026-08-27) — cards de status de métrica, especificado, não implementado.** Pedido novo do time via `docs/rascunho_prompt.md`. Achado central: os cards **já existem** — são os tiles de "Métricas" no detalhe, alimentados por `metric_evaluations` (o engine já avalia as 6 métricas pedidas contra as metas do gestor). O gap real é `lib/adapt.ts:76` (`tileNote`) descartar o veredito em português do engine, guardando só o prefixo "meta X" — confirmado com o regex exato e reproduzido ao vivo no navegador. Achado extra não previsto no pedido: as 6 métricas **não se comportam igual** quando a meta fica em branco — CPA/CPL/ROAS (sem default no schema) somem em silêncio dos tiles; CTR Link/Hook Rate/CPM (com default) são avaliadas contra um número que o gestor nunca escolheu, sem aviso. Os dois casos são resolvíveis sem dado novo, porque o frontend já tem `input.targets` no momento de montar os tiles. Registrada, sem decidir, uma tensão com a hierarquia de fases: implementar isto seria um 3º PR, e este PRD já usou os 2 do orçamento — ou vira `fase-3`, ou o limite é tratado como orientação para este caso pontual.
+14. ✅ **`fase-2-dashboard-intuitividade.md` §11 — cards de status de métrica: veredito completo implementado em 2026-08-31.** `lib/adapt.ts`: `tileNote()` (que descartava o veredito, guardando só "meta X") virou `tileText()` — regex `/^(Meta|Referência|Limite de fadiga):.*?\.(?=\s)/i` remove só a frase de meta (non-greedy, com lookahead pra não cortar em ponto decimal tipo "R$39.90"), preservando o veredito inteiro em português que o engine já escreve. **Achado extra do pedido original ("meta em branco" nas 6 métricas) não foi implementado nesta sessão** — o `MetricFeed` (ver item 16) resolveu o problema de exibição de forma diferente do que a §11 original propunha, e o item ficou parcialmente obsoleto pela reescrita.
 15. 🟡 **`fase-2b-benchmark-mercado.md` criado (2026-08-27) — benchmark de mercado via Gemini com grounding, para as métricas do item 14 sem meta definida. Só especificação, nada implementado.** Pedido via `docs/rascunho_prompt.md` (2ª vez que o arquivo mudou de conteúdo na sessão). Dois achados que corrigem a premissa do próprio pedido:
     - **O campo `niche` já existe** (`Campaign.niche`, `schema.py:63`) — `Optional[str]`, texto livre, sem UI no formulário manual, só alcançável hoje pelo modo "Importar arquivo". Não é "campo novo": é campo existente que precisa virar `Literal` fechado e obrigatório — o que quebra qualquer chamador que hoje omite o campo (passa a receber 422).
     - **Benchmark público real (pesquisado nesta sessão via WebSearch/WebFetch, fonte nomeada — WordStream — por item, não memória do modelo) existe por CTR para os 14 nichos candidatos, mas NÃO existe por Hook Rate/Hold Rate (vídeo) segmentado por indústria em fonte nenhuma** — múltiplas fontes confirmam que hook rate é métrica custom sem benchmark oficial por indústria, só faixas genéricas iguais para qualquer nicho. ROAS também só existe como média global. Ou seja: das 6 métricas do item 14, só CTR Link/CPA/CPL/CPM têm caminho real de benchmark por nicho — ROAS e Hook Rate vão cair no estado "não encontrado" quase sempre, o que é o comportamento correto já decidido (nunca forçar número sem fonte), mas muda a expectativa de "a feature funciona" pra essas duas.
     - Risco técnico registrado: a integração Gemini atual (`ai_service.py:137`) usa `response_schema` pra forçar JSON — tipicamente incompatível com grounding de busca na mesma chamada. `_execute_call` não é reaproveitável como está.
     - Autocorreção durante a escrita: cheguei a propor reaproveitar `pickEnum` 1:1 pra validar nicho no import de JSON, e ao conferir a assinatura (`padrao: T` obrigatório, não aceita `undefined`) percebi que não serve como está — nicho não tem default seguro (inventar um seria o mesmo erro de "zero fabricado" já corrigido no engine). Corrigido no documento antes de fechar.
+16. 🟠 **Feed de métricas do detalhe reescrito (`MetricFeed`, 2026-08-31) — implementado e testado, com 2 bugs reais encontrados na autorrevisão e AINDA NÃO CORRIGIDOS (decisão explícita do usuário: corrigir na próxima sessão).** Substitui o gráfico polar "Áreas da campanha" (que tinha sido construído nesta mesma sessão e foi descartado a pedido do usuário antes de qualquer commit — nenhum dos dois chegou a ir pro `main`) por `components/MetricFeed.tsx`: Faixa de resultado (CPA/ROAS/Investimento/Receita) → Painel do funil ("Onde a campanha quebra", barras por score do engine) + Ações → Métricas de contexto. Tooltips de ajuda (`FieldHint`, reaproveitado do formulário) em todo rótulo com hint cadastrado — acha #1 da auditoria de vocabulário (ver fase-5 abaixo): fora do formulário, nenhum rótulo tinha explicação. Suite dashboard **346 → 380/380**, `tsc -b` e `npm run build` limpos, validado ao vivo no navegador (dois bugs de CSS achados e corrigidos por medição, não por olhômetro: `.funnel-bars{flex:1}` zerava a altura das barras por colidir com `height` no eixo principal do flex — trocado por `flex:0 0 auto`; o tooltip herdava `text-transform:uppercase` dos rótulos maiúsculos por ainda ser filho DOM do label apesar do `position:fixed` — corrigido com reset explícito em `.fld-hint-tip`).
+    - **🔴 Bug real, achado na autorrevisão final, não corrigido**: o Copiloto (`Copilot.tsx`, não tocado nesta sessão) lê `tile[3]` esperando o formato antigo ("Limite de fadiga: 2.8") pra compor a resposta sobre frequência/fadiga; com o novo `tileText()` (item 14) `tile[3]` agora contém o veredito, não o número — a resposta do Copiloto ficou redundante e perdeu o número real do limite configurado pelo gestor. Provado com um teste temporário comparando formato antigo vs. novo (não commitado). Os testes existentes de `Copilot.test.ts` usam fixtures no formato antigo e por isso **não pegam essa regressão** — falsa confiança registrada explicitamente.
+    - **🟠 Bug real, achado na autorrevisão final, não corrigido**: a explicação "Você não definiu uma meta para isso." do CPL (métrica sem default no schema) some silenciosamente, porque CPL não está nem em `RESULT_LABELS` nem em `FUNNEL_LABELS` — cai em `ContextGrid`, que por desenho do rascunho só mostra label+valor, nunca `t[3]`.
+    - **🟡 Menor, não corrigido**: `package-lock.json` tem 96 linhas de campos `"libc"` removidos por um `npm install` incidental no início da sessão, sem relação com nenhuma dependência nova de verdade — ficou no commit de hoje por ser efeito real (ainda que não intencional) do trabalho, não revertido.
+17. 🟡 **Fase-5: revisão de vocabulário/linguagem — `docs/prds/fase-5-vocabulario-linguagem.md` criado, PR1 (rótulo "Gasto"→"Investimento") e PR3 (tooltips no `MetricFeed`, ver item 16) implementados e testados; PR2 (selo de confiança/cobertura no detalhe) implementado e testado; PR4/PR6/PR7/PR5 NÃO iniciados.** Gerado por um agente `fork` fazendo a auditoria de vocabulário (achados brutos mantidos fora do contexto principal, relatório estruturado). PR2: linha nova em `CampaignDetail.tsx` explicando "confiança"/"cobertura de dados" via `FieldHint` reaproveitado — **autocorreção durante o PR3**: no PR2 eu tinha escrito um componente `CoverageHint` duplicado (~50 linhas) por assumir, de memória velha, que `FieldHint` era acoplado ao layout do modal; relendo o componente de verdade durante o PR3, confirmei que não há acoplamento nenhum (a posição vem só do `getBoundingClientRect()` do próprio botão) — removido o duplicado, `FieldHint` usado direto, documento corrigido para não repetir a afirmação errada. Ordem combinada com o usuário para as próximas sessões: **PR7** (renomear "Retargeting"/"Conversão LP"), **PR4** (glossário no Copiloto), **PR6** (ajustar prompt da IA), **PR5** (templates de texto no `service.py` do backend — maior risco, por último).
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — isso foi verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas alerta de segurança aberto e sem explicação assusta a equipe à toa. Ver "Alerta de secret scanning do GitHub" acima. **Ainda não resolvido em 2026-07-28.**
 >
 > **Decisão em aberto, não resolvida:** nomear ou não um "Cenário de leilão caro" explícito para quando CPM acima do teto bloqueia a escala vertical (hoje só aparece como métrica CPM vermelha, sem card de causa raiz próprio). Oferecido ao usuário em 2026-07-28 (parte 2); sem resposta ainda.
 >
-> **PRÓXIMO PASSO — retomar exatamente aqui (reescrito em 2026-08-24, o texto
-> de 2026-08-14 acima ficou obsoleto pelo pivô extensão→dashboard e pelo
-> isolamento por dono — histórico preservado, não é mais o plano):**
+> **PRÓXIMO PASSO — retomar EXATAMENTE aqui (reescrito em 2026-08-31, a pedido
+> explícito do usuário para encerrar a sessão sem corrigir nada agora — os 3
+> itens abaixo são o primeiro trabalho da próxima sessão, antes de qualquer
+> outra coisa, inclusive antes do bloco de deploy/VPS mais abaixo, que
+> continua valendo mas é mais antigo):**
+>
+> 1. **Corrigir o bug 🔴 do item 16**: `Copilot.tsx` (resposta de
+>    frequência/fadiga) lê `tile[3]` esperando o número do limite de fadiga
+>    configurado; hoje `tile[3]` contém o veredito em texto (mudança do item
+>    14/`tileText()`). Ou o Copiloto passa a ler outra coisa, ou o adapter
+>    volta a expor o número cru em algum campo separado — decidir qual dos
+>    dois antes de mexer. Os testes de `Copilot.test.ts` usam fixtures do
+>    formato ANTIGO e não vão pegar a regressão sozinhos — atualizar os
+>    fixtures pro formato novo faz parte da correção, não só o código.
+> 2. **Corrigir o bug 🟠 do item 16**: CPL sem meta perde a explicação "Você
+>    não definiu uma meta para isso." porque cai no `ContextGrid`
+>    (`MetricFeed.tsx`), que nunca renderiza `t[3]` por desenho. Decidir: mover
+>    CPL pra uma seção que mostra nota, ou dar ao `ContextGrid` uma forma de
+>    mostrar especificamente o estado "ausente" sem virar uma seção de
+>    diagnóstico completa.
+> 3. **Limpar o 🟡 do item 16**: reverter as 96 linhas de `"libc"` em
+>    `package-lock.json` (rodar `npm install` de novo limpo, ou reverter só
+>    esse arquivo e conferir que `npm install`/`npm test` continuam ok).
+> 4. **Continuar a fase-5** (item 17) na ordem já combinada: PR7 → PR4 → PR6 →
+>    PR5.
+>
+> --- (pendências mais antigas, ainda válidas, mas de prioridade menor que as 4 acima) ---
 >
 > O **código** (backend com isolamento por dono + dashboard novo) está **pronto,
 > testado e commitado localmente** — mas **nada disso está no ar em lugar
@@ -1523,3 +1552,175 @@ explícita do próprio pedido daquela parte).
 - **`docs/rascunho_prompt.md` segue no repo** — mudou de conteúdo 2 vezes
   nesta sessão sozinha; decisão do usuário sobre o destino dele continua
   pendente (mesma nota da sessão anterior).
+
+## Sessão de 2026-08-31 — feed de métricas reescrito (`MetricFeed`), fase-5 de vocabulário (PR1-3), 2 bugs reais encontrados e deixados para a próxima sessão por pedido explícito do usuário
+
+Sessão longa, só frontend do dashboard (nenhum arquivo de backend tocado —
+o salto de contagem da suíte do backend abaixo é de trabalho concorrente, não
+meu, ver nota de atribuição). **Nada commitado ainda no início desta
+entrada** — este é o commit que fecha a sessão. Suítes ao final: **dashboard
+380/380** (346 no início do dia), `tsc -b` e `npm run build` limpos.
+Backend: sem mudança de código; suíte reconferida em **1487 passed, 5
+xfailed** — mas **1457 são meus** (mesma contagem da sessão de 2026-08-27,
+sem alteração) e **os outros 30 passed + 5 xfailed vêm de
+`test_auditoria_marketing.py`**, um arquivo que apareceu nesta pasta durante
+a sessão por um processo concorrente e externo (aparentemente dirigido por
+`prompt_codex.md`, na raiz — não lido/executado por mim, não é meu). Não
+tocado, não commitado, não revisado.
+
+### §11 completado: o veredito da métrica volta a aparecer por completo
+
+Pedido do início da sessão, herdado de uma sessão anterior. `lib/adapt.ts`:
+`tileNote()` (guardava só o prefixo "meta X", descartando o veredito em
+português do engine — achado já registrado no item 14 do roadmap em
+2026-08-27) virou `tileText()`. Regex
+`/^(Meta|Referência|Limite de fadiga):.*?\.(?=\s)/i` corta só a frase de
+meta, non-greedy com lookahead pra não confundir o ponto de "R$39.90" com o
+fim de frase; depois `.replace(/^\s*[✓⚠✗]\s*/, "")` tira o símbolo cru. O
+veredito completo (ex.: "Audiência fresca.") passa a chegar inteiro na UI.
+
+### Gráfico polar "Áreas da campanha" — construído, iterado, descartado no mesmo dia (nunca commitado)
+
+Pedido seguinte: um gráfico polar/donut de "Áreas da campanha" no detalhe.
+Construído (`components/AreaChart.tsx`) e refinado em ~8 rodadas de feedback
+visual específico do usuário (tamanho do card, remover números fixos das
+fatias — só no hover —, bordas na cor de cada métrica em tom escuro, escala
++depois -30%, título "dentro do card"), terminando com as fatias coloridas
+por gradiente de severidade (`color-mix(in oklab, ...)` contínuo, escolhido
+de propósito no lugar de faixas discretas — para não reintroduzir a classe de
+bug "dois veredictos discordando" que a varredura de veracidade de
+2026-08-25 corrigiu). Documentado em `docs/prds/fase-3-graficos-campanha.md`
+(criado nesta sessão).
+
+Depois de organizar o feed inteiro em torno dele (gráfico à esquerda, cards
+por peso/relevância à direita — `tileSize()`/`MetricTiles` em
+`DetailSections.tsx`), a execução do `docs/rascunho_prompt.md` (ver abaixo)
+trouxe um pedido que **substituía** essa estrutura inteira. Perguntado ao
+usuário se o `MetricFeed` novo deveria substituir ou coexistir com o gráfico
+polar, a resposta foi **substituir**. `AreaChart.tsx`, `AreaChart.test.tsx`,
+`tileSize()`/`MetricTiles`/`MetricTiles.test.tsx`, o tipo `AreaScore` e o
+campo `CampaignVM.areas` foram **removidos por completo** (não deixados como
+código morto) — nada disso chegou a ser commitado em nenhum ponto intermediário,
+então não há histórico de "adicionado e revertido" no `git log`, só neste
+`CLAUDE.md`.
+
+### `MetricFeed` — o feed atual (`components/MetricFeed.tsx`, novo)
+
+Estrutura pedida pelo rascunho: Faixa de resultado (CPA/ROAS/Investimento/
+Receita) → Painel do funil ("Onde a campanha quebra", barras cuja altura é o
+`score` 0-100 que o próprio engine já calcula por métrica — não um número
+novo) + coluna de Ações → Métricas de contexto (tudo que sobra, só
+label+valor, sem nota). Banner único "N métricas usando meta padrão do
+sistema" substitui o aviso repetido por card que a §11 antiga fazia.
+
+**Dois bugs de CSS achados e corrigidos por medição ao vivo, não por
+inspeção visual** — mesma disciplina já registrada em sessões anteriores
+("captura de tela não prova que um efeito funcionou"):
+- `.funnel-bars{height:120px;flex:1}` — o `flex:1` (shorthand pra
+  `flex-basis:0%`) vencia o `height` explícito no eixo principal do flex
+  column, zerando a altura de todas as barras (`getBoundingClientRect`
+  confirmou ~3px independente do score). Corrigido com `flex:0 0 auto`.
+- O tooltip do `FieldHint` (reaproveitado dentro dos rótulos maiúsculos do
+  feed) herdava `text-transform:uppercase` por continuar sendo filho DOM do
+  label, apesar do `position:fixed` reposicionar visualmente. Corrigido com
+  reset explícito (`text-transform:none;letter-spacing:normal;font-weight:400`)
+  em `.fld-hint-tip`.
+
+### Fase-5 — vocabulário/linguagem: auditoria + mini-PRD + PR1/PR2/PR3
+
+Pedido: "quero que o NexGestor tenha um vocabulário de fácil entendimento" —
+um agente `fork` fez a auditoria (achados brutos mantidos fora do contexto
+principal), e a segunda execução do `docs/rascunho_prompt.md` pediu um
+mini-PRD estruturado a partir dela: `docs/prds/fase-5-vocabulario-linguagem.md`
+(problema, princípios de linguagem, glossário, mapeamento de impacto,
+critérios de aceite, 7 PRs). Usuário pediu ordem recomendada, aprovou, pediu
+execução sequencial "um de cada vez", parando explicitamente depois do PR3
+("finalize o PR3 e pare, me avise").
+
+- **PR1** (feito): rótulo "Gasto (R$)" → "Investimento (R$)" no formulário
+  (`NewCampaignModal.tsx`) — só o texto, a chave `spend` não muda.
+- **PR2** (feito): linha nova no cabeçalho do detalhe explicando "confiança"/
+  "cobertura de dados" (`CampaignDetail.tsx`, `COVERAGE_HINT_TEXT`, via
+  `FieldHint`). **Autocorreção durante o PR3**: no PR2 eu tinha escrito um
+  componente `CoverageHint` próprio (~50 linhas duplicando a lógica de
+  hover/foco/`position:fixed` do `FieldHint`) por lembrar, errado, que
+  `FieldHint` era acoplado ao layout do modal onde nasceu. Relendo o
+  componente de verdade durante o PR3, confirmei que a posição é calculada
+  só a partir do `getBoundingClientRect()` do próprio botão — sem
+  acoplamento nenhum. Removido o duplicado, `FieldHint` importado e usado
+  direto, e as duas afirmações erradas no PRD (`fase-5-vocabulario-linguagem.md`)
+  corrigidas com risco rebaixado de "Médio" pra "Baixo na prática".
+- **PR3** (feito): `METRIC_HINT` em `MetricFeed.tsx` — tooltip de ajuda em
+  cada rótulo de métrica do feed (Faixa, Funil e Contexto), reaproveitando o
+  texto exato já usado no formulário — achado #1 da própria auditoria, o de
+  maior impacto: fora do formulário, nenhum rótulo de métrica tinha
+  explicação nenhuma.
+- **PR4, PR5, PR6, PR7: não iniciados.** Ordem combinada com o usuário pra
+  quando a sessão retomar: **PR7** (renomear "Retargeting"/"Conversão LP") →
+  **PR4** (glossário no Copiloto) → **PR6** (ajustar prompt da IA) → **PR5**
+  (templates de texto em `service.py` do backend, maior risco, por último).
+
+### Discussões de produto, sem mudança de código
+
+- **"Como manter a campanha sempre atualizada?"** — levou à conclusão de que
+  a resposta real é a integração OAuth com Meta/Google/TikTok/LinkedIn Ads
+  (dado direto da plataforma, não valor digitado uma vez). Usuário: "deixe
+  isso guardado, vamos resolver outras questões por enquanto" — registrado
+  como discussão, não como decisão de escopo nova (a migração pra Meta
+  Marketing API já era um item adiado desde 2026-07-16/2026-08-24; isto é
+  a mesma pendência, agora estendida às outras 3 plataformas, ainda sem
+  data).
+- **Postura com dado insuficiente**: usuário propôs bloquear a criação de
+  campanha sem informação suficiente. Argumentei pela filosofia já
+  estabelecida do produto ("nunca bloqueia, é honesto sobre o que não sabe" —
+  a mesma linha do Princípio 0 do prompt da IA, 2026-07-28, e dos vereditos
+  "ausente" do §11). Usuário: **"Mantenha como está, mas vamos resolver essa
+  questão posteriormente"** — decisão explícita de manter o comportamento
+  atual, pendência registrada, não uma reabertura do debate por conta própria
+  numa sessão futura.
+- Perguntas informativas respondidas a partir do código real, sem mudança:
+  significado de cada métrica, quais são as mais relevantes (`_METRIC_WEIGHTS`
+  no backend), o que o painel "Onde a campanha quebra" comunica.
+
+### Autorrevisão final ("Revise cada etapa que realizamos hoje", pedido explícito, com instrução de conferir o código, não a memória)
+
+Revisão ponto a ponto de tudo acima contra o código real (não um resumo de
+memória) surfaceou **2 bugs reais não corrigidos** e **1 item de limpeza**,
+todos deixados **de propósito** para a próxima sessão (instrução final do
+usuário: encerrar agora, corrigir depois):
+
+1. **🔴 Regressão no Copiloto.** `Copilot.tsx` (não tocado nesta sessão) lê
+   `tile[3]` pra montar a resposta de frequência/fadiga, esperando o formato
+   ANTIGO (`"Limite de fadiga: 2.8"` — o número da meta). Depois da mudança
+   da §11 (`tileText()`), `tile[3]` agora contém o VEREDITO
+   (`"Audiência fresca."`), não o número. Resultado: a resposta do Copiloto
+   ficou redundante consigo mesma e perdeu o número real do limite
+   configurado pelo gestor. Provado com um teste temporário comparando
+   formato antigo vs. novo (criado, confirmado, **apagado** — não ficou no
+   repo). Os testes existentes de `Copilot.test.ts` usam fixtures no formato
+   ANTIGO e por isso não pegam essa regressão sozinhos — dão falsa confiança
+   até alguém atualizar os fixtures.
+2. **🟠 CPL perde a explicação de "sem meta".** A mensagem "Você não definiu
+   uma meta para isso." (existe pro CPL — métrica sem default no schema, achado
+   já registrado no item 14 do roadmap em 2026-08-27) não aparece em lugar
+   nenhum do `MetricFeed`: CPL não está em `RESULT_LABELS` nem em
+   `FUNNEL_LABELS`, então cai em `ContextGrid`, que por desenho do próprio
+   rascunho de hoje só mostra label+valor, nunca `t[3]` (a nota).
+3. **🟡 `package-lock.json` sujo.** Um `npm install` incidental no começo da
+   sessão removeu 96 linhas de campos `"libc"` de dependências opcionais, sem
+   relação com nenhuma mudança de dependência de verdade.
+
+Nenhum dos três foi corrigido nesta sessão — instrução explícita do usuário
+foi encerrar exatamente como está e resolver na próxima. Passos concretos
+registrados no topo do roadmap ("PRÓXIMO PASSO", reescrito nesta sessão).
+
+### Nota sobre trabalho concorrente no mesmo diretório
+
+Durante a sessão, arquivos passaram a existir nesta mesma pasta sem terem
+sido criados por mim: `docs/auditoria-marketing.md`,
+`backend/backend-nexgestor-main/test_auditoria_marketing.py`,
+`frontend/nexgestor-dashboard/src/test/auditoria-marketing.test.tsx`,
+`prompt_codex.md` e `prompt_codex_para_claude.md` (na raiz). Não lidos por
+completo, não executados, não modificados, **não incluídos no commit desta
+sessão** — registrado por transparência, não investigado a fundo (não é
+trabalho meu para revisar sem pedido do usuário).

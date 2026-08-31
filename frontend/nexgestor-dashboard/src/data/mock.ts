@@ -31,10 +31,10 @@ export const CAMPAIGNS: CampaignVM[] = [
     primaryAction:
       "Reduzir orçamento do conjunto saturado e subir novas variações de criativo imediatamente.",
     tiles: [
-      ["ROAS", "1,1x", "var(--red)", "meta 2,5x"],
-      ["CPA", "R$ 92", "var(--red)", "meta R$ 60"],
-      ["CTR Link", "0,7%", "var(--red)", "meta 1,5%"],
-      ["Frequência", "3,4", "var(--red)", "fadiga >2,8"],
+      ["ROAS", "1,1x", "var(--red)", "meta 2,5x", "gestor", 15],
+      ["CPA", "R$ 92", "var(--red)", "meta R$ 60", "gestor", 20],
+      ["CTR Link", "0,7%", "var(--red)", "meta 1,5%", "gestor", 25],
+      ["Frequência", "3,4", "var(--red)", "fadiga >2,8", "gestor", 10],
       ["Investimento", "R$ 8.420", "var(--txt)", "7 dias"],
       ["Receita", "R$ 9.260", "var(--txt)", "7 dias"]
     ],
@@ -87,10 +87,10 @@ export const CAMPAIGNS: CampaignVM[] = [
     primaryAction:
       "Aumentar orçamento 15–20% a cada 24h, sem passar de 30% para não resetar o aprendizado.",
     tiles: [
-      ["ROAS", "5,2x", "var(--blue)", "meta 3,0x"],
-      ["CPA", "R$ 24", "var(--blue)", "meta R$ 33"],
-      ["CTR Link", "2,4%", "var(--green)", "meta 1,5%"],
-      ["Frequência", "1,6", "var(--green)", "teto 1,8"],
+      ["ROAS", "5,2x", "var(--blue)", "meta 3,0x", "gestor", 92],
+      ["CPA", "R$ 24", "var(--blue)", "meta R$ 33", "gestor", 90],
+      ["CTR Link", "2,4%", "var(--green)", "meta 1,5%", "gestor", 88],
+      ["Frequência", "1,6", "var(--green)", "teto 1,8", "gestor", 85],
       ["Investimento", "R$ 4.870", "var(--txt)", "7 dias"],
       ["Receita", "R$ 25.320", "var(--txt)", "7 dias"]
     ],

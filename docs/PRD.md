@@ -42,6 +42,9 @@ A partir de 26/08/2026 o projeto adota a hierarquia: este PRD grande
 | 1 | Ajuda em linguagem simples no formulário "Criar campanha" | implementado | [`prds/fase-1-ajuda-formulario-campanha.md`](prds/fase-1-ajuda-formulario-campanha.md) |
 | 2 | Dashboard: telas dedicadas e navegação intuitiva | implementado (falta o teste manual com usuário leigo, §8 do PRD) | [`prds/fase-2-dashboard-intuitividade.md`](prds/fase-2-dashboard-intuitividade.md) |
 | 2b | Benchmark de mercado para metas não definidas | rascunho — só especificação, nada implementado | [`prds/fase-2b-benchmark-mercado.md`](prds/fase-2b-benchmark-mercado.md) |
+| 3 | Gráficos no detalhe da campanha (Fuse React) — Parte A "Áreas da campanha" implementada e depois SUBSTITUÍDA pelo feed da fase 4 (ver A6 no PRD); Parte B "histórico/tendência" só especificação | parcial | [`prds/fase-3-graficos-campanha.md`](prds/fase-3-graficos-campanha.md) |
+| 4 | Feed de métricas reorganizado (Faixa de resultado / Painel do funil / Ações / Contexto) | implementado | [`prds/fase-3-graficos-campanha.md`](prds/fase-3-graficos-campanha.md) §A6 (ainda sem PRD próprio — nasceu de um rascunho direto, não de um mini-PRD) |
+| 5 | Revisão de vocabulário e linguagem | rascunho — só especificação, nada implementado | [`prds/fase-5-vocabulario-linguagem.md`](prds/fase-5-vocabulario-linguagem.md) |
 
 ---
 

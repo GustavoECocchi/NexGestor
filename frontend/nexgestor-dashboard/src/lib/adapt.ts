@@ -19,6 +19,7 @@ import type {
   Priority,
   ScenarioDetail,
   SuggestionVM,
+  Targets,
   Tile,
   UIStatus
 } from "~types"
@@ -49,15 +50,36 @@ function shortTitle(title: string): string {
   return afterDash.replace(/\s*\(.*\)\s*$/, "").trim()
 }
 
-function fmtMetric(ev: MetricEvaluation): string {
-  const v = ev.value
+function fmtValue(metric: string, v: number | null): string {
   if (v == null) return "—"
-  const m = ev.metric
-  if (m === "CPA" || m === "CPC" || m === "CPL" || m === "CPM") return `R$ ${brlCents(v)}`
-  if (m === "ROAS") return `${dec(v)}x`
-  if (m === "Frequência") return dec(v)
-  if (m === "Conversões/semana") return String(Math.round(v))
+  if (metric === "CPA" || metric === "CPC" || metric === "CPL" || metric === "CPM") return `R$ ${brlCents(v)}`
+  if (metric === "ROAS") return `${dec(v)}x`
+  if (metric === "Frequência") return dec(v)
+  if (metric === "Conversões/semana") return String(Math.round(v))
   return `${dec(v)}%` // Hook, Hold, CTRs, Conversão LP
+}
+
+function fmtMetric(ev: MetricEvaluation): string {
+  return fmtValue(ev.metric, ev.value)
+}
+
+// Metas sem default no schema (Targets): em branco, o engine pula a avaliação
+// inteira (service.py:_evaluate_one, `target is None`) — a métrica some da
+// resposta mesmo que o gestor tenha enviado o valor medido. Sintetizado como
+// tile "sem meta" no frontend (fase-2 §11).
+const METRICAS_SEM_DEFAULT: { metric: string; metricField: "cpa" | "cpl" | "roas"; targetField: keyof Targets }[] = [
+  { metric: "CPA", metricField: "cpa", targetField: "max_cpa" },
+  { metric: "CPL", metricField: "cpl", targetField: "max_cpl" },
+  { metric: "ROAS", metricField: "roas", targetField: "min_roas" }
+]
+
+// Metas COM default no schema: em branco, o Pydantic preenche o default e o
+// engine avalia normalmente — só que contra um número que o gestor nunca
+// escolheu. O tile aparece, mas marcado como "sistema" (fase-2 §11).
+const METRICAS_COM_DEFAULT: Record<string, keyof Targets> = {
+  "CTR Link": "min_ctr_link",
+  "Hook Rate": "min_hook_rate",
+  CPM: "max_cpm"
 }
 
 function findEval(evals: MetricEvaluation[], metric: string) {
@@ -65,19 +87,23 @@ function findEval(evals: MetricEvaluation[], metric: string) {
 }
 
 /**
- * Legenda curta do tile: primeira frase da nota do engine.
+ * Texto do tile: o veredito em português que o engine já escreve, sem a
+ * frase de meta (o valor da meta já aparece no valor do tile) e sem os
+ * símbolos crus ✓/⚠/✗ (a cor do tile já os substitui).
  *
- * Cortar em `.` seco quebra número decimal — o ponto de "R$39.90" é o mesmo
- * caractere que encerra a frase. Isso exibia a meta do gestor errada na tela:
- * `Meta: <R$39.90.` virava "meta <R$39", e `Limite de fadiga: 2.8.` virava
- * "Limite de fadiga: 2". Só encerra frase o ponto seguido de espaço (ou de
- * fim de string), então é isso que separa.
+ * A frase de meta nem sempre existe (CTR Todos/Click-Bait não têm prefixo
+ * "Meta:"/"Referência:"/"Limite de fadiga:") — por isso a remoção é
+ * condicional, não um corte posicional. E o ponto que fecha essa frase não
+ * pode ser confundido com o ponto decimal de "R$39.90" — só encerra frase o
+ * ponto seguido de espaço (evitado com `.*?\.(?=\s)`, não guloso).
+ *
+ * Antes (bug corrigido aqui): cortava ANTES do veredito, sobrando só "meta
+ * >35%" na tela — a frase que dizia "está indo bem ou mal, em português"
+ * nunca chegava (fase-2 §11).
  */
-function tileNote(note: string): string {
-  return note
-    .replace(/^Meta:\s*/i, "meta ")
-    .split(/\.(?=\s|$)/)[0]
-    .slice(0, 28)
+function tileText(note: string): string {
+  const semMeta = note.replace(/^(Meta|Referência|Limite de fadiga):.*?\.(?=\s)/i, "")
+  return semMeta.replace(/^\s*[✓⚠✗]\s*/, "").trim()
 }
 
 /**
@@ -127,6 +153,7 @@ export function responseToVM(
   input: AnalyzeInput
 ): CampaignVM {
   const m = input.metrics
+  const targets = input.targets
   const evals = res.metric_evaluations
 
   // Números-base: preferir o que o gestor enviou; cair para o avaliado; se não
@@ -152,13 +179,34 @@ export function responseToVM(
       ? { k: evals[1].metric, v: fmtMetric(evals[1]) }
       : { k: "Cobertura", v: `${res.score_coverage}%` }
 
-  // Tiles: cada métrica avaliada vira um tile; investimento/receita fecham a grade.
-  const tiles: Tile[] = evals.map((ev) => [
-    ev.metric,
-    fmtMetric(ev),
-    STATUS_COLOR[ev.status] ?? "var(--txt)",
-    tileNote(ev.note)
-  ])
+  // Tiles: cada métrica avaliada vira um tile. Meta com default (CTR Link/Hook
+  // Rate/CPM) em branco → engine avaliou contra número que ninguém escolheu;
+  // marcado "sistema", cor neutra em vez do semáforo (fase-2 §11 — julgar
+  // verde/vermelho contra uma meta que o gestor não confirmou seria atribuir a
+  // ele uma escolha que foi só default do produto).
+  const tiles: Tile[] = evals.map((ev) => {
+    const targetField = METRICAS_COM_DEFAULT[ev.metric]
+    const semMetaDoGestor = targetField != null && targets[targetField] == null
+    return [
+      ev.metric,
+      fmtMetric(ev),
+      semMetaDoGestor ? "var(--txt-2)" : (STATUS_COLOR[ev.status] ?? "var(--txt)"),
+      tileText(ev.note),
+      semMetaDoGestor ? "sistema" : "gestor",
+      ev.score
+    ]
+  })
+  // Meta sem default (CPA/CPL/ROAS) em branco → a métrica nem chega em
+  // metric_evaluations (engine pula), então some da tela em silêncio. Tile
+  // "sem meta" sintetizado aqui, com o valor cru que o gestor mandou. Sem
+  // `score` (6º campo): o engine nunca avaliou, não existe nota pra dar.
+  for (const { metric, metricField, targetField } of METRICAS_SEM_DEFAULT) {
+    if (evals.some((e) => e.metric === metric)) continue
+    const valor = m[metricField]
+    if (valor == null) continue // métrica também não foi enviada — nada a mostrar (comportamento atual, não regride)
+    if (targets[targetField] != null) continue // meta existe; se sumiu do evals é por outro motivo, não sintetizar
+    tiles.push([metric, fmtValue(metric, valor), "var(--txt-3)", "Você não definiu uma meta para isso.", "ausente"])
+  }
   if (invest) tiles.push(["Investimento", `R$ ${brl(invest)}`, "var(--txt)", "período informado"])
   if (revenue) tiles.push(["Receita", `R$ ${brl(revenue)}`, "var(--txt)", "spend × ROAS"])
 

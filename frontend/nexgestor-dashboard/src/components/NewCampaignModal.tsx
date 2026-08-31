@@ -100,7 +100,7 @@ const CAMPOS_INTEIROS = new Set([
 
 const FIELDS_DELIVERY: Field[] = [
   { label: "Impressões", key: "impressions", ph: "0", inteiro: true, hint: "Quantas vezes seu anúncio foi exibido, no total." },
-  { label: "Gasto (R$)", key: "spend", ph: "0", hint: "Quanto você já investiu nessa campanha." },
+  { label: "Investimento (R$)", key: "spend", ph: "0", hint: "Quanto você já investiu nessa campanha." },
   { label: "CPM", key: "cpm", ph: "0", hint: "Quanto você paga a cada 1.000 exibições do anúncio." },
   { label: "CPC", key: "cpc", ph: "0", hint: "Quanto você paga, em média, cada vez que alguém clica no anúncio." },
   { label: "CPA", key: "cpa", ph: "0", hint: "Quanto custou, em média, cada conversão (venda, cadastro etc.) gerada." },

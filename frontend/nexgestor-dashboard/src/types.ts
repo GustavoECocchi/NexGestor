@@ -159,7 +159,19 @@ export interface ScenarioVM {
   priority: number
 }
 
-export type Tile = [label: string, value: string, color: string, note: string]
+// "gestor" (padrão) = meta escolhida por quem preencheu o formulário.
+// "sistema" = métrica tem default no schema (CTR Link/Hook Rate/CPM) e o
+//   campo ficou em branco — o engine avaliou contra um número que ninguém
+//   confirmou. "ausente" = métrica sem default (CPA/CPL/ROAS): meta em
+//   branco não tem contra o que comparar, o tile é sintetizado no frontend
+//   (ver lib/adapt.ts, fase-2 §11).
+export type TileOrigin = "gestor" | "sistema" | "ausente"
+// `score` = a nota 0–100 que o engine deu à métrica (MetricEvaluation.score),
+// carregada aqui só para o painel do funil (feed reorganizado, rascunho de
+// 2026-08-31) desenhar a altura das barras verticais — a mesma nota que já
+// decide a cor do tile, nunca um número novo. `undefined` pra tiles sem score
+// do engine (Investimento/Receita, e as métricas "ausente" do §11).
+export type Tile = [label: string, value: string, color: string, note: string, origem?: TileOrigin, score?: number]
 
 export interface CampaignVM {
   id: number

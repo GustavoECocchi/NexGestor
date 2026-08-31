@@ -151,6 +151,79 @@ describe("responseToVM — tiles", () => {
   })
 })
 
+describe("responseToVM — tiles e meta não preenchida (fase-2 §11)", () => {
+  // AC-M1: com meta definida, o tile usa a cor do semáforo do engine e a
+  // origem "gestor" — meta escolhida por quem preencheu o formulário.
+  it("AC-M1 — meta definida: cor do semáforo, origem 'gestor'", () => {
+    const vm = responseToVM(
+      baseResponse({ metric_evaluations: [evalM("CTR Link", 2, "GREEN")] }),
+      baseInput({ targets: { min_ctr_link: 1.5 } })
+    )
+    const tile = vm.tiles.find((t) => t[0] === "CTR Link")!
+    expect(tile[2]).toBe("var(--green)")
+    expect(tile[4]).toBe("gestor")
+  })
+
+  // AC-M2: CPA/CPL/ROAS não têm default no schema. Meta em branco → o engine
+  // pula a avaliação (metric_evaluations não traz a métrica) — mesmo assim o
+  // valor que o gestor mandou não pode desaparecer da grade sem explicação.
+  it("AC-M2 — CPA/CPL/ROAS com valor mas sem meta viram tile 'sem meta', não somem", () => {
+    const vm = responseToVM(
+      baseResponse({ metric_evaluations: [] }), // engine não avaliou nenhuma das três
+      baseInput({ metrics: { cpa: 50, cpl: 30, roas: 2.5 }, targets: {} })
+    )
+    for (const metric of ["CPA", "CPL", "ROAS"]) {
+      const tile = vm.tiles.find((t) => t[0] === metric)
+      expect(tile, `tile de ${metric} deveria existir`).toBeTruthy()
+      expect(tile![2]).toBe("var(--txt-3)")
+      expect(tile![3]).toBe("Você não definiu uma meta para isso.")
+      expect(tile![4]).toBe("ausente")
+    }
+    expect(vm.tiles.find((t) => t[0] === "CPA")![1]).toBe("R$ 50,00")
+  })
+
+  // AC-M3: CTR Link/Hook Rate/CPM têm default no schema. Meta em branco não
+  // impede a avaliação (o Pydantic preenche o default) — o card aparece, mas
+  // precisa avisar que a meta usada não foi escolhida pelo gestor.
+  it("AC-M3 — CTR Link/Hook Rate/CPM avaliados com default viram 'meta padrão do sistema'", () => {
+    const vm = responseToVM(
+      baseResponse({
+        metric_evaluations: [evalM("CTR Link", 2, "RED"), evalM("Hook Rate", 40, "GREEN"), evalM("CPM", 60, "RED")]
+      }),
+      baseInput({ targets: {} }) // nenhuma das três foi preenchida pelo gestor
+    )
+    for (const metric of ["CTR Link", "Hook Rate", "CPM"]) {
+      const tile = vm.tiles.find((t) => t[0] === metric)!
+      // cor neutra — não a cor de julgamento do semáforo, mesmo a métrica tendo
+      // avaliado RED — porque a meta usada não foi confirmada pelo gestor.
+      expect(tile[2]).toBe("var(--txt-2)")
+      expect(tile[4]).toBe("sistema")
+    }
+  })
+
+  // Meta definida normalmente (não em branco) para as mesmas três métricas não
+  // deve disparar o rótulo de "sistema" — é o caso comum, não pode regredir.
+  it("CTR Link/Hook Rate/CPM com meta definida pelo gestor não ganham marca de sistema", () => {
+    const vm = responseToVM(
+      baseResponse({ metric_evaluations: [evalM("CTR Link", 2, "GREEN")] }),
+      baseInput({ targets: { min_ctr_link: 1.5 } })
+    )
+    const tile = vm.tiles.find((t) => t[0] === "CTR Link")!
+    expect(tile[4]).toBe("gestor")
+    expect(tile[2]).toBe("var(--green)")
+  })
+
+  // AC-M4: métrica sem valor (nem enviada nem derivável) continua sem card —
+  // não é para o gap de "meta em branco" inventar um tile do nada.
+  it("AC-M4 — CPA sem valor enviado não vira tile, mesmo sem meta", () => {
+    const vm = responseToVM(
+      baseResponse({ metric_evaluations: [] }),
+      baseInput({ metrics: {}, targets: {} })
+    )
+    expect(vm.tiles.find((t) => t[0] === "CPA")).toBeUndefined()
+  })
+})
+
 describe("responseToVM — cenários, ações e sugestões derivam 1:1 dos cenários do engine", () => {
   it("scenarios/actions têm o mesmo tamanho e conteúdo coerente", () => {
     const vm = responseToVM(
@@ -276,10 +349,17 @@ describe("responseToVM — plataforma", () => {
   })
 })
 
-describe("responseToVM — legenda do tile não pode truncar número decimal", () => {
+describe("responseToVM — legenda do tile mostra o veredito completo, não a meta (fase-2 §11)", () => {
   // Regressão (2026-08-01): a legenda cortava a nota no primeiro ".", e ponto
-  // decimal é o mesmo caractere que encerra frase. A meta que o gestor definiu
-  // aparecia errada na tela: R$39,90 virava "meta <R$39".
+  // decimal é o mesmo caractere que encerra frase — "Meta: <R$39.90." virava
+  // "meta <R$39". Corrigido então preservando o número, mas ainda cortando
+  // ANTES do veredito (o texto em português que diz se está bem ou mal).
+  //
+  // Regressão (fase-2 §11, 2026-08-27): o veredito nunca chegava à tela — só
+  // a meta ("meta >35%"), nunca o "por quê" ("Crítico — criativo invisível no
+  // feed"). Correção: descarta só a frase da meta (se existir) e o símbolo
+  // cru; o resto — incluindo números decimais dentro do próprio veredito,
+  // como "ROAS 4.0x" — precisa sobreviver intacto.
   function tileDe(metric: string, note: string): string {
     const vm = responseToVM(
       baseResponse({ metric_evaluations: [{ metric, value: 30, status: "GREEN", score: 100, note }] }),
@@ -290,29 +370,38 @@ describe("responseToVM — legenda do tile não pode truncar número decimal", (
     return tile![3]
   }
 
-  it("preserva os centavos da meta de CPA", () => {
-    expect(tileDe("CPA", "Meta: <R$39.90. ✓ CPA 25% abaixo da meta.")).toBe("meta <R$39.90")
+  it("descarta a meta de CPA (com centavos) e preserva o veredito", () => {
+    expect(tileDe("CPA", "Meta: <R$39.90. ✓ CPA 25% abaixo da meta.")).toBe("CPA 25% abaixo da meta.")
   })
 
-  it("preserva os centavos de CPC e CPL", () => {
-    expect(tileDe("CPC", "Meta: <R$1.50. ✓ Custo por clique dentro do teto.")).toBe("meta <R$1.50")
-    expect(tileDe("CPL", "Meta: <R$19.90. ✓ Custo por lead dentro da meta.")).toBe("meta <R$19.90")
+  it("descarta a meta de CPC e CPL (com centavos) e preserva o veredito", () => {
+    expect(tileDe("CPC", "Meta: <R$1.50. ✓ Custo por clique dentro do teto.")).toBe("Custo por clique dentro do teto.")
+    expect(tileDe("CPL", "Meta: <R$19.90. ✓ Custo por lead dentro da meta.")).toBe("Custo por lead dentro da meta.")
   })
 
-  it("preserva a casa decimal do limite de fadiga", () => {
-    expect(tileDe("Frequência", "Limite de fadiga: 2.8. ✓ Audiência fresca.")).toBe("Limite de fadiga: 2.8")
+  it("descarta o limite de fadiga (com casa decimal) e preserva o veredito", () => {
+    expect(tileDe("Frequência", "Limite de fadiga: 2.8. ✓ Audiência fresca.")).toBe("Audiência fresca.")
   })
 
-  it("preserva a unidade de ROAS e das porcentagens", () => {
-    expect(tileDe("ROAS", "Meta: >3.0x. ✓ ROAS 4.0x — retorno saudável.")).toBe("meta >3.0x")
-    expect(tileDe("CTR Link", "Meta: >1.0%. ✓ Intenção de clique saudável.")).toBe("meta >1.0%")
+  it("preserva a unidade e a casa decimal DENTRO do veredito de ROAS/CTR", () => {
+    expect(tileDe("ROAS", "Meta: >3.0x. ✓ ROAS 4.0x — retorno saudável.")).toBe("ROAS 4.0x — retorno saudável.")
+    expect(tileDe("CTR Link", "Meta: >1.0%. ✓ Intenção de clique saudável.")).toBe("Intenção de clique saudável.")
   })
 
-  it("continua cortando na primeira frase de verdade e respeitando o limite", () => {
-    expect(tileDe("Hook Rate", "Meta: >25%. ✓ Criativo capta atenção no feed.")).toBe("meta >25%")
-    const longo = tileDe("CPM", "Referência: <R$25.00. ✗ CPM crítico — público exaurido ou anúncio penalizado.")
-    expect(longo).toBe("Referência: <R$25.00")
-    expect(longo.length).toBeLessThanOrEqual(28)
+  it("não trunca mais o veredito, mesmo em nota longa com travessão", () => {
+    expect(tileDe("Hook Rate", "Meta: >25%. ✓ Criativo capta atenção no feed.")).toBe("Criativo capta atenção no feed.")
+    expect(tileDe("CPM", "Referência: <R$25.00. ✗ CPM crítico — público exaurido ou anúncio penalizado.")).toBe(
+      "CPM crítico — público exaurido ou anúncio penalizado."
+    )
+  })
+
+  it("nota sem prefixo de meta (CTR Todos/Click-Bait) só perde o símbolo cru", () => {
+    expect(tileDe("CTR Todos", "✓ Proporção de engajamento saudável.")).toBe(
+      "Proporção de engajamento saudável."
+    )
+    expect(
+      tileDe("CTR Todos", "✗ Click-Bait detectado: CTR Todos 8.0% vs CTR Link 0.30%.")
+    ).toBe("Click-Bait detectado: CTR Todos 8.0% vs CTR Link 0.30%.")
   })
 })
 

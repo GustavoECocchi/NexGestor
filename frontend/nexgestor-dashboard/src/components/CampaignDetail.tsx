@@ -2,13 +2,14 @@ import { AnimatedNumber } from "~components/AnimatedNumber"
 import { COPILOT_ANCHOR_ID, COPILOT_INPUT_ID, Copilot } from "~components/Copilot"
 import {
   DiagnosisCards,
-  MetricTiles,
   OpportunityCard,
   PriorityActions,
   Suggestions,
   AIExtras
 } from "~components/DetailSections"
+import { FieldHint } from "~components/FieldHint"
 import { IconBack, IconChat, IconInfo } from "~components/Icons"
+import { MetricFeed } from "~components/MetricFeed"
 import { STATUS } from "~lib/status"
 import type { CampaignVM, ScoreConfidence } from "~types"
 
@@ -17,6 +18,14 @@ const CONF: Record<ScoreConfidence, { label: string; color: string }> = {
   medium: { label: "confiança média", color: "var(--amber)" },
   low: { label: "confiança baixa", color: "var(--red)" }
 }
+
+// Achado #2 da auditoria de vocabulário (fase-5): "confiança"/"cobertura de
+// dados" apareciam em toda campanha sem explicação em lugar nenhum.
+// `FieldHint` não tem NENHUM acoplamento com o modal onde nasceu — o
+// `position:fixed` é calculado só a partir do próprio botão — então é
+// reaproveitado direto aqui, sem duplicar nada.
+const COVERAGE_HINT_TEXT =
+  "Confiança é o quanto dá pra levar o veredito ao pé da letra. Cobertura é quantas das métricas possíveis a análise recebeu — mais dado, mais confiança."
 
 export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => void }) {
   const s = STATUS[c.status]
@@ -86,6 +95,7 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
               <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0 6px", fontSize: 11, color: CONF[c.confidence].color }}>
                 <span className="dot" style={{ background: CONF[c.confidence].color }} />
                 Diagnóstico com {CONF[c.confidence].label} · cobertura de dados {c.coverage}%
+                <FieldHint text={COVERAGE_HINT_TEXT} />
               </div>
             )}
             <p>{c.summary}</p>
@@ -94,8 +104,13 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
 
         <OpportunityCard c={c} />
 
-        <div className="sec-label">Métricas <span className="ln" /></div>
-        <MetricTiles c={c} />
+        {/* Feed reorganizado (docs/rascunho_prompt.md, 2026-08-31): Faixa de
+            resultado → Painel do funil + Ações → Métricas de contexto. Ver
+            components/MetricFeed.tsx. Substitui a versão anterior (gráfico
+            polar "Áreas da campanha" + grade de tiles por peso/relevância —
+            docs/prds/fase-3-graficos-campanha.md Parte A), removida a pedido
+            do usuário. */}
+        <MetricFeed c={c} />
 
         {/* O diagnóstico é do engine determinístico. Chamá-lo de "Diagnóstico
             IA" quando `ai_insights` veio nulo (IA desligada, sem key ou falha)
