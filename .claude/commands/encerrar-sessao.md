@@ -6,7 +6,7 @@ allowed-tools: Bash(git *), Bash(pytest *), Bash(tsc *), Read, Edit, Write
 Antes de encerrar a sessão:
 
 1. Roda a suite de testes: pytest em backend/backend-nexgestor-main,
-   e tsc --noEmit em frontend/nexgestor-extension se houver mudanças lá.
+   e npm test + tsc -b em frontend/nexgestor-dashboard se houver mudanças lá.
    Só o que passar de fato pode ser documentado como "funcionando".
 
 2. Cria um arquivo novo em docs/sessions/AAAA-MM-DD.md (data de hoje;
