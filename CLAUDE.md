@@ -1,37 +1,39 @@
-﻿# NexGestor — Monorepo
+# NexGestor — Monorepo
 
-Copiloto de diagnóstico inteligente para tráfego pago (Meta Ads / Google Ads / TikTok Ads / LinkedIn Ads). Monorepo unificando backend (FastAPI) e frontend (extensão Chrome, Plasmo + React + TS).
+Copiloto de diagnóstico inteligente para tráfego pago (Meta Ads / Google Ads / TikTok Ads / LinkedIn Ads). Monorepo unificando backend (FastAPI) e frontend (dashboard web, Vite + React + TS).
 
 ## Estrutura
 
 ```
 backend/backend-nexgestor-main/    API FastAPI — engine de análise de campanhas + integração Gemini
-frontend/nexgestor-extension/      Extensão Chrome (side panel), Plasmo + React + TypeScript
-.claude/commands/encerrar-sessao.md  comando de fim de sessão (raiz do monorepo)
+frontend/nexgestor-dashboard/      Dashboard web (Vite + React + TS + Tailwind) — alvo de desenvolvimento ativo desde 2026-08-24
+frontend/nexgestor-extension/      Extensão Chrome (side panel) — CONGELADA em 2026-08-24, sem novos commits (ver docs/roadmap.md item 3)
+.claude/commands/encerrar-sessao.md  comando de fim de sessão: grava em docs/sessions/, atualiza docs/roadmap.md só se algo mudou de fase
+.claude/commands/rascunho.md         lê e executa docs/rascunho_prompt.md
 ```
 
 ## Backend — `backend/backend-nexgestor-main`
 
-- FastAPI, endpoint único: `POST /api/v1/campaign/analyze` (+ `GET /api/v1/campaign/scenarios`). Contrato completo em `docs/CONTRATO_API_FRONTEND.md`.
-- Engine: 11 cenários de diagnóstico, score ponderado (0–100) com `score_coverage`/`score_confidence`, métricas deriváveis a partir de brutos (impressions, reach, spend, etc.).
+- FastAPI. Rotas principais: `POST /api/v1/campaign/analyze` (+ `GET /api/v1/campaign/scenarios`), `GET /api/v1/status` (estado da IA) e `/api/v1/campaigns*` (persistência isolada por dono, header `X-Nex-Dono` obrigatório). Contrato completo em `docs/CONTRATO_API_FRONTEND.md`.
+- Engine: 15 cenários de diagnóstico (A–O), score ponderado (0–100) com `score_coverage`/`score_confidence` (confiança combina cobertura de métricas e volume de amostra), métricas deriváveis a partir de brutos (impressions, reach, spend, etc.). Plataformas suportadas: Meta Ads, Google Ads, TikTok Ads, LinkedIn Ads.
 - Integração Gemini opcional (`GEMINI_ENABLED`), client singleton em `app/service/ai_service.py`.
+- Suite: **1450/1450**, sem falhas ambientais e sem nenhuma chamada de rede (`conftest.py` desliga a IA por padrão nos testes).
 - `AUDITORIA.md` documenta uma auditoria anterior (9 itens 🔴/🟠/🟡) — todos marcados como resolvidos/documentados naquele momento.
 
-### Estado validado (2026-07-14)
+## Frontend
 
-- Suite: `pytest` em `backend/backend-nexgestor-main` → **104 passed, 1 failed** (105 testes).
-- Falha: `test_engine.py::TestAuditoriaFixes::test_debug_default_false`. **Não é regressão de código** — `app/core/config.py` já define `DEBUG: bool = False` como default (item 7 da auditoria, resolvido). O teste falha neste ambiente porque o `.env` local do dev tem `DEBUG=True` (config de conveniência para desenvolvimento) e o pydantic-settings carrega o `.env` antes do teste rodar; o teste só remove a variável de **ambiente do SO**, não neutraliza o `.env`. Passa normalmente se o `.env` não tiver `DEBUG` setado ou em CI sem esse arquivo. Não foi corrigido nesta sessão — nenhuma mudança de código foi feita.
+### Dashboard — `frontend/nexgestor-dashboard` (alvo de desenvolvimento ativo)
 
-## Frontend — `frontend/nexgestor-extension`
+- Vite + React + TS + Tailwind, layout full-screen com sidebar. Substituiu a extensão como alvo de desenvolvimento em 2026-08-24. **Não deployado em lugar nenhum ainda** — só roda local via `vite dev`.
+- Identificação simples antes de entrar (`DonoGate.tsx` + `lib/dono.ts`, sem senha) — manda o header `X-Nex-Dono` em toda chamada de campanhas salvas.
+- Reaproveita a lógica da extensão por cópia (`types.ts`, `lib/`, componentes); modos de criação de campanha: manual e importar arquivo (JSON, whitelist fechada de campos por nome exato) — sem o modo "coletar automático" da extensão.
+- Suite: **380/380**.
 
-- Extensão Chrome (side panel), Plasmo + React + TS. Abre ao lado do Meta Ads Manager.
-- **Correção de estado (2026-07-16): a integração real com o backend já estava implementada** (não era "preparada mas não plugada" como este arquivo dizia). `NewCampaignModal.tsx` → `analyzeCampaign()` (`lib/api.ts`) → `responseToVM()` (`lib/adapt.ts`) → `upsertLive()` (`lib/store.ts`, persiste em `localStorage` com IDs ≥1000) → `App.tsx` mescla campanhas vivas + mock (`data/mock.ts`) na Home. Esse caminho completo já existe desde o commit inicial do monorepo (`29827ab`); esta seção do CLAUDE.md estava desatualizada, não o código.
-- Validado nesta sessão: subi o backend real (`python -m uvicorn app.main:app --port 8000`) e mandei via `curl` um payload no formato exato que o `NewCampaignModal` monta (modo manual) para `POST /api/v1/campaign/analyze` — resposta correta, com cenário A detectado. `npx tsc --noEmit` no frontend passou sem erros.
-- **Coleta automática implementada nesta sessão (2026-07-16) — PROVISÓRIA, decisão explícita do usuário.** `contents/ads-manager.ts` (content script Plasmo, `matches: ["https://*.facebook.com/*"]`) faz *scraping* da tabela de campanhas do Ads Manager via papéis ARIA (`role="row"/"columnheader"/"gridcell"`), mapeando cabeçalhos PT/EN conhecidos (Impressões, CPM, Resultados etc.) para os campos de `Metrics`. O botão "Coletar automático" no `NewCampaignModal.tsx` manda `chrome.tabs.sendMessage` pra aba ativa, recebe as métricas encontradas e **pré-preenche o formulário manual** (nunca envia direto — o usuário sempre revisa antes de analisar). Permissão `tabs` adicionada ao manifest (`package.json`).
-  - **⚠️ Isto é temporário e frágil por natureza — combinado explicitamente com o usuário.** Scraping de DOM quebra sem aviso quando a Meta muda a estrutura da página, e os seletores não foram calibrados contra o Ads Manager ao vivo (não há acesso a uma conta real neste ambiente para testar). **Antes de lançar o produto, isto precisa ser substituído pela Meta Marketing API (OAuth)** — não esquecer/não deixar essa gambiarra ir para produção.
-  - `tsc --noEmit` e `plasmo build` passaram limpos; manifest gerado confirma o content script registrado (`build/chrome-mv3-prod/manifest.json`). **Não testado num Ads Manager real** (sem conta disponível nesta sessão) — só a mecânica de mensageria/manifest foi validada, não a precisão do scraping em si.
-- **Terceiro modo no `NewCampaignModal.tsx` — "Importar arquivo" (JSON), pra facilitar teste sem depender do scraping.** Usuário cola ou anexa (`<input type="file">`) um JSON com os blocos `campaign`/`metrics`/`targets` (mesmo esquema do `docs/CONTRATO_API_FRONTEND.md`). `parseFileJSON()` copia cada chave **por nome exato** contra uma whitelist fechada (`METRIC_KEYS`/`TARGET_KEYS`, espelhando `~types`) — nunca por posição/heurística, então `"cpa": 50` só pode virar `metrics.cpa`, nunca `metrics.cpc`. Chaves fora da whitelist (typo) ou com tipo errado (string onde esperava number) são ignoradas e **listadas na pré-visualização**, nunca enviadas silenciosamente. O usuário só consegue clicar "Analisar campanha" depois de ver essa pré-visualização (campanha + métricas + metas + avisos). Testado isoladamente (fora do bundle, script Node) com 3 casos: valor correto, chave com typo, tipo errado — os 3 confirmaram que não há vazamento entre campos.
+### Extensão Chrome — `frontend/nexgestor-extension` (CONGELADA em 2026-08-24, cópia de referência)
 
+- Side panel, Plasmo + React + TS. Não recebe mais commits — tag git local `extensao-estavel-2026-08` marca a cópia funcional de referência.
+- Tinha três modos de criação de campanha: manual, coletar automático (scraping via content script, provisório, nunca testado contra um Ads Manager real) e importar arquivo (JSON).
+- Migração da coleta automática pra Meta Marketing API (OAuth) segue adiada por decisão do usuário — não é prioridade enquanto durar o período de testes.
+- Suite: 167/167.
 
-Roadmap: ver docs/roadmap.md
-
+Roadmap, decisões em aberto e histórico completo de cada sessão: `docs/roadmap.md` (que aponta pra `docs/sessions/AAAA-MM-DD.md`).
