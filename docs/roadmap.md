@@ -19,27 +19,17 @@ se chegou lá.
 13. ✅ **Fase-2 implementada** (`docs/prds/fase-2-dashboard-intuitividade.md`) — navegação da sidebar, Central de Ajuda e atalho "Perguntar ao Copiloto" no detalhe. Os 2 PRs do orçamento da fase foram consumidos. Pendente para fechar a fase: teste manual com alguém do time simulando cliente leigo (§8 do PRD) — nenhum teste automatizado mede isso. Histórico: `docs/sessions/2026-08-27.md`.
 14. ✅ **§11 da fase-2 — cards de métrica mostram o veredito completo do engine.** `tileText()` (antes `tileNote()`) preserva o texto inteiro em português que o engine já escreve, não só o valor da meta. O achado extra do pedido original (meta em branco em 6 métricas) não foi implementado à parte — ficou parcialmente coberto pela reescrita do `MetricFeed` (item 16). Histórico: `docs/sessions/2026-08-31.md`.
 15. 🟡 **`fase-2b-benchmark-mercado.md` — só especificação, nada implementado.** Benchmark de mercado via Gemini com grounding de busca, para métricas sem meta definida. Achados que já corrigem a premissa do documento: o campo `niche` já existe no schema (precisa virar enum fechado e obrigatório); benchmark público real só existe por CTR/CPA/CPL/CPM segmentado por nicho — não por ROAS nem Hook Rate; o uso atual de `response_schema` no Gemini é tipicamente incompatível com grounding na mesma chamada. Histórico: `docs/sessions/2026-08-27.md`.
-16. 🟠 **Feed de métricas do detalhe reescrito (`MetricFeed.tsx`)** — implementado e testado (suite 380/380), com **2 bugs reais conhecidos, ainda não corrigidos** (decisão explícita do usuário: primeira coisa da próxima sessão — ver bloco de pendências abaixo): 🔴 o Copiloto lê `tile[3]` no formato antigo e agora fica redundante, perdendo o número real do limite de fadiga; 🟠 CPL sem meta perde a nota "você não definiu uma meta para isso" porque cai numa seção (`ContextGrid`) que nunca mostra essa nota. 🟡 menor: `package-lock.json` ficou com ruído (`"libc"`) de um `npm install` incidental, não revertido. Histórico: `docs/sessions/2026-08-31.md`.
+16. 🟠 **Feed de métricas do detalhe reescrito (`MetricFeed.tsx`)** — implementado e testado (suite 380/380). Dos 2 bugs reais achados na autorrevisão de 31/08, **o 🔴 foi corrigido em 2026-09-01**: o Copiloto lia `tile[3]` esperando o número do limite de fadiga (formato antigo) e ficava redundante consigo mesmo, perdendo o número real — reproduzido ao vivo com o usuário antes da correção (resposta idêntica ao bug documentado), corrigido com um campo próprio (`CampaignVM.maxFrequencyFatigue`, populado em `adapt.ts` a partir de `targets.max_frequency_fatigue ?? 2.8`), confirmado por teste de mutação. **Ainda pendente**: 🟠 CPL sem meta perde a nota "você não definiu uma meta para isso" porque cai numa seção (`ContextGrid`) que nunca mostra essa nota. 🟡 menor: `package-lock.json` ficou com ruído (`"libc"`) de um `npm install` incidental, não revertido. Histórico: `docs/sessions/2026-08-31.md`.
 17. 🟡 **Fase-5 (vocabulário/linguagem) em andamento** (`docs/prds/fase-5-vocabulario-linguagem.md`) — PR1 (rótulo "Investimento"), PR2 (selo de confiança/cobertura) e PR3 (tooltips no `MetricFeed`) implementados e testados. PR4 (glossário no Copiloto), PR6 (prompt da IA), PR7 (renomear "Retargeting"/"Conversão LP") e PR5 (templates de texto do backend, maior risco, por último) ainda não iniciados — ordem combinada: PR7 → PR4 → PR6 → PR5. Histórico: `docs/sessions/2026-08-31.md`.
 
 > **Ação pendente antes de qualquer outra coisa:** fechar o **alerta de secret scanning #1** no repo pessoal como falso positivo ("Used in tests"), e checar se existe alerta equivalente no repo da empresa (precisa de admin). Nenhuma chave real vazou — verificado comparando a chave do `.env` contra todos os blobs de todos os commits — mas um alerta de segurança aberto sem explicação assusta a equipe à toa. Detalhe em `docs/sessions/2026-07-26.md`. **Ainda não resolvido.**
 >
 > **Decisão em aberto, não resolvida:** nomear ou não um "Cenário de leilão caro" explícito para quando CPM acima do teto bloqueia a escala vertical (hoje só aparece como métrica CPM vermelha, sem card de causa raiz próprio). Oferecido ao usuário em 2026-07-28; sem resposta ainda.
 >
-> **PRÓXIMO PASSO — retomar exatamente aqui (definido em 2026-08-31, a pedido
-> explícito do usuário para encerrar a sessão sem corrigir nada naquele
-> momento — os itens abaixo são o primeiro trabalho da próxima sessão, antes
-> de qualquer outra coisa, inclusive antes do bloco de deploy/VPS mais
-> abaixo):**
+> **PRÓXIMO PASSO — retomar exatamente aqui:**
 >
-> 1. **Corrigir o bug 🔴 do item 16**: `Copilot.tsx` (resposta de
->    frequência/fadiga) lê `tile[3]` esperando o número do limite de fadiga
->    configurado; hoje `tile[3]` contém o veredito em texto (mudança do item
->    14/`tileText()`). Ou o Copiloto passa a ler outra coisa, ou o adapter
->    volta a expor o número cru em algum campo separado — decidir qual dos
->    dois antes de mexer. Os testes de `Copilot.test.ts` usam fixtures do
->    formato ANTIGO e não vão pegar a regressão sozinhos — atualizar os
->    fixtures pro formato novo faz parte da correção, não só o código.
+> 1. ~~Corrigir o bug 🔴 do item 16~~ — **feito em 2026-09-01**, reproduzido
+>    ao vivo com o usuário antes de corrigir (ver item 16).
 > 2. **Corrigir o bug 🟠 do item 16**: CPL sem meta perde a explicação "Você
 >    não definiu uma meta para isso." porque cai no `ContextGrid`
 >    (`MetricFeed.tsx`), que nunca renderiza `t[3]` por desenho. Decidir: mover

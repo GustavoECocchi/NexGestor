@@ -190,6 +190,16 @@ export interface CampaignVM {
   cpaNum: number | null
   ctrNum: number | null
   freqNum: number | null
+  /**
+   * Limite de fadiga configurado pelo gestor (`targets.max_frequency_fatigue`),
+   * ou o default do backend (2.8) quando não enviado. Campo próprio — antes o
+   * Copiloto lia esse número de dentro do texto do tile de Frequência
+   * (`tile[3]`), e quando `tileText()` passou a devolver o veredito por
+   * extenso em vez do número, a resposta perdeu o valor real e ficou
+   * redundante com o próprio veredito. Opcional só pra não quebrar fixtures
+   * de teste antigas — sempre presente vindo do adapter real.
+   */
+  maxFrequencyFatigue?: number
   m1: { k: string; v: string }
   m2: { k: string; v: string }
   spark: number[]

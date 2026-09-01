@@ -61,17 +61,27 @@ describe("buildReply — roteia pra dados reais da campanha, nunca texto solto",
   // (max_frequency_fatigue, padrão 2.8) e vem do engine — com o `>= 3` fixo,
   // frequência 2.85 fazia o Copiloto dizer "faixa saudável" enquanto o card da
   // métrica estava vermelho e o Cenário E (Fadiga) já tinha disparado.
+  //
+  // Fixtures reescritas em 2026-09-01: usavam `tile[3]` como
+  // "Limite de fadiga: 2.8" (formato pré-tileText()). Desde a reescrita do
+  // MetricFeed, tile[3] passou a ser o veredito por extenso ("Audiência
+  // fresca."), e o Copiloto que lia esse índice ficou redundante e perdeu o
+  // número real do limite — bug reproduzido ao vivo e só então corrigido.
+  // As fixtures abaixo já refletem o formato atual (`maxFrequencyFatigue`
+  // como campo próprio, tile[3] como veredito, não como número).
   it("veredito de fadiga vem do engine, não de um limiar fixo no frontend", () => {
     const tileVermelho = vm({
       freqNum: 2.85,
-      tiles: [["Frequência", "2,9", "var(--red)", "Limite de fadiga: 2.8"]]
+      maxFrequencyFatigue: 2.8,
+      tiles: [["Frequência", "2,9", "var(--red)", "Criativo esgotado no público atual."]]
     })
     const critica = buildReply("tem risco de fadiga?", tileVermelho)
     expect(critica).not.toContain("faixa saudável")
-    expect(critica).toContain("2.8") // cita o limite real do gestor
+    expect(critica).toContain("2.8") // cita o limite real do gestor, não o veredito do tile
 
     const comCenarioE = vm({
       freqNum: 2.85,
+      maxFrequencyFatigue: 2.8,
       scenarios: [{
         code: "E", title: "Fadiga de Criativo", root_cause: "r",
         funnel_impact: "i", action: "Trocar o criativo agora.", priority: 1
@@ -83,9 +93,23 @@ describe("buildReply — roteia pra dados reais da campanha, nunca texto solto",
   it("frequência saudável segundo o engine continua sendo reportada como saudável", () => {
     const ok = vm({
       freqNum: 1.5,
-      tiles: [["Frequência", "1,5", "var(--green)", "Limite de fadiga: 2.8"]]
+      maxFrequencyFatigue: 2.8,
+      tiles: [["Frequência", "1,5", "var(--green)", "Audiência fresca."]]
     })
     expect(buildReply("tem risco de fadiga?", ok)).toContain("saudável")
+  })
+
+  it("cita o limite configurado pelo gestor, não o texto do tile (regressão)", () => {
+    // O tile[3] deliberadamente NÃO contém "3.5" em lugar nenhum — se a
+    // resposta citar 3.5, é porque voltou a ler o texto do tile em vez do
+    // campo maxFrequencyFatigue.
+    const reply = buildReply("estou com fadiga de criativo?", vm({
+      freqNum: 1.2,
+      maxFrequencyFatigue: 3.5,
+      tiles: [["Frequência", "1,2", "var(--green)", "Audiência fresca."]]
+    }))
+    expect(reply).toContain("3.5")
+    expect(reply).not.toContain("Audiência fresca. Audiência fresca") // não duplica o veredito
   })
 
   it("pergunta sobre escalar responde conforme o status", () => {

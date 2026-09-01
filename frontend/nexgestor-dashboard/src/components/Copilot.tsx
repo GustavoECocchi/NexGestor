@@ -85,8 +85,12 @@ export function buildReply(question: string, c: CampaignVM): string {
       veredito = "Frequência subindo — fadiga iminente. Vale ampliar o público antes de saturar."
     else veredito = "Dentro da faixa que o engine considera saudável."
 
-    const limite = tile?.[3] ? ` (${tile[3]})` : ""
-    return `A frequência atual é <b>${c.freqNum.toFixed(1)}x</b> por pessoa${limite}. ${veredito}`
+    // O limite vem de um campo numérico próprio (`maxFrequencyFatigue`), não
+    // mais do texto do tile (`tile[3]`): desde que `tileText()` passou a
+    // devolver o veredito por extenso em vez de "Limite de fadiga: 2.8", ler
+    // tile[3] aqui duplicava o `veredito` acima e perdia o número real.
+    const limite = c.maxFrequencyFatigue ?? 2.8
+    return `A frequência atual é <b>${c.freqNum.toFixed(1)}x</b> por pessoa (limite configurado: ${limite.toFixed(1)}x). ${veredito}`
   }
   if (/escalar|aumentar.*verba|subir.*orcamento/.test(q)) {
     if (c.status === "BLUE") {

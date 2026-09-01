@@ -162,6 +162,11 @@ export function responseToVM(
   const cpaNum = m.cpa ?? findEval(evals, "CPA")?.value ?? null
   const ctrNum = m.ctr_link ?? findEval(evals, "CTR Link")?.value ?? null
   const freqNum = m.frequency ?? findEval(evals, "Frequência")?.value ?? null
+  // Número cru do limite de fadiga, pro Copiloto citar sem precisar reler o
+  // texto do tile (ver comentário do campo em types.ts). 2.8 é o default real
+  // do backend (Targets.max_frequency_fatigue, config.py) quando o gestor não
+  // configurou — não é um palpite do frontend.
+  const maxFrequencyFatigue = targets.max_frequency_fatigue ?? 2.8
   const invest = m.spend ?? 0
   const revenue = invest > 0 && roasNum != null ? Math.round(invest * roasNum) : 0
 
@@ -274,6 +279,7 @@ export function responseToVM(
     cpaNum,
     ctrNum,
     freqNum,
+    maxFrequencyFatigue,
     m1,
     m2,
     spark: Array(7).fill(res.overall_score), // sem histórico ainda — linha flat
