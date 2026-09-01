@@ -1,122 +1,118 @@
-# Revisar a auditoria dos arquivos Markdown do NexGestor
+# Validação intensiva do backend e do dashboard NexGestor
 
-Faça uma auditoria crítica, somente de leitura, de todos os arquivos `.md` deste
-repositório. O objetivo desta etapa é decidir o que faremos com a documentação;
-portanto, **não edite, mova, renomeie nem exclua nenhum arquivo** e não altere
-código, configuração, dependências ou Git.
+Execute uma rodada ampla, determinística e documentada de testes no backend e no dashboard. O objetivo é observar como o sistema se comporta com grande variação de dados, encontrar inconsistências reais e entender qualquer falha — não apenas obter uma saída verde.
 
-## Decisão definitiva de produto
+## Escopo confirmado
 
-Considere como premissa confirmada pelo responsável do projeto:
+- Backend ativo: `backend/backend-nexgestor-main/`.
+- Frontend ativo: `frontend/nexgestor-dashboard/`.
+- A extensão Chrome foi descontinuada. Não execute testes, build ou manutenção em `frontend/nexgestor-extension/` ou `extensao-pronta/`.
+- Não acesse produção, VPS, Gemini, APIs externas ou serviços pagos.
+- Não abra `.env` reais e não exponha segredos.
 
-- o dashboard em `frontend/nexgestor-dashboard/` é o único frontend que terá
-  continuidade;
-- a extensão em `frontend/nexgestor-extension/` foi descontinuada e não receberá
-  novas funcionalidades nem manutenção;
-- `extensao-pronta/` é um artefato legado;
-- integrações futuras com plataformas de anúncios devem ser planejadas para o
-  dashboard, por API/OAuth, e não por extensão ou `chrome.tabs`.
+## Regra principal sobre falhas
 
-Não reabra essa decisão. Avalie a documentação a partir dela.
+Se qualquer teste falhar, não altere imediatamente o teste nem o código para fazê-lo passar. Primeiro:
 
-## Avaliação anterior a ser verificada
+1. reproduza a falha isoladamente;
+2. registre seed, payload, estado inicial, resultado obtido, resultado esperado, traceback e arquivos/linhas envolvidos;
+3. reduza o caso para o menor exemplo que ainda falha;
+4. confira schema, contrato da API, PRD, regras do engine e comportamento atual;
+5. classifique a causa como defeito de produção, teste incorreto/expectativa desatualizada, contrato/documentação divergente, problema ambiental ou comportamento ambíguo que exige decisão de produto;
+6. explique a classificação com evidências antes de propor qualquer correção.
 
-Uma auditoria anterior chegou às conclusões abaixo. Não aceite essas conclusões
-automaticamente: confira cada uma contra o conteúdo integral dos arquivos, a
-estrutura atual e, quando necessário, o código/configurações reais.
+Nunca enfraqueça uma asserção, remova um teste, aumente tolerância ou atualize um snapshot apenas para deixar a suíte verde. Uma falha reproduzível deve permanecer visível até entendermos sua causa.
 
-1. `README.md` ainda apresenta backend + extensão como fluxo principal e deveria
-   ser reescrito para dashboard + backend.
-2. `CLAUDE.md` foi reduzido, mas a divisão hierárquica ficou incompleta porque não
-   existem `CLAUDE.md` específicos para backend, dashboard e deploy; ele também
-   contém estado volátil e detalhes específicos demais.
-3. `COMO-USAR.md` ensina a instalar a extensão e ficou obsoleto após a decisão de
-   descontinuação.
-4. `frontend/nexgestor-dashboard/README.md` ainda é o texto genérico do template
-   Vite e deveria ser substituído por documentação real do NexGestor.
-5. `frontend/nexgestor-extension/README.md` e os comandos locais da extensão são
-   documentação legada sem utilidade operacional futura.
-6. Existem comandos `encerrar-sessao.md` duplicados e antigos no backend e na
-   extensão que conflitam com `.claude/commands/encerrar-sessao.md` da raiz.
-7. O comando de encerramento da raiz ainda valida a extensão em vez do dashboard
-   e cria histórico documental em toda sessão.
-8. `deploy/README.md` mistura instrução atual, estado remoto datado, arquitetura
-   antiga de base compartilhada e distribuição da extensão, oferecendo risco de
-   operação incorreta.
-9. `docs/CONTRATO_API_FRONTEND.md` é uma fonte canônica importante, mas precisa
-   ser conferido contra schemas e rotas atuais.
-10. `docs/PRD.md` é importante, porém mistura requisito, documentação técnica,
-    estado de produção e informações anteriores ao dashboard/isolamento por dono.
-11. `docs/roadmap.md` ainda funciona como uma segunda memória extensa: mistura
-    backlog, fatos históricos, incidentes de segurança, números de testes e
-    estado remoto volátil.
-12. Os PRDs de fases devem ser mantidos apenas quando ainda documentarem requisito
-    ou decisão vigente; partes que relatam implementação ou experiências
-    descartadas deveriam ser resumidas ou removidas.
-13. `fase-3-graficos-campanha.md` mistura um gráfico descartado com uma proposta
-    futura de histórico de campanhas; a parte futura poderia virar um PRD próprio.
-14. `backend/backend-nexgestor-main/AUDITORIA.md` e `teste.md` são relatórios
-    históricos, não documentação operacional atual.
-15. `docs/sessions/*.md` são diários históricos. O Git já preserva o passado;
-    decisões ainda vigentes e bugs ainda abertos deveriam existir em fontes
-    atuais, não depender desses diários.
-16. `docs/rascunho_prompt.md` é uma caixa de entrada temporária e deveria ser
-    esvaziado ou marcado como concluído depois de cada execução.
+## Etapa 1 — diagnóstico e linha de base
 
-## Trabalho obrigatório
+1. Inspecione o estado do Git e preserve mudanças preexistentes. Em caso de `dubious ownership`, use `git -c safe.directory="<caminho absoluto>"` apenas no comando necessário; não altere configuração global.
+2. Leia as configurações e os scripts de teste do backend e dashboard.
+3. Identifique comandos oficiais, versões, testes coletados e mecanismos que bloqueiam rede/IA.
+4. Execute primeiro as suítes existentes sem alterar nada:
+   - backend: suíte completa do `pytest`;
+   - dashboard: suíte completa do Vitest, type-check e build de produção.
+5. Registre duração, quantidade coletada, pass/fail/skip e warnings.
 
-1. Liste **todos** os `.md`, inclusive os que estiverem em diretórios ocultos
-   como `.claude/`, excluindo apenas `.git`, dependências e artefatos externos.
-2. Leia cada arquivo integralmente. Para cada um, explique em linguagem simples:
-   - o que ele faz;
-   - para quem ele serve;
-   - se ainda corresponde ao projeto atual;
-   - se repete ou contradiz outro documento;
-   - qual ação recomenda.
-3. Use exatamente uma recomendação principal por arquivo:
-   - **MANTER** — atual e com função clara;
-   - **ATUALIZAR** — função necessária, conteúdo parcialmente incorreto;
-   - **CONSOLIDAR** — conteúdo válido deve ser incorporado em outra fonte;
-   - **MOVER PARA HISTÓRICO** — útil apenas para auditoria/passado;
-   - **EXCLUIR** — duplicado, obsoleto ou sem valor após consolidação.
-4. Para toda recomendação de consolidar, mover ou excluir, diga:
-   - qual informação ainda válida precisa ser preservada;
-   - qual será o arquivo de destino;
-   - que referência, comando ou link quebraria com a ação;
-   - qual verificação deve ocorrer antes.
-5. Procure referências entre Markdown, comandos Claude, READMEs e código para não
-   recomendar exclusões que deixem links ou processos quebrados.
-6. Confira especialmente estas possíveis divergências:
-   - dashboard ativo versus extensão descontinuada;
-   - base compartilhada versus isolamento por `X-Nex-Dono`;
-   - identificação por dono versus autenticação real;
-   - endpoints e prefixos da API;
-   - estado local comprovável versus estado externo do VPS;
-   - contagens congeladas de testes;
-   - funcionalidades marcadas como pendentes que já estejam implementadas;
-   - bugs descritos como abertos que talvez já tenham sido corrigidos.
-7. Diferencie problema real de codificação UTF-8 de mojibake causado apenas pelo
-   terminal. Não proponha regravar arquivos sem confirmar o problema nos bytes.
+Se a linha de base falhar, investigue-a antes dos testes intensivos. Continue nas áreas independentes seguras, sem esconder a falha inicial.
 
-## Formato da resposta
+## Etapa 2 — backend: no mínimo 36.000 casos exploratórios
 
-Comece pelos achados de maior risco. Depois apresente uma tabela com uma linha por
-arquivo e as colunas:
+Crie um harness temporário e determinístico fora do código de produção, com seed fixa registrada e sem rede.
 
-| Arquivo | Função | Situação atual | Recomendação | Destino/ação | Risco |
+### A. 30.000 campanhas válidas variadas
 
-Em seguida, apresente:
+Varie combinatória e pseudoaleatoriamente:
 
-1. pontos em que concorda com a auditoria anterior;
-2. pontos em que discorda ou que precisam de ressalva, com evidência;
-3. conjunto mínimo de documentos que deveria existir ao final;
-4. plano seguro e ordenado para uma futura limpeza, dividido em etapas pequenas;
-5. lista de decisões que ainda precisam ser tomadas pelo responsável antes de
-   qualquer alteração.
+- Meta, Google, TikTok e LinkedIn;
+- objetivos e tipos aceitos pelo schema;
+- métricas ausentes, parciais e completas;
+- zero legítimo versus campo ausente;
+- valores muito pequenos, normais, altos e próximos dos limites;
+- relações coerentes e incoerentes entre impressões, alcance, cliques, visitas, conversões, investimento e receita;
+- metas padrão, personalizadas, permissivas e restritivas;
+- amostras pequenas, médias e grandes;
+- combinações que acionem cada cenário A–O;
+- campanhas GREEN, RED e elegíveis a BLUE no frontend;
+- IA desabilitada e retorno ausente, sempre com mock local;
+- dados suficientes e insuficientes para score/confiança.
 
-Se recomendar excluir a documentação da extensão, avalie separadamente a
-documentação e o código: esta tarefa autoriza avaliar `.md`, não autoriza apagar
-`frontend/nexgestor-extension/` nem `extensao-pronta/`.
+Valide score, cobertura e confiança; ausência não convertida em zero; inexistência de `NaN`, `Infinity`, valores impossíveis ou textos contraditórios; status coerente; efeito real das metas; cenários incompatíveis; ausência de previsão ou escala inventada; determinismo; e não mutação do input.
 
-Nesta execução, entregue apenas a análise. **Não faça alterações e não crie
-commit ou push.**
+### B. 5.000 entradas inválidas e de fronteira
+
+Cubra tipos errados, strings vazias, campos desconhecidos, enums inválidos, negativos, booleanos como números, `null`, extremos, payloads incompletos, nesting incorreto, nomes excessivos e `NaN`/`Infinity`. Verifique rejeição e código HTTP corretos, erro estruturado sem segredo/traceback, servidor funcional após rejeição e nenhum 500 onde deveria haver 4xx.
+
+### C. 1.000 operações de persistência/isolamento
+
+Varie donos, capitalização, espaços, IDs, criação, listagem, atualização, remoção, limites por dono e global. Verifique isolamento, `X-Nex-Dono`, normalização, idempotência esperada, limites, códigos, integridade do payload e intercalamento determinístico.
+
+## Etapa 3 — dashboard: no mínimo 7.000 casos exploratórios
+
+Use Vitest/jsdom e funções puras sempre que possível. Não abra navegador externo.
+
+### A. 5.000 variações de adapter, formatação e status
+
+Varie opcionais, zeros, cenários, status, scores, confiança, métricas e textos. Confirme que o adapter não inventa zero, status/BLUE seguem as regras, formatos estão corretos, texto externo é sanitizado, nenhuma combinação válida quebra e a resposta não é mutada.
+
+### B. 1.000 variações de importação/formulário
+
+Cubra JSON válido, parcial e inválido, campos desconhecidos, tipos errados, plataformas, métricas, metas, zeros, arquivos grandes razoáveis e conteúdo malicioso. Verifique allowlist, mensagens e payload final.
+
+### C. 600 transições de estado, API e persistência
+
+Cubra dono ausente/presente, loading, sucesso, 4xx, 429, 5xx, timeout, resposta malformada, IA on/off/falhando/desconhecida, criar/listar/apagar e fallback local. Tudo com mocks e sem chamadas reais.
+
+### D. 400 renderizações e interações críticas
+
+Varie RED/GREEN/BLUE, dados ausentes, temas, navegação, detalhe, `MetricFeed`, Copiloto, tooltips, teclado e estados vazios/erro. Inclua bugs registrados no roadmap e confirme no código se ainda existem.
+
+## Etapa 4 — contrato entre backend e dashboard
+
+Valide pelo menos 2.000 respostas reais do engine passando pelo contrato esperado pelo adapter, por fixtures temporárias ou harness local, sem servidor externo. Confirme nomes/tipos, opcionais/`null`, plataformas/enums, status, cenários, métricas, targets, persistência/header do dono, que nenhuma resposta válida quebra o adapter e que o dashboard não depende de campo inexistente.
+
+Total mínimo: **45.000 casos** (36.000 backend + 7.000 dashboard + 2.000 contrato), além das suítes existentes, type-check e build.
+
+## Implementação dos testes exploratórios
+
+- Não altere código de produção nesta etapa.
+- Prefira harnesses temporários ou testes de auditoria claramente identificados.
+- Não gere milhares de testes estáticos nem comite payloads enormes.
+- Use loops parametrizados/propriedades com seed e contraexemplo.
+- Ao revelar regressão real, proponha teste pequeno permanente, mas não corrija o produto sem aprovação.
+- Não instale bibliotecas novas; limite o paralelismo.
+- Se o volume for inviável, demonstre com dados, execute o maior volume seguro e informe exatamente o que faltou.
+
+## Entrega obrigatória
+
+Ao final, apresente:
+
+1. tabela separada para backend, dashboard e contrato com planejado, executado, pass/fail/skip, duração e seed;
+2. suítes existentes, type-check e build;
+3. matriz das dimensões cobertas;
+4. cada falha com menor caso reproduzível e classificação;
+5. warnings, comportamentos estranhos e lacunas;
+6. bugs que merecem teste permanente;
+7. limitações e cenários não cobertos;
+8. estado final do Git e arquivos criados/modificados.
+
+Não faça commit, push ou deploy. Não corrija código de produção. Ao encontrar falha, pare apenas o fluxo dependente, investigue profundamente e continue verificações independentes seguras.
