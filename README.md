@@ -10,8 +10,6 @@ O repositório é um monorepo:
 ```
 backend/backend-nexgestor-main/    API FastAPI — engine de análise + integração Gemini
 frontend/nexgestor-dashboard/      Dashboard web (Vite + React + TS) — produto ativo
-frontend/nexgestor-extension/      Extensão Chrome — DESCONTINUADA em 2026-08-24 (histórico)
-extensao-pronta/                   Build compilado da extensão descontinuada (histórico)
 deploy/                            Deploy do backend no VPS (Docker + HTTPS automático)
 iniciar-backend.bat / .sh          Sobe o backend local — só para DESENVOLVIMENTO
 ```

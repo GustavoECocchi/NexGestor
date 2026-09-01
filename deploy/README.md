@@ -317,32 +317,14 @@ em `nginx-gestor.conf.exemplo`.
 
 ---
 
-## Gerar o pacote da equipe
+## Gerar o pacote da equipe (histórico — extensão removida do repositório)
 
-> ⚠️ Esta seção é sobre a **extensão Chrome, descontinuada em 2026-08-24**
-> (ver `docs/roadmap.md` itens 3 e 4; documentação completa em
-> `docs/historico/nexgestor-extensao.md`). O script `build-team.sh` ainda
-> existe no repositório, mas não há mais distribuição ativa por este
-> caminho — o dashboard web ainda não tem canal de distribuição próprio.
-
-No **seu computador** (não no VPS), na pasta do projeto:
-
-```bash
-frontend/nexgestor-extension/build-team.sh https://gestor.nexgold.com.br
-```
-
-Produz:
-
-- `frontend/nexgestor-extension/nexgestor-extensao-<data>.zip` → é isso que vai
-  pra equipe, junto do `COMO-USAR.md` da raiz;
-- a pasta `extensao-pronta/` atualizada.
-
-A URL precisa ser `https://` — o script recusa `http://` remoto de propósito,
-porque o Chrome bloqueia essas chamadas e a extensão falharia sem mensagem
-clara.
-
-Rode de novo e redistribua sempre que mexer no frontend. **Ligar a IA não
-exige isso** — é configuração de servidor, a URL não muda.
+Esta seção descrevia o `build-team.sh` da **extensão Chrome, descontinuada em
+2026-08-24 e removida do repositório em 2026-09-01** (tag `extensao-estavel-2026-08`
+marca a última cópia funcional; documentação completa em
+`docs/historico/nexgestor-extensao.md`). O script e a pasta `extensao-pronta/`
+não existem mais aqui — não há distribuição ativa por este caminho enquanto o
+dashboard web não tiver um canal próprio (ver `docs/roadmap.md` item 10).
 
 ---
 
