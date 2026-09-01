@@ -1,6 +1,6 @@
 ---
-description: Encerra a sessão atualizando CLAUDE.md e fazendo commit/push
-allowed-tools: Bash(git *), Bash(pytest *), Bash(tsc *), Read, Edit
+description: Encerra a sessão atualizando docs/roadmap.md e fazendo commit/push
+allowed-tools: Bash(git *), Bash(pytest *), Bash(tsc *), Read, Edit, Write
 ---
 
 Antes de encerrar a sessão:
@@ -9,16 +9,27 @@ Antes de encerrar a sessão:
    e tsc --noEmit em frontend/nexgestor-extension se houver mudanças lá.
    Só o que passar de fato pode ser documentado como "funcionando".
 
-2. Atualiza o CLAUDE.md (na raiz do NexGestor) com o progresso real de hoje
-   (não otimista): o que foi implementado E VALIDADO, decisões tomadas,
-   e o que ficou pendente, incompleto, ou implementado mas não testado.
+2. Cria um arquivo novo em docs/sessions/AAAA-MM-DD.md (data de hoje;
+   se já existir um arquivo pra hoje, acrescenta uma seção "(parte N)")
+   com o progresso real da sessão (não otimista): o que foi implementado
+   E VALIDADO, decisões tomadas, e o que ficou pendente, incompleto, ou
+   implementado mas não testado. NUNCA escreve isso no CLAUDE.md.
 
-3. Atualiza a seção de Status atual / Roadmap, se algum passo mudou de fase.
+3. Atualiza docs/roadmap.md SÓ se algum item mudou de fase (concluído,
+   bloqueado, mudou de prioridade) — edita a linha do item existente,
+   não anexa histórico novo. Se o item já resume o estado atual
+   corretamente, não mexe.
 
-4. Commita as mudanças (do repositório único na raiz) com uma mensagem
+4. Se — e só se — algo mudou de forma estrutural (novo componente
+   arquitetural, mudança de stack, novo diretório importante), atualiza
+   o CLAUDE.md raiz (cabeçalho + estrutura). Isso deve ser raro.
+   CLAUDE.md nunca recebe log de sessão, decisão pontual ou pendência
+   de curto prazo — isso vai em docs/sessions/.
+
+5. Commita as mudanças (do repositório único na raiz) com uma mensagem
    descritiva do que foi feito (inclua contagem de testes passando, se mudou).
 
-5. Faz push pro repositório remoto (origin main).
+6. Faz push pro repositório remoto (origin main).
 
-6. Me dá um resumo curto do que foi commitado e do que fica como
+7. Me dá um resumo curto do que foi commitado e do que fica como
    próximo passo pra próxima sessão.
