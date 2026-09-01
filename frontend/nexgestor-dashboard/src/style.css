@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,7 +7,7 @@
 :root{
   /* Compartilhado entre temas */
   --radius:16px;
-  --font-display:'Syne',sans-serif; --font-mono:'DM Mono',monospace; --font-body:'Hanken Grotesk',sans-serif;
+  --font-display:'Atkinson Hyperlegible Next',sans-serif; --font-mono:'Atkinson Hyperlegible Next',sans-serif; --font-body:'Atkinson Hyperlegible Next',sans-serif;
 
   /* Escuro — tema padrão da extensão */
   color-scheme:dark;
