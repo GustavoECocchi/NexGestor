@@ -445,7 +445,7 @@ causa e cobre o preflight.
 ### ⬜ A confirmar
 - **Como o backend está rodando no VPS** (compose, uvicorn direto ou systemd). Se não for pelo compose, o volume `nexgestor-dados` e o `DB_PATH` não entram e a persistência ficaria desligada mesmo após o deploy — respondendo 501 em vez de 404. Só verificável de dentro do servidor.
 - **`/docs` deve ficar exposto?** `main.py` **não** desabilita a documentação interativa; hoje o 404 vem do roteamento do nginx. Mudar o `location /` do nginx exporia o Swagger sem que ninguém percebesse. Vale decidir explicitamente na aplicação.
-- **Por que a raiz do domínio serve o painel da extensão compilado.** Não vaza segredo, mas provavelmente não é intencional — perguntar a quem montou o servidor.
+- ~~Por que a raiz do domínio serve o painel da extensão compilado~~ — **explicado em 2026-09-01, não é mais um enigma**: não vaza segredo, e não é acidente a investigar — é o slot de nginx que o dashboard vai ocupar quando for implantado (ver `docs/roadmap.md`, decisão pendente #2 "Decidir hospedagem do dashboard"), ainda com o build da extensão como inquilino anterior.
 - **Sincronia entre repositórios** pessoal (`origin`) e da empresa (`empresa`). Conferir com `git rev-list --count empresa/main..main` (deve ser 0).
 - **Alerta de secret scanning #1** (falso positivo, "Used in tests") já foi fechado manualmente? Nenhuma chave real vazou — verificado comparando a chave do `.env` contra todos os blobs de todos os commits.
 

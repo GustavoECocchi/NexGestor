@@ -68,7 +68,14 @@ se chegou lá.
 >    Não há Vercel/Netlify/VPS configurado para ele. O backend (VPS Hostinger)
 >    já existe e pode servir os dois — falta decidir se o dashboard vai para o
 >    mesmo servidor (nginx servindo os arquivos estáticos do `vite build`) ou
->    outro lugar.
+>    outro lugar. **A opção "mesmo servidor" já tem o slot pronto**: a raiz do
+>    domínio (`gestor.nexgold.com.br/`) hoje serve o build compilado da
+>    extensão (confirmado ao vivo em 2026-09-01, mesmos arquivos de
+>    `extensao-pronta/`) — não é mistério nem acidente a investigar (como
+>    `docs/PRD.md` §5 registrava antes), é só o slot que o dashboard vai
+>    ocupar quando for implantado, ainda com o inquilino anterior. Trocar os
+>    arquivos estáticos servidos ali por um `npm run build` do dashboard
+>    resolve as duas coisas de uma vez.
 > 3. **Atualizar o backend no VPS** — continua sendo o bloqueio mais antigo em
 >    aberto (arrastado desde 2026-08-14, agora com mais uma rodada de mudanças
 >    em cima). Comando: `git pull && docker compose up -d --build` na pasta
