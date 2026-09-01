@@ -7,15 +7,11 @@ __pycache__/
 .env.*
 !.env.example
 
-# Node / frontend (Plasmo)
+# Node / frontend
 node_modules/
-.plasmo/
 build/
 out/
 keys.json
-
-# Pacote da extensão gerado pra equipe (build-team.sh)
-nexgestor-extensao-*.zip
 
 # IDE / OS
 .idea/
