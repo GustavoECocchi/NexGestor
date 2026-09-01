@@ -32,7 +32,7 @@ frontend/nexgestor-extension/      Extensão Chrome (side panel) — CONGELADA e
 ### Extensão Chrome — `frontend/nexgestor-extension` (CONGELADA em 2026-08-24, cópia de referência)
 
 - Side panel, Plasmo + React + TS. Não recebe mais commits — tag git local `extensao-estavel-2026-08` marca a cópia funcional de referência.
-- Tinha três modos de criação de campanha: manual, coletar automático (scraping via content script, provisório, nunca testado contra um Ads Manager real) e importar arquivo (JSON).
+- Documentação completa (como funcionava, estrutura técnica, dívidas conhecidas): `docs/historico/nexgestor-extensao.md`.
 - Migração da coleta automática pra Meta Marketing API (OAuth) segue adiada por decisão do usuário — não é prioridade enquanto durar o período de testes.
 - Suite: 167/167.
 

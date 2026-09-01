@@ -9,8 +9,9 @@ O repositório é um monorepo:
 
 ```
 backend/backend-nexgestor-main/    API FastAPI — engine de análise + integração Gemini
-frontend/nexgestor-extension/      Extensão Chrome (side panel) — Plasmo + React + TypeScript
-extensao-pronta/                   Extensão já compilada — carregue esta se só quer testar
+frontend/nexgestor-dashboard/      Dashboard web (Vite + React + TS) — produto ativo
+frontend/nexgestor-extension/      Extensão Chrome — DESCONTINUADA em 2026-08-24 (histórico)
+extensao-pronta/                   Build compilado da extensão descontinuada (histórico)
 deploy/                            Deploy do backend no VPS (Docker + HTTPS automático)
 iniciar-backend.bat / .sh          Sobe o backend local — só para DESENVOLVIMENTO
 ```
@@ -19,27 +20,15 @@ iniciar-backend.bat / .sh          Sobe o backend local — só para DESENVOLVIM
 
 ## Caminho rápido — só usar a ferramenta
 
-> 👉 **Vai apenas usar o NexGestor, sem mexer no código?**
-> Siga o **[COMO-USAR.md](COMO-USAR.md)** — passo a passo, sem jargão, com a
-> seção de problemas comuns.
-
-O backend roda **num servidor compartilhado** (VPS), então quem só vai usar a
-ferramenta **não instala nada além da extensão**: sem Python, sem Node, sem
-deixar janela aberta. Basta um navegador Chromium (Chrome, Brave, Edge) e
-internet.
-
-1. Receber o `.zip` da extensão do time e **extrair** numa pasta fixa.
-2. Abrir `chrome://extensions`, ativar o **Modo do desenvolvedor** e clicar em
-   **Carregar sem compactação**, escolhendo a pasta extraída.
-3. Abrir o side panel e clicar em **Nova campanha**. A análise é real.
-
-Quem tiver o repositório em mãos pode carregar a pasta `extensao-pronta/` no
-lugar do zip — é o mesmo build.
-
-> **Gerando o pacote da equipe** (quem mantém o projeto): com o backend já no ar,
-> rode `frontend/nexgestor-extension/build-team.sh https://SUA-URL` — ele grava a
-> URL no build, gera o `.zip` e atualiza a `extensao-pronta/`.
-> Para subir o backend, veja **[deploy/README.md](deploy/README.md)**.
+> 👉 **A extensão Chrome, único caminho que existia para usar o NexGestor sem
+> rodar código, foi descontinuada em 2026-08-24.** O dashboard web
+> (`frontend/nexgestor-dashboard`) é o produto ativo, mas **ainda não tem um
+> canal de distribuição pronto para quem não vai mexer no código** — hoje só
+> roda localmente via `npm run dev` (ver **[docs/roadmap.md](docs/roadmap.md)**
+> item 10).
+>
+> Instruções de como a extensão funcionava (para quem ainda tiver a versão
+> antiga instalada): **[docs/historico/nexgestor-extensao.md](docs/historico/nexgestor-extensao.md)**.
 
 ---
 
@@ -172,13 +161,14 @@ explicitamente (há exemplos em `test_ai_integration.py`).
 
 | Arquivo | Conteúdo |
 |---|---|
-| `COMO-USAR.md` (raiz) | Guia da equipe — instalar a extensão e usar o **backend compartilhado** (sem instalar nada) |
+| `COMO-USAR.md` (raiz) | Aviso de que a extensão foi descontinuada + ponteiros |
+| `docs/historico/nexgestor-extensao.md` | Documentação completa da extensão descontinuada (histórico) |
 | `deploy/README.md` | Runbook do **backend compartilhado no VPS** (Docker + HTTPS automático) |
-| `CLAUDE.md` (raiz) | Estado do projeto, decisões de arquitetura e histórico das sessões |
+| `CLAUDE.md` (raiz) | Estrutura, estado geral, aponta pro roadmap |
+| `docs/roadmap.md` | Estado atual por item + pendências (fonte da verdade sobre o que está pronto/pendente) |
 | `docs/CONTRATO_API_FRONTEND.md` | Contrato completo da API — payloads de entrada e resposta |
 | `docs/PRD.md` | PRD guarda-chuva — índice de API e índice de fases (cada fase com seu PRD pequeno em `docs/prds/`) |
 | `backend/.../AUDITORIA.md` | Auditoria de segurança e qualidade do backend |
-| `frontend/.../README.md` | Detalhes da extensão (estrutura, componentes, testes) |
 
 ---
 

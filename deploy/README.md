@@ -319,6 +319,12 @@ em `nginx-gestor.conf.exemplo`.
 
 ## Gerar o pacote da equipe
 
+> ⚠️ Esta seção é sobre a **extensão Chrome, descontinuada em 2026-08-24**
+> (ver `docs/roadmap.md` itens 3 e 4; documentação completa em
+> `docs/historico/nexgestor-extensao.md`). O script `build-team.sh` ainda
+> existe no repositório, mas não há mais distribuição ativa por este
+> caminho — o dashboard web ainda não tem canal de distribuição próprio.
+
 No **seu computador** (não no VPS), na pasta do projeto:
 
 ```bash

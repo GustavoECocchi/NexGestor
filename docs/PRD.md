@@ -23,6 +23,9 @@
 > regras de negócio, o adapter, e a seção 10 de divergências de documentação.
 > **Uma revisão completa deste PRD contra o dashboard é trabalho pendente.**
 >
+> Documentação completa da extensão descontinuada, consolidada num só lugar:
+> `docs/historico/nexgestor-extensao.md`.
+>
 > ---
 >
 > Este documento descreve o que o código faz, não um plano futuro. Cada

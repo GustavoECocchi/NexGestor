@@ -288,8 +288,9 @@ const uiStatus = isEscalavel ? "BLUE" : mapStatus(response.final_status);
 ## Persistência de campanhas — `/api/v1/campaigns`
 
 Endpoint separado do `/campaign/analyze` acima: guarda o resultado de uma
-análise para reabrir depois, sem reanalisar. Usado hoje pela extensão
-congelada e pelo dashboard web.
+análise para reabrir depois, sem reanalisar. Usado hoje pelo dashboard web
+(a extensão Chrome foi descontinuada em 2026-08-24 e nunca chegou a mandar o
+header `X-Nex-Dono` — ver `docs/historico/nexgestor-extensao.md`).
 
 ```
 GET    /api/v1/campaigns              → lista as campanhas do dono
