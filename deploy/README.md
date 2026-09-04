@@ -326,6 +326,13 @@ marca a última cópia funcional; documentação completa em
 não existem mais aqui — não há distribuição ativa por este caminho enquanto o
 dashboard web não tiver um canal próprio (ver `docs/roadmap.md` item 10).
 
+Quando esse canal existir (`npm run build` em
+`frontend/nexgestor-dashboard/`): **`VITE_API_BASE` é obrigatório** — o build
+falha de propósito sem essa variável apontando para o backend real, ou se ela
+apontar para `localhost`/`127.0.0.1` (achados A1/R2 da auditoria de rede de
+2026-09-04, `frontend/nexgestor-dashboard/src/lib/buildEnv.ts`). Ver
+`.env.example` do dashboard.
+
 ---
 
 ## Anexo — montar do zero num servidor sem proxy

@@ -373,7 +373,7 @@ respondem igual, de propósito (não revela que a campanha é de outra pessoa).
 
 ## Notas para o frontend
 
-1. `ai_insights` **sempre existe** no response, mas vem `null` nesta fase (IA desligada). Trate como opcional.
+1. `ai_insights` **sempre existe** no response, mas vem `null` quando a IA não está disponível (chave não configurada no servidor, `GEMINI_ENABLED=False`, ou a chamada falhou/expirou nessa análise específica — ver `GET /api/v1/status`). Trate como sempre opcional, não como algo ligado a uma fase temporária do projeto.
 2. Os campos `value` em `metric_evaluations` podem ser `null` (métrica não fornecida nem derivável).
 3. As `note` de métrica já vêm com emoji semafórico (`✓ ⚠ ✗`) — pode exibir direto.
 4. `scenarios` vem ordenado por `priority` (crítico primeiro).
