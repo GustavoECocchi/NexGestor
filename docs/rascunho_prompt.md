@@ -1,118 +1,280 @@
-# Validação intensiva do backend e do dashboard NexGestor
+# Auditoria integral de requisições e comunicação do NexGestor
 
-Execute uma rodada ampla, determinística e documentada de testes no backend e no dashboard. O objetivo é observar como o sistema se comporta com grande variação de dados, encontrar inconsistências reais e entender qualquer falha — não apenas obter uma saída verde.
+Faça uma auditoria técnica ponta a ponta de **todas as requisições de rede e
+todos os sinais entre frontend e backend** do NexGestor. Não se limite aos
+endpoints principais nem ao caminho de sucesso. O objetivo é reconstruir o
+fluxo real, provar os contratos, localizar falhas, riscos e contextos perdidos
+e mostrar exatamente o que acontece desde uma ação ou efeito no navegador até
+o estado final apresentado ao usuário.
 
-## Escopo confirmado
+Esta etapa é de diagnóstico. **Não corrija o código de produção durante a
+auditoria.** Primeiro entregue os achados completos, com evidência e proposta
+de correção/teste. Não faça commit, push ou deploy.
 
-- Backend ativo: `backend/backend-nexgestor-main/`.
+## Escopo e fontes
+
 - Frontend ativo: `frontend/nexgestor-dashboard/`.
-- A extensão Chrome foi descontinuada. Não execute testes, build ou manutenção em `frontend/nexgestor-extension/` ou `extensao-pronta/`.
-- Não acesse produção, VPS, Gemini, APIs externas ou serviços pagos.
-- Não abra `.env` reais e não exponha segredos.
+- Backend ativo: `backend/backend-nexgestor-main/`.
+- Camada de rede/deploy: `deploy/`, especialmente nginx e Docker Compose.
+- Configuração: leia somente código, arquivos de exemplo e documentação. Não
+  abra `.env` reais, não mostre segredos e não dependa de valores secretos.
+- Leia antes de concluir:
+  - `CLAUDE.md`;
+  - `docs/roadmap.md`;
+  - `docs/CONTRATO_API_FRONTEND.md`;
+  - as partes relevantes de `docs/PRD.md` e `docs/sessions/`;
+  - `frontend/nexgestor-dashboard/src/lib/api.ts` e todos os seus chamadores;
+  - rotas, schemas, handlers, services e configuração do backend;
+  - configuração de nginx/deploy e os testes existentes relacionados.
+- A extensão Chrome foi descontinuada/removida. Não a recrie nem use seu
+  comportamento como contrato atual. Documentação histórica pode ser
+  consultada apenas para rastrear decisões.
+- Inspecione `git status` e `git diff` antes de qualquer teste. Preserve todas
+  as mudanças preexistentes do worktree e não as atribua à auditoria.
 
-## Regra principal sobre falhas
+Não acesse produção, VPS, Gemini nem qualquer serviço externo. Não faça
+requisições pagas. Use inspeção estática, mocks, `TestClient`, jsdom e servidor
+local quando necessário. Qualquer harness temporário deve ficar fora do código
+de produção e ser removido ao final.
 
-Se qualquer teste falhar, não altere imediatamente o teste nem o código para fazê-lo passar. Primeiro:
+## 1. Descoberta exaustiva e inventário canônico
 
-1. reproduza a falha isoladamente;
-2. registre seed, payload, estado inicial, resultado obtido, resultado esperado, traceback e arquivos/linhas envolvidos;
-3. reduza o caso para o menor exemplo que ainda falha;
-4. confira schema, contrato da API, PRD, regras do engine e comportamento atual;
-5. classifique a causa como defeito de produção, teste incorreto/expectativa desatualizada, contrato/documentação divergente, problema ambiental ou comportamento ambíguo que exige decisão de produto;
-6. explique a classificação com evidências antes de propor qualquer correção.
+Descubra as requisições pelos dois lados e reconcilie os resultados:
 
-Nunca enfraqueça uma asserção, remova um teste, aumente tolerância ou atualize um snapshot apenas para deixar a suíte verde. Uma falha reproduzível deve permanecer visível até entendermos sua causa.
+1. No frontend, procure `fetch`, clientes HTTP, URLs absolutas, imports de
+   recursos externos, efeitos de montagem, callbacks, timers, aborts e todo
+   ponto que possa iniciar tráfego.
+2. No backend, enumere todos os decorators de rota, routers e prefixos, além
+   das rotas automáticas do FastAPI, middleware CORS, handlers de exceção e
+   chamadas de saída para serviços externos.
+3. No deploy, enumere redirects, `location`, proxy, preflight, rate limiting,
+   limites de corpo, timeouts, cabeçalhos e arquivos estáticos.
+4. Cruze os três inventários para encontrar endpoint fornecido e não usado,
+   endpoint usado e não fornecido, caminhos duplicados, caminhos documentados
+   mas inexistentes e tráfego externo que não passa por `api.ts`.
 
-## Etapa 1 — diagnóstico e linha de base
+O inventário deve considerar, sem assumir que esta lista esteja completa:
 
-1. Inspecione o estado do Git e preserve mudanças preexistentes. Em caso de `dubious ownership`, use `git -c safe.directory="<caminho absoluto>"` apenas no comando necessário; não altere configuração global.
-2. Leia as configurações e os scripts de teste do backend e dashboard.
-3. Identifique comandos oficiais, versões, testes coletados e mecanismos que bloqueiam rede/IA.
-4. Execute primeiro as suítes existentes sem alterar nada:
-   - backend: suíte completa do `pytest`;
-   - dashboard: suíte completa do Vitest, type-check e build de produção.
-5. Registre duração, quantidade coletada, pass/fail/skip e warnings.
+- documentos, JavaScript, CSS, imagens, fontes e demais assets carregados pelo
+  navegador, inclusive Google Fonts ou outro terceiro;
+- redirects HTTP→HTTPS e navegação para o dashboard;
+- preflights `OPTIONS` gerados por `Content-Type: application/json` e
+  `X-Nex-Dono`;
+- análise de campanha;
+- consulta de status/capacidades;
+- listagem, criação/atualização e exclusão de campanhas persistidas;
+- catálogo e health checks do engine;
+- health check raiz, OpenAPI, Swagger e ReDoc expostos automaticamente;
+- chamada backend→Gemini e sua resolução DNS/TLS/timeout pelo SDK;
+- qualquer telemetria, analytics, websocket, SSE, beacon, atualização
+  automática ou polling — registre explicitamente se não existirem.
 
-Se a linha de base falhar, investigue-a antes dos testes intensivos. Continue nas áreas independentes seguras, sem esconder a falha inicial.
+Para **cada requisição**, produza uma linha com:
 
-## Etapa 2 — backend: no mínimo 36.000 casos exploratórios
+- identificador e finalidade;
+- origem e gatilho exato;
+- ambiente em que ocorre (dev, build local, produção ou todos);
+- método e URL final, incluindo composição de `VITE_API_BASE` e prefixos;
+- headers, credenciais/cookies e motivo de preflight;
+- formato e origem do body;
+- timeout, cancelamento, retry e deduplicação;
+- nginx/middleware atravessados;
+- handler e validação no backend;
+- leitura/escrita ou outro efeito colateral;
+- status e corpo possíveis;
+- consumidor da resposta e transformação feita;
+- estado visual/fallback final;
+- teste existente que a cobre, ou lacuna de teste.
 
-Crie um harness temporário e determinístico fora do código de produção, com seed fixa registrada e sem rede.
+## 2. Rastreamento ponta a ponta dos fluxos reais
 
-### A. 30.000 campanhas válidas variadas
+Reconstrua ao menos estes fluxos completos, citando funções e linhas:
 
-Varie combinatória e pseudoaleatoriamente:
+1. Primeira abertura do dashboard: assets, fonte, portão de dono, consulta de
+   status, leitura local, listagem remota e merge.
+2. Análise manual e por importação de arquivo: formulário → normalização →
+   payload → `POST` → CORS/nginx → Pydantic → engine → Gemini opcional →
+   response model → JSON → adapter → estado da IA → UI/localStorage →
+   persistência remota.
+3. Abertura com campanhas locais ainda não salvas e sincronização posterior,
+   incluindo múltiplas campanhas pendentes.
+4. Criação versus atualização no servidor e conversão entre id local e id do
+   servidor.
+5. Exclusão local e remota, incluindo `404`, erro de servidor e corrida entre
+   o `GET` inicial e o `DELETE`.
+6. Backend, nginx ou rede indisponível; timeout; abort; resposta vazia,
+   truncada, HTML no lugar de JSON ou JSON com formato incorreto.
+7. CORS permitido e negado, inclusive erro gerado pelo nginx sem cabeçalhos
+   CORS e preflight atingindo rate limit.
+8. Análises simultâneas, clique duplo, remontagem do React/Strict Mode,
+   navegação durante request e resposta chegando depois de desmontar o
+   componente.
 
-- Meta, Google, TikTok e LinkedIn;
-- objetivos e tipos aceitos pelo schema;
-- métricas ausentes, parciais e completas;
-- zero legítimo versus campo ausente;
-- valores muito pequenos, normais, altos e próximos dos limites;
-- relações coerentes e incoerentes entre impressões, alcance, cliques, visitas, conversões, investimento e receita;
-- metas padrão, personalizadas, permissivas e restritivas;
-- amostras pequenas, médias e grandes;
-- combinações que acionem cada cenário A–O;
-- campanhas GREEN, RED e elegíveis a BLUE no frontend;
-- IA desabilitada e retorno ausente, sempre com mock local;
-- dados suficientes e insuficientes para score/confiança.
+Em cada fluxo, identifique a fonte de verdade em cada instante: estado React,
+`localStorage`, SQLite, resposta do backend ou observação da última análise.
+Mostre onde o sinal pode ser perdido, duplicado, reordenado, tratado como
+sucesso sem ter concluído ou transformado silenciosamente.
 
-Valide score, cobertura e confiança; ausência não convertida em zero; inexistência de `NaN`, `Infinity`, valores impossíveis ou textos contraditórios; status coerente; efeito real das metas; cenários incompatíveis; ausência de previsão ou escala inventada; determinismo; e não mutação do input.
+## 3. Contrato frontend ↔ backend
 
-### B. 5.000 entradas inválidas e de fronteira
+Compare diretamente:
 
-Cubra tipos errados, strings vazias, campos desconhecidos, enums inválidos, negativos, booleanos como números, `null`, extremos, payloads incompletos, nesting incorreto, nomes excessivos e `NaN`/`Infinity`. Verifique rejeição e código HTTP corretos, erro estruturado sem segredo/traceback, servidor funcional após rejeição e nenhum 500 onde deveria haver 4xx.
+- tipos TypeScript;
+- payload realmente montado;
+- schemas Pydantic e defaults;
+- `response_model` e serialização;
+- adapter e componentes consumidores;
+- documentação do contrato;
+- fixtures e mocks de teste.
 
-### C. 1.000 operações de persistência/isolamento
+Verifique nomes, tipos, enums, opcionais, `null`, zero versus ausente, campos
+desconhecidos, números não finitos, limites, valores extremos, arrays/objetos,
+mensagens de erro e compatibilidade com campanhas antigas salvas. Procure
+casts TypeScript que apenas prometem um tipo sem validar o JSON em runtime.
 
-Varie donos, capitalização, espaços, IDs, criação, listagem, atualização, remoção, limites por dono e global. Verifique isolamento, `X-Nex-Dono`, normalização, idempotência esperada, limites, códigos, integridade do payload e intercalamento determinístico.
+Confirme também:
 
-## Etapa 3 — dashboard: no mínimo 7.000 casos exploratórios
+- se URL base vazia, inválida, com barra final ou sem HTTPS produz o caminho
+  correto e não causa `//api`, mixed content ou fallback acidental para
+  localhost em build de produção;
+- se método, `Content-Type`, `X-Nex-Dono` e CORS combinam em todas as rotas;
+- se os status documentados coincidem com os realmente devolvidos por
+  FastAPI, middleware, storage e nginx;
+- se o frontend distingue corretamente `400`, `404`, `413`, `422`, `429`,
+  `500`, `501`, `502`, `503`, `504`, timeout, CORS e falha de parsing;
+- se algum erro importante é reduzido silenciosamente a `null`, `falhou` ou
+  estado vazio, impedindo o usuário e a equipe de saber o que aconteceu;
+- se resposta `2xx` malformada pode contaminar estado ou persistência;
+- se a documentação promete uma garantia que existe apenas nos mocks.
 
-Use Vitest/jsdom e funções puras sempre que possível. Não abra navegador externo.
+## 4. Rede, proxy, CORS e segurança
 
-### A. 5.000 variações de adapter, formatação e status
+Audite a cadeia navegador → DNS/TLS → nginx → Uvicorn/FastAPI e, quando
+aplicável, backend → Gemini:
 
-Varie opcionais, zeros, cenários, status, scores, confiança, métricas e textos. Confirme que o adapter não inventa zero, status/BLUE seguem as regras, formatos estão corretos, texto externo é sanitizado, nenhuma combinação válida quebra e a resposta não é mutada.
+- origens permitidas, credentials, methods, headers e cache de preflight;
+- comportamento dos cabeçalhos CORS em respostas do backend e em erros
+  produzidos pelo próprio nginx;
+- redirect, TLS, host/proto encaminhado, path e preservação de status/body;
+- rate limit, burst e se `OPTIONS`, health/status e análise consomem a mesma
+  cota indevidamente;
+- limites de body em cada camada e divergências entre nginx, Pydantic e
+  persistência;
+- timeouts do navegador, proxy, servidor e Gemini, inclusive qual camada
+  vence e se o trabalho/custo continua após o cliente abortar;
+- exposição de `/docs`, `/redoc`, `/openapi.json`, health/status e metadados;
+- autenticação/autorização real do `X-Nex-Dono`, isolamento entre donos,
+  possibilidade de forjar identidade e risco de CSRF/CORS;
+- vazamento de payload, traceback, chave ou configuração em resposta/log;
+- sanitização de conteúdo vindo do backend/IA antes de renderizar HTML;
+- dependência e privacidade de recursos de terceiros, especialmente fontes;
+- cache, compressão e headers de segurança quando forem relevantes;
+- possibilidade de abuso, replay, duplicação de POST e ausência de
+  idempotência.
 
-### B. 1.000 variações de importação/formulário
+Não faça pentest destrutivo nem envie carga para ambientes externos. Demonstre
+problemas localmente com o menor caso possível.
 
-Cubra JSON válido, parcial e inválido, campos desconhecidos, tipos errados, plataformas, métricas, metas, zeros, arquivos grandes razoáveis e conteúdo malicioso. Verifique allowlist, mensagens e payload final.
+## 5. Concorrência, resiliência e consistência
 
-### C. 600 transições de estado, API e persistência
+Investigue:
 
-Cubra dono ausente/presente, loading, sucesso, 4xx, 429, 5xx, timeout, resposta malformada, IA on/off/falhando/desconhecida, criar/listar/apagar e fallback local. Tudo com mocks e sem chamadas reais.
+- requests duplicadas por efeitos, remontagem ou ação repetida;
+- respostas fora de ordem sobrescrevendo estado mais novo;
+- timeout/abort no cliente sem cancelamento real no servidor;
+- sincronização local→servidor parcial, falha no meio do lote e repetição na
+  próxima abertura;
+- updates concorrentes e política de último escritor;
+- corrida entre listar, salvar e apagar;
+- campanha removida reaparecendo;
+- id local colidindo ou sendo reancorado incorretamente;
+- falha de persistência mascarada como sucesso local;
+- resposta tardia atualizando componente desmontado;
+- ausência de retry, backoff ou idempotency key onde isso possa causar dano;
+- comportamento offline e recuperação quando a rede volta.
 
-### D. 400 renderizações e interações críticas
+Diferencie claramente comportamento deliberado, risco aceito, bug confirmado
+e hipótese que precisa de decisão de produto.
 
-Varie RED/GREEN/BLUE, dados ausentes, temas, navegação, detalhe, `MetricFeed`, Copiloto, tooltips, teclado e estados vazios/erro. Inclua bugs registrados no roadmap e confirme no código se ainda existem.
+## 6. Observabilidade e cobertura de testes
 
-## Etapa 4 — contrato entre backend e dashboard
+Para cada fronteira de rede, verifique se existem logs úteis, correlação entre
+cliente/proxy/backend, métricas, mensagens acionáveis e redação de segredo.
+Mostre quais falhas hoje seriam invisíveis ou indistinguíveis em produção.
 
-Valide pelo menos 2.000 respostas reais do engine passando pelo contrato esperado pelo adapter, por fixtures temporárias ou harness local, sem servidor externo. Confirme nomes/tipos, opcionais/`null`, plataformas/enums, status, cenários, métricas, targets, persistência/header do dono, que nenhuma resposta válida quebra o adapter e que o dashboard não depende de campo inexistente.
+Monte uma matriz de cobertura com caminhos de sucesso e falha. Leia e execute
+os testes existentes; não presuma cobertura pelo nome. Quando necessário,
+use testes/harnesses temporários para provar o comportamento de:
 
-Total mínimo: **45.000 casos** (36.000 backend + 7.000 dashboard + 2.000 contrato), além das suítes existentes, type-check e build.
+- payload e headers exatos;
+- timeout e abort;
+- preflight/CORS;
+- todos os status relevantes;
+- JSON malformado ou contrato divergente;
+- duplicação e corridas;
+- indisponibilidade do Gemini e da persistência;
+- ausência de rede externa durante a suíte.
 
-## Implementação dos testes exploratórios
+Rode, sem instalar dependências:
 
-- Não altere código de produção nesta etapa.
-- Prefira harnesses temporários ou testes de auditoria claramente identificados.
-- Não gere milhares de testes estáticos nem comite payloads enormes.
-- Use loops parametrizados/propriedades com seed e contraexemplo.
-- Ao revelar regressão real, proponha teste pequeno permanente, mas não corrija o produto sem aprovação.
-- Não instale bibliotecas novas; limite o paralelismo.
-- Se o volume for inviável, demonstre com dados, execute o maior volume seguro e informe exatamente o que faltou.
+- suíte completa do backend com `pytest`;
+- suíte completa do dashboard com `npm test`;
+- `npm run build`;
+- `npm run lint`.
+
+Não enfraqueça testes nem altere expectativas para obter verde. Como esta é
+uma auditoria, não deixe novos testes ou alterações de produção no worktree;
+registre quais testes permanentes deveriam ser criados na etapa de correção.
+
+## 7. Rastreabilidade documental e contexto perdido
+
+Cruze código, testes, contrato, PRD, roadmap, sessões e histórico do Git.
+Procure decisão/requisito omitido, requisito órfão, deriva de implementação,
+contradição, documentação desatualizada, inferência apresentada como fato e
+afirmação sem evidência.
+
+Não chame automaticamente de “alucinação”. Classifique cada item como
+`confirmado`, `contradito`, `desatualizado`, `ambíguo`, `requisito órfão` ou
+`afirmação sem suporte`, sempre com caminho/linha e evidência. Documentação
+histórica não está errada apenas por descrever um estado antigo; considere a
+data e decisões posteriores. Não reescreva registros históricos.
+
+## Classificação dos achados
+
+Para cada achado, informe:
+
+- severidade: `P0 crítico`, `P1 alto`, `P2 médio` ou `P3 baixo`;
+- natureza: segurança, privacidade, contrato, confiabilidade, concorrência,
+  UX/erro, desempenho, observabilidade, documentação ou cobertura de teste;
+- classificação: bug confirmado, risco demonstrado, comportamento esperado,
+  dívida aceita, divergência documental ou hipótese não confirmada;
+- evidência com arquivo/linha e menor reprodução;
+- impacto real e quem é afetado;
+- correção mínima recomendada;
+- teste permanente que impediria regressão.
+
+Não aumente severidade só porque o cenário é teoricamente grave: combine
+probabilidade, alcance e impacto no sistema real. Não declare segurança nem
+completude por ausência de falha nos testes.
 
 ## Entrega obrigatória
 
-Ao final, apresente:
+Entregue um relatório autocontido contendo:
 
-1. tabela separada para backend, dashboard e contrato com planejado, executado, pass/fail/skip, duração e seed;
-2. suítes existentes, type-check e build;
-3. matriz das dimensões cobertas;
-4. cada falha com menor caso reproduzível e classificação;
-5. warnings, comportamentos estranhos e lacunas;
-6. bugs que merecem teste permanente;
-7. limitações e cenários não cobertos;
-8. estado final do Git e arquivos criados/modificados.
+1. resumo executivo e os achados mais importantes;
+2. diagrama textual da topologia e das fronteiras de confiança;
+3. inventário canônico de **todas** as requisições encontradas;
+4. rastreamento dos fluxos ponta a ponta;
+5. matriz de contrato frontend/backend/status/fallback;
+6. achados ordenados por severidade, com evidência e reprodução;
+7. matriz de testes existentes versus lacunas;
+8. tráfego procurado e não encontrado (telemetria, websocket, polling etc.);
+9. divergências documentais e possíveis contextos perdidos;
+10. limitações da auditoria e tudo que exigiria validação em ambiente real;
+11. plano de correção em ordem segura, sem implementar ainda;
+12. comandos executados, resultados e estado final do Git.
 
-Não faça commit, push ou deploy. Não corrija código de produção. Ao encontrar falha, pare apenas o fluxo dependente, investigue profundamente e continue verificações independentes seguras.
+Se não for possível provar alguma camada sem tocar produção, marque-a como
+`não verificada` e explique exatamente qual evidência falta. Não use “tudo
+parece correto” como conclusão sem inventário reconciliado dos dois lados e
+sem rastrear os caminhos de erro.

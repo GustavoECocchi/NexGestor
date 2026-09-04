@@ -83,12 +83,30 @@ def _get_client():
     Recria o client se a GEMINI_API_KEY mudou desde a última criação — assim a
     rotação de key tem efeito sem precisar reiniciar o processo (antes o client
     em memória ficava preso na key antiga).
+
+    `http_options.timeout` (auditoria de rede, 2026-09-03, achado A5) é
+    obrigatório aqui — confirmado inspecionando o SDK: sem ele, o google-genai
+    manda `timeout=None` em toda requisição httpx, e o httpx interpreta isso
+    como SEM LIMITE NENHUM (`connect/read/write/pool: None`), não os "5s
+    default" que o `httpx.Client()` mostra sem uso. `asyncio.wait_for` (em
+    `call_gemini`) só desiste de ESPERAR pela thread do executor — não
+    cancela a chamada bloqueante síncrona rodando nela, que segue tentando
+    ler o socket indefinidamente e continua sendo cobrada na chave
+    compartilhada mesmo depois do timeout "ter estourado" do ponto de vista
+    do request principal. Setar o timeout aqui corta a requisição no nível do
+    socket, então a thread do executor também termina.
     """
     global _client, _client_key
     current_key = settings.GEMINI_API_KEY
     if _client is None or _client_key != current_key:
         from google import genai
-        _client = genai.Client(api_key=current_key)
+        from google.genai import types
+        _client = genai.Client(
+            api_key=current_key,
+            http_options=types.HttpOptions(
+                timeout=int(settings.GEMINI_TIMEOUT_SECONDS * 1000)
+            ),
+        )
         _client_key = current_key
     return _client
 

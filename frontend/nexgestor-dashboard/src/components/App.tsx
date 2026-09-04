@@ -10,7 +10,7 @@ import { Home } from "~components/Home"
 import { NewCampaignModal } from "~components/NewCampaignModal"
 import { CAMPAIGNS } from "~data/mock"
 import { apagarCampanha, idLocalDoServidor, listarCampanhasSalvas, salvarCampanha } from "~lib/api"
-import { loadLive, marcarComoSalva, mesclarComServidor, removeLive, upsertLive } from "~lib/store"
+import { garantirClientId, loadLive, marcarComoSalva, marcarFalhaPermanente, mesclarComServidor, registrarAvisoTransitorio, removeLive, upsertLive } from "~lib/store"
 import type { CampaignVM } from "~types"
 
 type Screen = { name: "home" } | { name: "detail"; id: number } | { name: "help" }
@@ -68,11 +68,20 @@ export function App() {
       // estava fora do ar, ou antes da persistência existir. Sem isto, essas
       // campanhas nunca chegariam à base da equipe e o `COMO-USAR.md` estaria
       // prometendo algo que não acontece.
-      for (const pendente of mesclada.filter((c) => c.serverId === undefined)) {
+      //
+      // `!c.syncFalhouPermanente` (achado A3): sem este filtro, uma campanha
+      // grande demais (413) seria retentada em TODA abertura, pra sempre,
+      // sem chance nenhuma de dar certo sozinha. Base cheia (507) NÃO entra
+      // nesse filtro (achado R1): é estado do servidor, não desta campanha
+      // — continua sendo retentada, só com um aviso (`syncAviso`).
+      for (const pendente of mesclada.filter((c) => c.serverId === undefined && !c.syncFalhouPermanente)) {
         if (cancelado) return
-        const serverId = await salvarCampanha(pendente)
-        if (cancelado || serverId === null) continue
-        setLive(reancorar(pendente, serverId))
+        const comId = garantirClientId(pendente)
+        const resultado = await salvarCampanha(comId)
+        if (cancelado) return
+        if (resultado.ok) setLive(reancorar(comId, resultado.id))
+        else if (resultado.permanente) setLive(marcarFalhaPermanente(comId, resultado.explicacao))
+        else setLive(registrarAvisoTransitorio(comId, resultado.aviso))
       }
     })
 
@@ -206,20 +215,30 @@ export function App() {
           <NewCampaignModal
             onClose={() => setModal("none")}
             onAnalyzed={(vm) => {
+              // `garantirClientId` ANTES do `upsertLive` (achado R6, revisão
+              // do Opus 2026-09-04): gera e persiste o clientId de uma vez
+              // só. Na ordem antiga (`upsertLive(vm)` sem clientId, depois
+              // `garantirClientId` escrevendo por cima) o estado React ficava
+              // um instante sem o clientId que o localStorage já tinha —
+              // inofensivo hoje, mas desnecessário.
+              const comId = garantirClientId(vm)
+
               // Mostra imediatamente, sem esperar o servidor: a análise já está
               // pronta e prender a tela numa gravação seria pior que salvar
               // depois. Se o servidor não responder, a campanha fica só neste
               // navegador (sem `serverId`) e a mesclagem seguinte a preserva.
-              setLive(upsertLive(vm))
+              setLive(upsertLive(comId))
               setModal("none")
-              openCampaign(vm.id)
+              openCampaign(comId.id)
 
               // Reancorar o id é obrigatório: na base compartilhada quem
               // identifica é o servidor. Sem isto, a campanha da Ana e a do Bruno
               // nasceriam ambas com id 1000 e uma sobrescreveria a outra na
               // próxima sincronização.
-              salvarCampanha(vm).then((serverId) => {
-                if (serverId !== null) setLive(reancorar(vm, serverId))
+              salvarCampanha(comId).then((resultado) => {
+                if (resultado.ok) setLive(reancorar(comId, resultado.id))
+                else if (resultado.permanente) setLive(marcarFalhaPermanente(comId, resultado.explicacao))
+                else setLive(registrarAvisoTransitorio(comId, resultado.aviso))
               })
             }}
           />

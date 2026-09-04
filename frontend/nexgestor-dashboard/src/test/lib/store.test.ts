@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  garantirClientId,
   isLiveId,
   loadDoneActions,
   loadLive,
+  marcarFalhaPermanente,
   nextLiveId,
   toggleDoneAction,
   upsertLive
@@ -99,6 +101,58 @@ describe("nextLiveId", () => {
 
   it("nunca colide com ids de mock, mesmo que o histórico esteja vazio", () => {
     expect(nextLiveId()).toBeGreaterThanOrEqual(1000)
+  })
+})
+
+describe("garantirClientId — achado A4 (auditoria de rede, 2026-09-03)", () => {
+  it("gera um UUID e devolve a campanha com ele", () => {
+    const comId = garantirClientId(vm(1000))
+    expect(comId.clientId).toMatch(/^[0-9a-f-]{36}$/i)
+  })
+
+  it("campanha já com clientId não gera outro (idempotente por si só)", () => {
+    const original = { ...vm(1000), clientId: "ja-existente" }
+    expect(garantirClientId(original).clientId).toBe("ja-existente")
+  })
+
+  it("persiste o clientId quando a campanha JÁ está na lista salva", () => {
+    upsertLive(vm(1000))
+    const comId = garantirClientId(vm(1000))
+    expect(loadLive()[0].clientId).toBe(comId.clientId)
+  })
+
+  // Revisão do Opus (2026-09-04), achado R4: a versão original devolvia o
+  // clientId gerado SEM persistir quando a campanha não era encontrada na
+  // lista — uma falha silenciosa que quebraria a garantia de idempotência
+  // pro próximo chamador que não persistisse antes de chamar esta função.
+  it("persiste o clientId MESMO quando a campanha ainda não está na lista salva", () => {
+    // Nada em localStorage — nenhum upsertLive chamado antes.
+    const comId = garantirClientId(vm(1000))
+    expect(loadLive()).toHaveLength(1)
+    expect(loadLive()[0].clientId).toBe(comId.clientId)
+  })
+
+  it("o clientId sobrevive a uma leitura nova (sobrevive a reload no meio do envio)", () => {
+    const comId = garantirClientId(vm(1000))
+    // Simula reload: nova leitura do zero, não a mesma referência em memória.
+    const relido = garantirClientId(loadLive()[0])
+    expect(relido.clientId).toBe(comId.clientId)
+  })
+})
+
+describe("marcarFalhaPermanente — achado A3 (auditoria de rede, 2026-09-03)", () => {
+  it("marca a campanha com a explicação", () => {
+    upsertLive(vm(1000))
+    marcarFalhaPermanente(vm(1000), "Campanha grande demais para o servidor aceitar.")
+    expect(loadLive()[0].syncFalhouPermanente).toBe("Campanha grande demais para o servidor aceitar.")
+  })
+
+  it("não mexe nas outras campanhas", () => {
+    upsertLive(vm(1000))
+    upsertLive(vm(1001))
+    marcarFalhaPermanente(vm(1000), "motivo")
+    const outras = loadLive().filter((c) => c.id !== 1000)
+    expect(outras.every((c) => c.syncFalhouPermanente === undefined)).toBe(true)
   })
 })
 

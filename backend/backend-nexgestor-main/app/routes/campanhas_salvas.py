@@ -30,6 +30,16 @@ class CampanhaEntrada(BaseModel):
         default=None,
         description="Informe para atualizar uma campanha existente; omita para criar.",
     )
+    client_id: str | None = Field(
+        default=None,
+        max_length=100,
+        description=(
+            "Identificador gerado no navegador (achado A4 da auditoria de rede, "
+            "03/09/2026). Reenviar com o MESMO client_id atualiza a campanha em vez "
+            "de duplicá-la — cobre o caso de a resposta do servidor se perder depois "
+            "de já ter gravado."
+        ),
+    )
 
 
 def obter_dono(x_nex_dono: str = Header(..., alias="X-Nex-Dono")) -> str:
@@ -73,7 +83,7 @@ def listar_campanhas(dono: str = Depends(obter_dono)):
 def salvar_campanha(entrada: CampanhaEntrada, dono: str = Depends(obter_dono)):
     _exigir_persistencia()
     try:
-        return storage.salvar(entrada.payload, dono, entrada.id)
+        return storage.salvar(entrada.payload, dono, entrada.id, entrada.client_id)
     except storage.PayloadGrandeDemais as e:
         raise HTTPException(status_code=413, detail=str(e))
     except storage.LimiteDeCampanhas as e:

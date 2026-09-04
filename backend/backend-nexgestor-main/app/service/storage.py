@@ -126,8 +126,25 @@ def inicializar() -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e).lower():
                     raise
+            # Idem para `client_id` (03/09/2026, achado A4 da auditoria de
+            # rede): identificador gerado no navegador, mandado pelo cliente
+            # em todo POST, pra tornar o salvamento idempotente — uma
+            # resposta perdida depois do servidor já ter gravado não pode
+            # virar linha duplicada na próxima tentativa. Bases antigas ficam
+            # com a coluna NULL em toda linha existente, o que é seguro: o
+            # índice único abaixo não trata duas linhas com client_id NULL
+            # como conflito entre si (comportamento padrão do SQLite).
+            try:
+                conn.execute("ALTER TABLE campanhas ADD COLUMN client_id TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_campanhas_dono ON campanhas(dono)"
+            )
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_campanhas_dono_client"
+                " ON campanhas(dono, client_id)"
             )
             conn.commit()
         _iniciado = True
@@ -165,11 +182,14 @@ def listar(dono: str) -> list[dict[str, Any]]:
 
 
 def salvar(
-    payload: dict[str, Any], dono: str, campanha_id: Optional[int] = None
+    payload: dict[str, Any],
+    dono: str,
+    campanha_id: Optional[int] = None,
+    client_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    Insere (sem id) ou atualiza (com id) uma campanha do `dono`. Devolve o
-    registro gravado.
+    Insere (sem id) ou atualiza (com id OU com client_id já conhecido) uma
+    campanha do `dono`. Devolve o registro gravado.
 
     Atualizar um id inexistente — ou que existe mas pertence a outro dono —
     INSERE, em vez de falhar: o cliente pode ter o dado só em cache local
@@ -177,6 +197,18 @@ def salvar(
     duplicar. Como efeito colateral, isso também impede que o id de outra
     pessoa seja sequestrado por engano: a linha alheia nunca é tocada, e o
     cliente ganha uma campanha nova.
+
+    `client_id` (03/09/2026, achado A4 da auditoria de rede) é a segunda via
+    de idempotência, pra quando o cliente NÃO tem `campanha_id` ainda: se o
+    servidor gravou mas a resposta se perdeu (abort de timeout, queda de rede
+    no meio do 200), o cliente reenvia com o MESMO `client_id` — sem ele,
+    isso inseria uma segunda linha idêntica. A garantia é do índice único
+    `(dono, client_id)` combinado com `ON CONFLICT`, avaliado atomicamente
+    dentro do próprio INSERT: mesmo sob concorrência real (duas tentativas
+    quase simultâneas com o mesmo client_id), o SQLite serializa as escritas
+    e só uma delas insere — a outra cai no braço UPDATE. NULL nunca colide
+    consigo mesmo nesse índice, então campanhas sem `client_id` (dado antigo,
+    ou cliente que não manda) continuam se comportando como antes.
     """
     inicializar()
 
@@ -198,24 +230,50 @@ def salvar(
                 conn.commit()
                 return {"id": campanha_id, "payload": payload, "atualizado_em": agora}
 
-        do_dono = conn.execute(
-            "SELECT COUNT(*) FROM campanhas WHERE dono = ?", (dono,)
-        ).fetchone()[0]
-        if do_dono >= settings.DB_MAX_CAMPANHAS:
-            raise LimiteDeCampanhas(
-                f"Você atingiu o limite de {settings.DB_MAX_CAMPANHAS} campanhas. "
-                "Apague alguma antes de salvar outra."
-            )
+        # Só checa os tetos quando isto provavelmente vai criar uma linha
+        # nova — reenviar um client_id já salvo é uma ATUALIZAÇÃO e não deve
+        # esbarrar no limite de campanhas novas. Esta checagem de existência
+        # é só uma otimização pra pular os tetos no caso comum: mesmo se ela
+        # perder uma corrida real (linha criada por outra requisição entre
+        # este SELECT e o INSERT abaixo), a garantia de não duplicar segue
+        # sendo do índice único + ON CONFLICT, não desta leitura.
+        ja_existe_por_client_id = bool(client_id) and conn.execute(
+            "SELECT 1 FROM campanhas WHERE dono = ? AND client_id = ?",
+            (dono, client_id),
+        ).fetchone() is not None
 
-        # Teto global: sem ele, o teto por dono não limita nada — o dono é um
-        # texto escolhido pelo cliente, então bastaria inventar identificadores
-        # novos para conseguir espaço infinito no disco do VPS.
-        total = conn.execute("SELECT COUNT(*) FROM campanhas").fetchone()[0]
-        if total >= settings.DB_MAX_CAMPANHAS_GLOBAL:
-            raise LimiteDeCampanhas(
-                f"Base cheia ({settings.DB_MAX_CAMPANHAS_GLOBAL} campanhas no "
-                "servidor). Fale com quem administra o servidor."
-            )
+        if not ja_existe_por_client_id:
+            do_dono = conn.execute(
+                "SELECT COUNT(*) FROM campanhas WHERE dono = ?", (dono,)
+            ).fetchone()[0]
+            if do_dono >= settings.DB_MAX_CAMPANHAS:
+                raise LimiteDeCampanhas(
+                    f"Você atingiu o limite de {settings.DB_MAX_CAMPANHAS} campanhas. "
+                    "Apague alguma antes de salvar outra."
+                )
+
+            # Teto global: sem ele, o teto por dono não limita nada — o dono é
+            # um texto escolhido pelo cliente, então bastaria inventar
+            # identificadores novos para conseguir espaço infinito no disco
+            # do VPS.
+            total = conn.execute("SELECT COUNT(*) FROM campanhas").fetchone()[0]
+            if total >= settings.DB_MAX_CAMPANHAS_GLOBAL:
+                raise LimiteDeCampanhas(
+                    f"Base cheia ({settings.DB_MAX_CAMPANHAS_GLOBAL} campanhas no "
+                    "servidor). Fale com quem administra o servidor."
+                )
+
+        if client_id:
+            linha = conn.execute(
+                "INSERT INTO campanhas (payload, dono, client_id, criado_em, atualizado_em)"
+                " VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(dono, client_id) DO UPDATE SET"
+                "   payload = excluded.payload, atualizado_em = excluded.atualizado_em"
+                " RETURNING id, atualizado_em",
+                (bruto, dono, client_id, agora, agora),
+            ).fetchone()
+            conn.commit()
+            return {"id": linha["id"], "payload": payload, "atualizado_em": linha["atualizado_em"]}
 
         cur = conn.execute(
             "INSERT INTO campanhas (payload, dono, criado_em, atualizado_em)"

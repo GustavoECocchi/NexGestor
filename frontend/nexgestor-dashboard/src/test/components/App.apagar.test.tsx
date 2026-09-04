@@ -17,7 +17,7 @@ vi.mock("~lib/api", async () => {
   return {
     ...real,
     listarCampanhasSalvas: vi.fn(async () => null),
-    salvarCampanha: vi.fn(async () => null),
+    salvarCampanha: vi.fn(async () => ({ ok: false, permanente: false })),
     apagarCampanha: vi.fn(async () => "apagada" as const)
   }
 })

@@ -35,12 +35,26 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]
 
-    # A extensão (Plasmo) emite requisições de chrome-extension://<EXTENSION_ID>.
-    # O <EXTENSION_ID> muda entre a extensão carregada localmente (unpacked) e a
-    # publicada na store, então em dev usamos um regex que aceita qualquer
-    # extensão Chrome/Brave. Em produção, troque por uma origin fixa em
-    # CORS_ORIGINS e, se quiser travar, defina CORS_ORIGIN_REGEX="" no .env.
-    CORS_ORIGIN_REGEX: str = r"chrome-extension://.*"
+    # Duas partes, uma por origem de dev que muda de endereço sozinha:
+    #
+    # 1. chrome-extension://<EXTENSION_ID> — o ID muda entre a extensão
+    #    carregada localmente (unpacked) e a publicada na store. A extensão
+    #    em si está descontinuada (docs/roadmap.md item 3), mas a tag git
+    #    `extensao-estavel-2026-08` ainda existe pra rodar a cópia congelada
+    #    localmente se precisar — por isso o regex não foi removido.
+    # 2. http://localhost:<qualquer porta> — o Vite sobe na primeira porta
+    #    livre a partir de 5173; com ela ocupada (outro checkout, por
+    #    exemplo) sobe em 5174, 5175... Sem isto TODA chamada falha como
+    #    "Failed to fetch" (achado A7 da auditoria de rede de 2026-09-03,
+    #    reproduzido ao vivo nesta mesma sessão: preflight de origem
+    #    :5174 voltou 400 sem Access-Control-Allow-Origin porque só 5173 e
+    #    3000 estavam na allowlist fixa acima). Casa só http (nunca https)
+    #    porque produção sempre serve por trás de TLS — self-signed/mixed
+    #    content não fazem parte do caminho local.
+    #
+    # Em produção, troque por uma origin fixa em CORS_ORIGINS e, se quiser
+    # travar de vez, defina CORS_ORIGIN_REGEX="" no .env.
+    CORS_ORIGIN_REGEX: str = r"chrome-extension://.*|http://localhost:\d+"
 
     # ── Persistência (SQLite) ────────────────────────────
     # ⚠️ Dados isolados por `dono` desde 25/08/2026, mas SEM login de verdade:

@@ -333,13 +333,23 @@ cliente mandou no `POST`.
 
 **Request:**
 ```json
-{ "payload": { "...": "qualquer objeto" }, "id": null }
+{ "payload": { "...": "qualquer objeto" }, "id": null, "client_id": null }
 ```
 Omita `id` (ou mande `null`) para criar; informe o `id` devolvido por um
 `POST`/`GET` anterior para atualizar. **Atualizar um `id` que não existe, ou
 que existe mas pertence a outro dono, não falha — cria uma campanha nova** e
 devolve um `id` diferente do que foi enviado. O cliente que fizer `id ===
 resposta.id` para saber se atualizou ou criou.
+
+`client_id` (opcional, string até 100 caracteres) existe para tornar o
+`POST` idempotente quando o cliente ainda não tem `id` — o caso de uma
+resposta se perder DEPOIS do servidor já ter gravado (timeout, queda de rede
+no meio do 200). Gere um identificador estável no cliente (ex.:
+`crypto.randomUUID()`) e reenvie o MESMO valor em toda tentativa da mesma
+campanha: o servidor reconhece e atualiza a linha existente em vez de
+duplicar. A garantia é por `(dono, client_id)` — o mesmo `client_id` em donos
+diferentes não colide. Sem `client_id`, o comportamento é o de sempre
+(sempre insere quando `id` também está ausente).
 
 **Response 200:** `{ "id": 8, "payload": {...}, "atualizado_em": "..." }`
 

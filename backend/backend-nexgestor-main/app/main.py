@@ -16,7 +16,25 @@ from app.routes import routes, campanhas_salvas, status
 from app.core.config import settings
 
 
-# Instância principal do FastAPI — exposta no /docs e /redoc.
+def _docs_urls(debug: bool) -> dict:
+    """
+    Auditoria de rede (2026-09-03), achado A6: `/docs`, `/redoc` e
+    `/openapi.json` respondiam 200 mesmo sem `docs_url` explícito — é o
+    default do FastAPI. Hoje isso fica mascarado porque o nginx do VPS serve
+    conteúdo estático na raiz (só `/api/*` chega ao backend) — mas o
+    dashboard vai ocupar esse mesmo slot (ver docs/roadmap.md, item 10), e a
+    própria referência de nginx do repo avisa que trocar o `location /` sem
+    restringir ao prefixo da API publicaria isso.
+    Extraída em função pura para o teste não depender de reconstruir o `app`
+    com settings diferentes — só chama isto duas vezes.
+    """
+    if debug:
+        return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
+# Instância principal do FastAPI — /docs, /redoc e /openapi.json só existem
+# com DEBUG=True (default é False — ver app/core/config.py).
 app = FastAPI(
     title=settings.APP_NAME,
     description=(
@@ -26,6 +44,7 @@ app = FastAPI(
         "Combina engine de regras determinístico com camada de IA (Gemini)."
     ),
     version="1.0.0",
+    **_docs_urls(settings.DEBUG),
 )
 
 # CORS — origens permitidas vêm do .env (CORS_ORIGINS) para facilitar

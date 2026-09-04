@@ -261,23 +261,67 @@ export async function listarCampanhasSalvas(): Promise<CampaignVM[] | null> {
 }
 
 /**
- * Salva (cria ou atualiza) uma campanha. Devolve o id do servidor, ou `null`
- * se não foi possível salvar — nesse caso a campanha continua só no navegador.
+ * Por que `salvarCampanha` não conseguiu salvar.
+ *
+ * `permanente` é a distinção que faltava (auditoria de rede, 2026-09-03,
+ * achado A3): falha TRANSITÓRIA (rede caída, servidor fora do ar, 500, 501 —
+ * persistência desligada é config esperada, não erro) vale a pena retentar
+ * na próxima abertura, exatamente como já acontecia. Falha PERMANENTE (413 —
+ * payload grande demais) nunca vai ter sucesso sozinha: antes, ela caía no
+ * mesmo `null` que a transitória, e o laço de sincronização (`App.tsx`)
+ * retentava pra sempre, sem jamais avisar o usuário de que aquela campanha
+ * nunca sairia do navegador dele.
+ *
+ * Revisão do Opus (2026-09-04), achado R1: 507 (base do servidor cheia) foi
+ * classificado como PERMANENTE na primeira versão desta correção — errado.
+ * É estado do SERVIDOR, não da campanha: alguém libera espaço (a própria
+ * Home tem botão de apagar) e a MESMA campanha, sem mudar nada, passaria a
+ * caber. Marcar como permanente trocava "retenta pra sempre em silêncio"
+ * (o bug original) por "nunca mais tenta, mesmo depois de resolvido" — uma
+ * regressão de consistência eventual, provada ao vivo: liberar espaço no
+ * servidor e reenviar o MESMO payload passa a responder 200. 507 agora é
+ * `permanente: false` (o laço de sync continua retentando) com um `aviso`
+ * pra informar o usuário sem bloquear a recuperação automática.
  */
-export async function salvarCampanha(vm: CampaignVM): Promise<number | null> {
+export type ResultadoSalvar =
+  | { ok: true; id: number }
+  | { ok: false; permanente: false; aviso?: string }
+  | { ok: false; permanente: true; explicacao: string }
+
+/**
+ * Salva (cria ou atualiza) uma campanha.
+ *
+ * `vm.clientId` (gerado e persistido ANTES desta chamada — ver
+ * `lib/store.ts:garantirClientId`) viaja no payload para o servidor
+ * reconhecer um reenvio da MESMA campanha como atualização, não como cópia
+ * nova (achado A4: sem isto, uma resposta perdida depois do servidor já ter
+ * gravado — abort do timeout, queda de rede no meio do 200 — faz a próxima
+ * abertura inserir a campanha de novo).
+ */
+export async function salvarCampanha(vm: CampaignVM): Promise<ResultadoSalvar> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/campaigns`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...donoHeaders() },
-      body: JSON.stringify({ payload: vm, id: vm.serverId ?? null }),
+      body: JSON.stringify({ payload: vm, id: vm.serverId ?? null, client_id: vm.clientId ?? null }),
       signal: AbortSignal.timeout(TIMEOUT_MS)
     })
-    if (!res.ok) return null
+
+    if (res.status === 413) {
+      return { ok: false, permanente: true, explicacao: "Campanha grande demais para o servidor aceitar." }
+    }
+    if (res.status === 507) {
+      // Não é `permanente`: é a base do servidor cheia, não um problema
+      // desta campanha — continua elegível pro laço de sync retentar assim
+      // que alguém liberar espaço (R1).
+      return { ok: false, permanente: false, aviso: "A base do servidor está cheia — fale com quem administra." }
+    }
+    if (!res.ok) return { ok: false, permanente: false }
 
     const salva = (await res.json()) as { id?: number }
-    return typeof salva.id === "number" ? salva.id : null
+    return typeof salva.id === "number" ? { ok: true, id: salva.id } : { ok: false, permanente: false }
   } catch {
-    return null
+    return { ok: false, permanente: false }
   }
 }
 

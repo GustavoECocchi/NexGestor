@@ -173,6 +173,34 @@ export function CampaignCard({
         </div>
       </div>
 
+      {/* Achado A3 da auditoria de rede (2026-09-03): antes, uma falha
+          PERMANENTE de sincronização (413, payload grande demais) era
+          retentada em silêncio pra sempre, sem o usuário nunca saber que
+          aquela campanha específica jamais sairia do navegador dele.
+          `syncFalhouPermanente` só existe quando o laço de sincronização
+          (`App.tsx`) já desistiu de vez — SÓ pra causas do conteúdo da
+          campanha, nunca pra 507 (ver abaixo). */}
+      {c.syncFalhouPermanente && (
+        <div className="card-sync-erro" role="alert">
+          <IconAlert />
+          <span>Não sincronizada: {c.syncFalhouPermanente}</span>
+        </div>
+      )}
+
+      {/* Achado R1 (revisão do Opus, 2026-09-04): 507 (base do servidor
+          cheia) é estado do SERVIDOR, não desta campanha — classificá-lo
+          como falha permanente (a primeira versão do A3) travava a
+          campanha pra sempre mesmo depois de alguém liberar espaço.
+          `syncAviso` informa sem bloquear: o laço de sync continua
+          retentando, e o aviso some sozinho assim que uma tentativa der
+          certo (`marcarComoSalva` limpa o campo). */}
+      {c.syncAviso && (
+        <div className="card-sync-aviso" role="status">
+          <IconAlert />
+          <span>Ainda não sincronizada: {c.syncAviso} Tentando de novo automaticamente.</span>
+        </div>
+      )}
+
       {/* Status: o elemento dominante do card. Ícone + rótulo grande respondem
           "escalável ou não" de relance, sem precisar ler número nenhum. */}
       <div className="card-status" style={{ color: s.color }}>

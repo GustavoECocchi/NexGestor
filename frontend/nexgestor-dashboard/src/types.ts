@@ -249,4 +249,51 @@ export interface CampaignVM {
    * enquanto o servidor estava fora, ou persistência desligada).
    */
   serverId?: number
+  /**
+   * Identificador gerado no navegador (`crypto.randomUUID()`), estável por
+   * campanha, enviado em toda tentativa de `POST /campaigns` (`lib/api.ts`).
+   *
+   * Existe pra tornar o salvamento idempotente (auditoria de rede,
+   * 2026-09-03, achado A4): sem ele, uma resposta perdida DEPOIS do servidor
+   * já ter gravado — abort do timeout, queda de rede no meio do 200 — faz o
+   * cliente achar que falhou e tentar de novo na próxima abertura, e o
+   * servidor não tem como saber que é a MESMA campanha. Gerado uma única vez
+   * por `lib/store.ts:garantirClientId`, persistido ANTES do fetch (pra
+   * sobreviver a um reload no meio do envio) e só relevante enquanto
+   * `serverId` está ausente — depois que a campanha tem `serverId`, os
+   * reenvios já são update-by-id, que já era idempotente.
+   */
+  clientId?: string
+  /**
+   * Motivo pelo qual esta campanha NUNCA vai conseguir sincronizar sozinha —
+   * ausente enquanto a falha é transitória (rede, servidor fora do ar, base
+   * cheia: essas continuam sendo retentadas a cada abertura, como sempre
+   * foi — ver `syncAviso` pra base cheia especificamente).
+   *
+   * Existe porque `salvarCampanha` (`lib/api.ts`) costumava colapsar TODA
+   * falha em `null` (auditoria de rede, 2026-09-03, achado A3): 413 (payload
+   * grande demais) nunca vai ter sucesso sozinho — nenhuma retentativa muda
+   * o tamanho do payload —, mas o laço de sincronização (`App.tsx`) retentava
+   * pra sempre, e o usuário nunca era avisado de que aquela campanha
+   * específica jamais sairia do navegador dele.
+   *
+   * SÓ para causas ligadas ao CONTEÚDO desta campanha (hoje, só 413). Um
+   * estado do SERVIDOR (base cheia) não entra aqui — ver `syncAviso`.
+   */
+  syncFalhouPermanente?: string
+  /**
+   * Aviso da tentativa de sincronização mais recente — a campanha CONTINUA
+   * elegível pro laço de sync retentar, diferente de `syncFalhouPermanente`.
+   *
+   * Existe porque a primeira versão da correção do achado A3 (revisão do
+   * Opus, 2026-09-04, achado R1) classificou 507 (base do servidor cheia)
+   * como falha PERMANENTE — errado: é estado do servidor, não desta
+   * campanha. Alguém libera espaço (a Home tem botão de apagar) e a MESMA
+   * campanha passaria a caber, mas `syncFalhouPermanente` já tinha tirado
+   * ela do laço pra sempre, sem caminho de volta. `syncAviso` informa o
+   * usuário SEM bloquear a recuperação automática: é atualizado (ou limpo,
+   * virando `undefined`) a cada tentativa — nunca acumula um aviso velho
+   * depois que a causa mudou ou a campanha sincronizou com sucesso.
+   */
+  syncAviso?: string
 }

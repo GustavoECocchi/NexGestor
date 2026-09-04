@@ -140,13 +140,28 @@ server {
         add_header Access-Control-Allow-Origin      $http_origin always;
         add_header Access-Control-Allow-Credentials true          always;
         # Methods/Headers são obrigatórios porque o PREFLIGHT também é contado
-        # pelo limite. A extensão manda Content-Type: application/json, que não
-        # é "safelisted", então cada análise vira OPTIONS + POST — duas
+        # pelo limite. O dashboard manda Content-Type: application/json (não é
+        # "safelisted") E o header X-Nex-Dono em toda chamada de campanhas
+        # salvas — cada uma dessas rotas vira OPTIONS + método, duas
         # requisições contra a cota. Se quem for barrado for o OPTIONS, uma
         # resposta 429 sem estes dois cabeçalhos reprova o preflight e o erro
         # volta a chegar como "Failed to fetch".
-        add_header Access-Control-Allow-Methods     "POST, GET, OPTIONS" always;
-        add_header Access-Control-Allow-Headers     "content-type"       always;
+        #
+        # ⚠️ Auditoria de rede (2026-09-03), achado A2: até esta correção, o
+        #    bloco só listava "content-type" e "POST, GET, OPTIONS" — herdado
+        #    de quando só a extensão existia (sem X-Nex-Dono nem DELETE).
+        #    Aplicar o bloco antigo como estava faria um 429 durante o limite
+        #    de requisições reprovar o preflight de QUALQUER chamada a
+        #    /campaigns (listar, salvar, apagar), porque o header ou o método
+        #    não estariam na allowlist do próprio erro — o mesmo bug que este
+        #    bloco existe para evitar, só que num caminho ele não cobria.
+        #    Diferente do bloco original (validado contra nginx 1.24 real em
+        #    14/08/2026), esta correção NÃO foi reexecutada contra nginx de
+        #    verdade — ambiente sem o binário disponível. Revalidar antes de
+        #    aplicar em produção: forçar 429 em /campaigns e conferir que a
+        #    resposta traz Access-Control-Allow-Headers com x-nex-dono.
+        add_header Access-Control-Allow-Methods     "GET, POST, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers     "content-type, x-nex-dono"  always;
         return 429 '{"detail":"rate_limited"}';
     }
 

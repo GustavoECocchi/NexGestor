@@ -138,6 +138,111 @@ class TestCrud:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# client_id — idempotência (achado A4 da auditoria de rede, 03/09/2026)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestClientId:
+    """
+    Sem `client_id`, uma resposta perdida DEPOIS do servidor já ter gravado —
+    abort de timeout, queda de rede no meio do 200 — faz o cliente reenviar o
+    mesmo payload achando que é uma campanha nova. `client_id` fecha isso:
+    reenviar com o MESMO valor atualiza a linha existente em vez de duplicar.
+    """
+
+    def test_reenviar_o_mesmo_client_id_atualiza_em_vez_de_duplicar(self, base):
+        r1 = client.post("/api/v1/campaigns", json={"payload": VM, "client_id": "c-1"})
+        assert r1.status_code == 200
+        id1 = r1.json()["id"]
+
+        atualizado = {**VM, "score": 91}
+        r2 = client.post("/api/v1/campaigns", json={"payload": atualizado, "client_id": "c-1"})
+        assert r2.status_code == 200
+        assert r2.json()["id"] == id1  # mesma linha, não uma segunda
+
+        lista = client.get("/api/v1/campaigns").json()["campanhas"]
+        assert len(lista) == 1
+        assert lista[0]["payload"]["score"] == 91
+
+    def test_client_id_diferente_cria_linha_nova_mesmo_com_payload_igual(self, base):
+        client.post("/api/v1/campaigns", json={"payload": VM, "client_id": "c-1"})
+        client.post("/api/v1/campaigns", json={"payload": VM, "client_id": "c-2"})
+
+        assert len(client.get("/api/v1/campaigns").json()["campanhas"]) == 2
+
+    def test_mesmo_client_id_em_donos_diferentes_nao_colide(self, base):
+        """O índice único é (dono, client_id) — não client_id sozinho."""
+        r_ana = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"n": 1}, "client_id": "mesmo-id"},
+            headers={"X-Nex-Dono": "ana"},
+        )
+        r_bruno = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {"n": 2}, "client_id": "mesmo-id"},
+            headers={"X-Nex-Dono": "bruno"},
+        )
+        assert r_ana.status_code == 200 and r_bruno.status_code == 200
+        assert r_ana.json()["id"] != r_bruno.json()["id"]
+
+    def test_sem_client_id_continua_inserindo_sempre_de_novo(self, base):
+        """Comportamento anterior preservado: sem client_id, nada muda."""
+        client.post("/api/v1/campaigns", json={"payload": VM})
+        client.post("/api/v1/campaigns", json={"payload": VM})
+
+        assert len(client.get("/api/v1/campaigns").json()["campanhas"]) == 2
+
+    def test_reenvio_por_client_id_nao_conta_contra_o_teto_de_campanhas_novas(self, base, monkeypatch):
+        """
+        O ponto inteiro do achado A3 (retry automático em `App.tsx`) só
+        funciona se reenviar uma campanha JÁ salva não puder nunca esbarrar
+        no teto — senão o retry vira o próprio motivo da falha.
+        """
+        novo_id = client.post(
+            "/api/v1/campaigns", json={"payload": {"n": 1}, "client_id": "c-1"}
+        ).json()["id"]
+        monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)  # base já está no teto
+
+        r = client.post(
+            "/api/v1/campaigns", json={"payload": {"n": 2}, "client_id": "c-1"}
+        )
+        assert r.status_code == 200
+        assert r.json()["id"] == novo_id
+
+    def test_client_id_novo_continua_barrado_pelo_teto(self, base, monkeypatch):
+        """Contraprova: a otimização acima não pode virar brecha do teto."""
+        client.post("/api/v1/campaigns", json={"payload": {"n": 1}, "client_id": "c-1"})
+        monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
+
+        r = client.post(
+            "/api/v1/campaigns", json={"payload": {"n": 2}, "client_id": "c-2-nunca-visto"}
+        )
+        assert r.status_code == 507
+
+    def test_base_criada_antes_do_client_id_existir_migra_sem_erro(self, base):
+        """
+        Simula uma base já em produção quando esta coluna não existia —
+        mesmo espírito do teste que já cobre a migração de `dono`.
+        """
+        with sqlite3.connect(base) as conn:
+            conn.execute(
+                "CREATE TABLE campanhas (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " payload TEXT NOT NULL, dono TEXT, criado_em TEXT NOT NULL,"
+                " atualizado_em TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO campanhas (payload, dono, criado_em, atualizado_em)"
+                " VALUES ('{\"n\":0}', 'equipe-teste', '2026-01-01', '2026-01-01')"
+            )
+            conn.commit()
+
+        r = client.post("/api/v1/campaigns", json={"payload": {"n": 1}, "client_id": "c-1"})
+        assert r.status_code == 200
+
+        lista = client.get("/api/v1/campaigns").json()["campanhas"]
+        assert len(lista) == 2  # a linha antiga não foi tocada nem perdida
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Isolamento por dono — substitui a base compartilhada de 14/08/2026
 # ─────────────────────────────────────────────────────────────────────────────
 

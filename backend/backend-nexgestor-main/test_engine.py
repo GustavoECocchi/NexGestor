@@ -1007,8 +1007,13 @@ class TestAIServiceHelpers:
 
         class FakeGenai:
             class Client:
-                def __init__(self, api_key=None):
+                def __init__(self, api_key=None, http_options=None):
                     calls.append(api_key)
+
+        # Módulo fake também precisa expor `types.HttpOptions` — achado A5
+        # (2026-09-03) passou a construir o client com `http_options=...`.
+        fake_types = MagicMock()
+        FakeGenai.types = fake_types
 
         ai._client = None
         ai._client_key = None

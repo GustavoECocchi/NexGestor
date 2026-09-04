@@ -175,7 +175,7 @@ describe("listarCampanhasSalvas — degrada sem derrubar a UI", () => {
 describe("salvarCampanha", () => {
   it("devolve o id do servidor", async () => {
     fetchMock.mockResolvedValue(resposta(200, { id: 12 }))
-    await expect(salvarCampanha(vm())).resolves.toBe(12)
+    await expect(salvarCampanha(vm())).resolves.toEqual({ ok: true, id: 12 })
   })
 
   it("manda o serverId quando é atualização", async () => {
@@ -192,16 +192,72 @@ describe("salvarCampanha", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).id).toBeNull()
   })
 
-  it("falha de rede vira null — a campanha continua só no navegador", async () => {
-    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"))
-    await expect(salvarCampanha(vm())).resolves.toBeNull()
+  // Achado A4 (auditoria de rede, 2026-09-03): sem o client_id, uma resposta
+  // perdida DEPOIS do servidor já ter gravado faz a próxima tentativa
+  // inserir a campanha de novo — o servidor não tem como saber que é a
+  // MESMA campanha vindo de novo.
+  it("manda client_id quando a campanha já tem um (garantirClientId gera antes)", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { id: 1 }))
+    await salvarCampanha(vm({ clientId: "abc-123" }))
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client_id).toBe("abc-123")
   })
 
-  it("base cheia (507) ou payload grande (413) também viram null, sem lançar", async () => {
-    for (const status of [507, 413, 501, 500]) {
+  it("manda client_id null quando a campanha ainda não tem um", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { id: 1 }))
+    await salvarCampanha(vm())
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client_id).toBeNull()
+  })
+
+  it("falha de rede é transitória — a campanha continua só no navegador, sem lançar", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"))
+    await expect(salvarCampanha(vm())).resolves.toEqual({ ok: false, permanente: false })
+  })
+
+  // Achado A3 (auditoria de rede, 2026-09-03): antes, TODA falha (transitória
+  // ou permanente) colapsava no mesmo `null`, e o laço de sincronização
+  // (`App.tsx`) retentava as duas pra sempre — inclusive as que nunca teriam
+  // como dar certo sozinhas.
+  it("500/501/503/504 são transitórias — vale a pena retentar na próxima abertura", async () => {
+    for (const status of [500, 501, 503, 504]) {
       fetchMock.mockResolvedValue(resposta(status))
-      await expect(salvarCampanha(vm())).resolves.toBeNull()
+      await expect(salvarCampanha(vm()), `status ${status}`).resolves.toEqual({ ok: false, permanente: false })
     }
+  })
+
+  it("413 (payload grande demais) é permanente, com explicação pro usuário", async () => {
+    fetchMock.mockResolvedValue(resposta(413))
+    const r = await salvarCampanha(vm())
+    expect(r.ok).toBe(false)
+    expect(r).toMatchObject({ permanente: true })
+    if (!r.ok && r.permanente) expect(r.explicacao).toMatch(/grande demais/i)
+  })
+
+  // Revisão do Opus (2026-09-04), achado R1: a primeira versão desta
+  // correção classificava 507 como PERMANENTE — errado. Base cheia é estado
+  // do SERVIDOR, não desta campanha: alguém libera espaço e a MESMA
+  // campanha passaria a caber. Marcar como permanente trocava "retenta pra
+  // sempre em silêncio" (o bug original) por "nunca mais tenta, mesmo
+  // depois de resolvido" — uma regressão nova. 507 tem que continuar
+  // elegível pro laço de sync retentar (`permanente: false`), só que com um
+  // aviso pro usuário em vez do silêncio total.
+  it("507 (base cheia) NÃO é permanente — continua elegível pra retentar, com aviso", async () => {
+    fetchMock.mockResolvedValue(resposta(507))
+    const r = await salvarCampanha(vm())
+    expect(r.ok).toBe(false)
+    expect(r).toMatchObject({ permanente: false })
+    if (!r.ok && !r.permanente) expect(r.aviso).toMatch(/cheia/i)
+  })
+
+  it("falhas silenciosas (rede, 500) NÃO carregam aviso — só 507 tem", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    const semRede = await salvarCampanha(vm())
+    expect(semRede).toEqual({ ok: false, permanente: false })
+
+    fetchMock.mockResolvedValueOnce(resposta(500))
+    const erro500 = await salvarCampanha(vm())
+    expect(erro500).toEqual({ ok: false, permanente: false })
   })
 })
 
