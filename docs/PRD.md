@@ -128,7 +128,7 @@ Cada cenário é uma função pura que recebe métricas + metas e devolve um `Sc
 | H | Escala Horizontal | Frequência >2.5, CPA ok, sem fadiga plena | 2 |
 | I | Learning Phase Hell | `learning_phase=True` **ou** conv. semanais < mínimo (default 50) | 1 |
 | J | Overspending | CPM > teto, LP saudável, CPA ainda estourado | 2 |
-| K | Canibalização de Retargeting | ROAS >10× **e** frequência > crítica (default 6) | 1 |
+| K | Reimpacto de Público Ineficiente | ROAS >10× **e** frequência > crítica (default 6) | 1 |
 | L | Gasto sem Retorno | Zero conversões com gasto relevante (acima do teto de CPA, ou 100+ cliques) | 1 |
 | M | Amostra Insuficiente | 0 < conversões < 10 | 3 |
 | N | Vazamento Clique→Página | LP views <70% dos cliques (mínimo 50 cliques) | 1 se <50%, senão 2 |
@@ -179,7 +179,7 @@ Após a supressão, os cenários são ordenados por prioridade (1 primeiro) e `p
 | CTR Link | 0.12 | | CPL | 0.02 |
 | Hook Rate | 0.10 | | CTR Todos | 0.00 (informativo) |
 | Hold Rate | 0.08 | | Conversões/semana | 0.00 (informativo) |
-| Conversão LP | 0.08 | | | |
+| Conversão na página | 0.08 | | | |
 | Frequência | 0.07 | | | |
 
 - **`overall_score`** (0–100): média ponderada **só das métricas presentes**. Se nenhuma tem peso, retorna 50 (neutro).

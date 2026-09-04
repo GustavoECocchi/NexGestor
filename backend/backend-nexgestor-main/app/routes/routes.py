@@ -84,7 +84,7 @@ _SCENARIO_CATALOG: list[dict] = [
     },
     {
         "code": ScenarioCode.LP_MISMATCH,
-        "title": "Cenário D — LP Mismatch",
+        "title": "Cenário D — Desalinhamento com Landing Page",
         "trigger": "CTR Link > 1.5x meta E LP conv. < min_lp_conversion_rate",
         "metrics": ["ctr_link", "lp_conversion_rate"],
         "priority": "1 crítico",
@@ -138,7 +138,7 @@ _SCENARIO_CATALOG: list[dict] = [
     },
     {
         "code": ScenarioCode.RETARGETING_CANNIBAL,
-        "title": "Cenário K — Canibalização de Retargeting",
+        "title": "Cenário K — Reimpacto de Público Ineficiente",
         "trigger": "ROAS > max(10x, min_roas) E frequency > max_frequency_critical (default 6)",
         "metrics": ["roas", "frequency", "ctr_link"],
         "priority": "1 crítico",

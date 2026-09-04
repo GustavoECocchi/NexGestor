@@ -559,3 +559,45 @@ class TestContratoAPI:
                 "metric_evaluations", "primary_action", "ai_insights",
             }
             assert set(body.keys()) == campos, f"Resposta inconsistente para {payload_fn.__name__}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VOCABULÁRIO — engine e prompt da IA precisam nomear a MESMA métrica igual
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestVocabularioDoPrompt:
+    """
+    Achado da revisão da PR7: o rótulo visível de uma métrica existe em DUAS
+    tabelas independentes — `_METRIC_EVAL_CONFIG` (o que o engine devolve e a
+    UI exibe) e `_METRIC_LABELS` (o que a IA lê no prompt). Nada as amarra, e
+    a IA gera `extra_scenarios`/`contextual_insights` que o dashboard mostra ao
+    usuário: se as duas divergirem, a mesma métrica ganha dois nomes na mesma
+    tela — um vindo do engine, outro vindo da IA.
+
+    Sem este teste a divergência é silenciosa: nenhuma suíte lê o prompt.
+    """
+
+    def _label_do_engine(self, field: str) -> str:
+        from app.service.service import _METRIC_EVAL_CONFIG
+        return next(label for f, label, *_ in _METRIC_EVAL_CONFIG if f == field)
+
+    def _label_do_prompt(self, field: str) -> str:
+        from app.service.prompts import _METRIC_LABELS
+        return _METRIC_LABELS[field][0]
+
+    @pytest.mark.parametrize("field", [
+        "hook_rate", "hold_rate", "ctr_link", "cpl", "roas", "cpc",
+        "lp_conversion_rate",
+    ])
+    def test_engine_e_prompt_usam_o_mesmo_rotulo(self, field):
+        assert self._label_do_prompt(field) == self._label_do_engine(field)
+
+    def test_prompt_nao_ensina_a_IA_um_nome_de_cenario_que_o_engine_nao_usa(self):
+        """
+        A lista de "padrões clássicos" do system prompt é vocabulário que a IA
+        imita. Nomear ali um cenário com jargão que a PR7 removeu do título
+        devolve o termo ao usuário pela via da IA.
+        """
+        from app.service.prompts import SYSTEM_PROMPT
+        assert "Canibalização de Retargeting" not in SYSTEM_PROMPT
+        assert "Reimpacto de Público" in SYSTEM_PROMPT

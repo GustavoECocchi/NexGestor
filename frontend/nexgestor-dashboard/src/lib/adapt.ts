@@ -56,7 +56,7 @@ function fmtValue(metric: string, v: number | null): string {
   if (metric === "ROAS") return `${dec(v)}x`
   if (metric === "Frequência") return dec(v)
   if (metric === "Conversões/semana") return String(Math.round(v))
-  return `${dec(v)}%` // Hook, Hold, CTRs, Conversão LP
+  return `${dec(v)}%` // Hook, Hold, CTRs, Conversão na página
 }
 
 function fmtMetric(ev: MetricEvaluation): string {

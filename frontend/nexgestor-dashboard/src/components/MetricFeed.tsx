@@ -9,7 +9,7 @@ import type { CampaignVM, Tile } from "~types"
 // dessas duas listas cai no Contexto, sem ordem específica além da que o
 // engine já avaliou.
 const RESULT_LABELS = ["CPA", "ROAS", "Investimento", "Receita"]
-const FUNNEL_LABELS = ["Hook Rate", "Hold Rate", "CTR Link", "Conversão LP"]
+const FUNNEL_LABELS = ["Hook Rate", "Hold Rate", "CTR Link", "Conversão na página"]
 
 // Achado #1 da auditoria de vocabulário (fase-5, o de maior impacto): fora do
 // formulário de criação, nenhum rótulo de métrica tinha explicação — alguém
@@ -26,7 +26,7 @@ const METRIC_HINT: Record<string, string> = {
   "Hold Rate": "De quem começou a assistir, quantos ficaram até a metade — mede se o anúncio segura o interesse.",
   "CTR Link": "De quem viu o anúncio, quantos clicaram para ir ao seu site/página.",
   "CTR Todos": "Como o CTR link, mas conta qualquer clique no anúncio (curtir, comentar etc.), não só o link.",
-  "Conversão LP": "Das pessoas que abriram sua página de destino, quantas converteram.",
+  "Conversão na página": "Das pessoas que abriram sua página de destino, quantas converteram.",
   CPM: "Quanto você paga a cada 1.000 exibições do anúncio.",
   CPC: "Quanto você paga, em média, cada vez que alguém clica no anúncio.",
   CPL: "Quanto custou, em média, cada lead (contato captado) gerado.",
@@ -34,17 +34,36 @@ const METRIC_HINT: Record<string, string> = {
   "Conversões/semana": "Quantas conversões essa campanha costuma gerar por semana."
 }
 
+// Rótulos aposentados → rótulo atual. Uma campanha é persistida como
+// `CampaignVM` JÁ ADAPTADO (`salvarCampanha` grava `payload: vm`,
+// `listarCampanhasSalvas` devolve `{...l.payload}` sem reprocessar, e o
+// localStorage guarda o mesmo objeto), então o RÓTULO faz parte do formato
+// salvo — não existe reanálise que migre o dado antigo. Sem esta canonização,
+// renomear uma métrica joga toda campanha analisada antes da renomeação para
+// fora do agrupamento (o tile perde a barra do funil) e para fora do
+// `METRIC_HINT` (perde a explicação). Canonizamos na leitura, sem reescrever
+// o que já está salvo.
+const LEGACY_LABEL: Record<string, string> = {
+  "Conversão LP": "Conversão na página" // fase-5, PR7
+}
+
+function canonico(t: Tile): Tile {
+  const atual = LEGACY_LABEL[t[0]]
+  return atual ? ([atual, ...t.slice(1)] as Tile) : t
+}
+
 function porRotulo(tiles: Tile[], label: string): Tile | undefined {
   return tiles.find((t) => t[0] === label)
 }
 
 export function MetricFeed({ c }: { c: CampaignVM }) {
-  const comMetaPadrao = c.tiles.filter((t) => t[4] === "sistema").length
+  const tiles = c.tiles.map(canonico)
+  const comMetaPadrao = tiles.filter((t) => t[4] === "sistema").length
 
-  const resultTiles = RESULT_LABELS.map((l) => porRotulo(c.tiles, l)).filter((t): t is Tile => !!t)
-  const funnelTiles = FUNNEL_LABELS.map((l) => porRotulo(c.tiles, l)).filter((t): t is Tile => !!t)
+  const resultTiles = RESULT_LABELS.map((l) => porRotulo(tiles, l)).filter((t): t is Tile => !!t)
+  const funnelTiles = FUNNEL_LABELS.map((l) => porRotulo(tiles, l)).filter((t): t is Tile => !!t)
   const usados = new Set([...resultTiles, ...funnelTiles].map((t) => t[0]))
-  const contextTiles = c.tiles.filter((t) => !usados.has(t[0]))
+  const contextTiles = tiles.filter((t) => !usados.has(t[0]))
 
   return (
     <>
@@ -147,6 +166,10 @@ function ContextGrid({ tiles }: { tiles: Tile[] }) {
         <div className="context-card" key={t[0]} style={{ animationDelay: `${i * 55}ms` }}>
           <div className="ck">{t[0]}{METRIC_HINT[t[0]] && <FieldHint text={METRIC_HINT[t[0]]} />}</div>
           <div className="cv" style={{ color: t[2] }}>{t[1]}</div>
+          {/* Só o estado "ausente" (meta não definida, ex. CPL) mostra a nota
+              aqui — notas normais de diagnóstico continuam reservadas pra
+              Faixa/Funil, pra não virar uma segunda seção de diagnóstico. */}
+          {t[4] === "ausente" && t[3] && <div className="cd">{t[3]}</div>}
         </div>
       ))}
     </div>

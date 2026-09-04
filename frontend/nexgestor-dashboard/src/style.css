@@ -317,6 +317,7 @@ body::after{
 .context-card{background:var(--panel-2);border-radius:10px;padding:11px 13px;--rise-from:6px;animation:rise .45s cubic-bezier(.2,.7,.3,1) backwards}
 .context-card .ck{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
 .context-card .cv{font-family:var(--font-mono);font-weight:500;font-size:15px}
+.context-card .cd{font-size:11px;margin-top:6px;color:var(--muted);line-height:1.45}
 
 /* `FieldHint` nasceu ao lado de rótulo de 12-13px (formulário) — aqui os
    rótulos são 9,5-11px, o ícone de 15px ficaria grande demais. Encolhido só

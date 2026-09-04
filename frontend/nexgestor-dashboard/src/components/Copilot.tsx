@@ -36,6 +36,26 @@ export function norm(s: string) {
 }
 
 /**
+ * Glosa curta por sigla — fase-5, PR4 (critério §6: "nenhuma resposta do
+ * Copiloto usa sigla sem contexto que já apareça na mesma frase").
+ *
+ * O Copiloto é um chat: não existe rótulo onde pendurar um `FieldHint` como o
+ * `MetricFeed` faz desde o PR3, então a explicação entra na própria frase. As
+ * siglas continuam sendo CPA/ROAS/CTR — são o vocabulário do Ads Manager e
+ * traduzi-las criaria um segundo termo pra decorar (§3, regra 1); o que muda é
+ * a frase ao redor passar a se sustentar sozinha pra quem não conhece o termo.
+ *
+ * Uma redação por termo, reaproveitada por todas as respostas — mesma
+ * disciplina do `METRIC_HINT`: nunca duas versões do mesmo conceito.
+ */
+const GLOSA: Record<string, string> = {
+  CPA: "quanto custou, em média, cada conversão",
+  ROAS: "quanto voltou em receita para cada R$ 1 investido",
+  "CTR Link": "de quem viu o anúncio, quantos clicaram para ir ao seu site",
+  frequência: "quantas vezes, em média, a mesma pessoa viu o anúncio"
+}
+
+/**
  * Resposta padrão para métrica que a campanha não tem.
  *
  * Antes o adapter preenchia `0` no lugar do dado ausente e o Copiloto afirmava
@@ -43,7 +63,7 @@ export function norm(s: string) {
  * de dado medido. Preferimos dizer que não temos o dado e indicar como enviá-lo.
  */
 function semDado(rotulo: string, comoEnviar: string): string {
-  return `Esta campanha não tem <b>${rotulo}</b> registrado — a análise foi feita sem esse dado. Envie ${comoEnviar} numa nova análise para eu conseguir responder.`
+  return `Esta campanha não tem <b>${rotulo}</b> registrado (${rotulo} é ${GLOSA[rotulo]}). A análise foi feita sem esse dado — envie ${comoEnviar} numa nova análise para eu conseguir responder.`
 }
 
 export function buildReply(question: string, c: CampaignVM): string {
@@ -52,17 +72,17 @@ export function buildReply(question: string, c: CampaignVM): string {
 
   if (/\bcpa\b|custo por (resultado|venda|aquisic)/.test(q)) {
     if (c.cpaNum == null) return semDado("CPA", "o CPA (ou gasto + conversões)")
-    return `O CPA atual desta campanha é <b>R$ ${c.cpaNum.toFixed(2)}</b>. ${
+    return `O CPA atual desta campanha é <b>R$ ${c.cpaNum.toFixed(2)}</b> — ${GLOSA.CPA}. ${
       sc ? `Isso está ligado ao <b>Cenário ${sc.code} — ${sc.title}</b>: ${sc.root_cause}` : "Está dentro do esperado para as metas configuradas."
     }`
   }
   if (/\broas\b|retorno|receita/.test(q)) {
     if (c.roasNum == null) return semDado("ROAS", "o ROAS da campanha")
-    return `O ROAS médio é <b>${c.roasNum.toFixed(2)}x</b>, com receita de R$ ${c.revenue.toLocaleString("pt-BR")} sobre R$ ${c.invest.toLocaleString("pt-BR")} investidos.`
+    return `O ROAS médio é <b>${c.roasNum.toFixed(2)}x</b> — ${GLOSA.ROAS}. Receita de R$ ${c.revenue.toLocaleString("pt-BR")} sobre R$ ${c.invest.toLocaleString("pt-BR")} investidos.`
   }
   if (/\bctr\b|clique/.test(q)) {
     if (c.ctrNum == null) return semDado("CTR Link", "o CTR Link (ou cliques no link + impressões)")
-    return `O CTR link está em <b>${c.ctrNum.toFixed(2)}%</b>. ${
+    return `O CTR link está em <b>${c.ctrNum.toFixed(2)}%</b> — ${GLOSA["CTR Link"]}. ${
       sc ? `Relacionado ao cenário atual: ${sc.funnel_impact}` : "Sem gargalo de clique identificado no momento."
     }`
   }
@@ -90,7 +110,7 @@ export function buildReply(question: string, c: CampaignVM): string {
     // devolver o veredito por extenso em vez de "Limite de fadiga: 2.8", ler
     // tile[3] aqui duplicava o `veredito` acima e perdia o número real.
     const limite = c.maxFrequencyFatigue ?? 2.8
-    return `A frequência atual é <b>${c.freqNum.toFixed(1)}x</b> por pessoa (limite configurado: ${limite.toFixed(1)}x). ${veredito}`
+    return `A frequência atual é <b>${c.freqNum.toFixed(1)}x</b> por pessoa — ${GLOSA.frequência} (limite configurado: ${limite.toFixed(1)}x). ${veredito}`
   }
   if (/escalar|aumentar.*verba|subir.*orcamento/.test(q)) {
     if (c.status === "BLUE") {
@@ -100,7 +120,7 @@ export function buildReply(question: string, c: CampaignVM): string {
     // é "não dá para afirmar". Dizer "ainda não é o momento" sugeriria que
     // existe um problema medido, quando o que existe é falta de dado.
     if (!sc && c.confidence === "low") {
-      return `Não dá para afirmar com os dados desta análise — a cobertura foi de apenas ${c.coverage ?? 0}%. Não há problema detectado, mas também não há evidência suficiente (frequência, fase de aprendizado, ROAS) para recomendar aumento de verba.`
+      return `Não dá para afirmar com os dados desta análise — a cobertura foi de apenas ${c.coverage ?? 0}%. Não há problema detectado, mas também não há evidência suficiente (frequência, fase de aprendizado e ROAS — ${GLOSA.ROAS}) para recomendar aumento de verba.`
     }
     return `Ainda não é o momento ideal. ${sc ? `Primeiro resolva o <b>Cenário ${sc.code} — ${sc.title}</b>: ${sc.action}` : "Estabilize as métricas antes de aumentar verba."}`
   }

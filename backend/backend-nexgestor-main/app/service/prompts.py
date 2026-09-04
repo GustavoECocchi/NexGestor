@@ -61,7 +61,7 @@ O sistema também conhece padrões clássicos como: Gancho Fraco (Hook Rate baix
 Retenção Baixa (Hold Rate baixo), Click-Bait (CTR Todos alto vs CTR Link baixo), \
 Desalinhamento com Landing Page, Fadiga de Criativo, Lead Frio, Janela de Escala \
 Vertical, Escala Horizontal por fadiga iminente, Learning Phase Hell, Overspending, \
-Canibalização de Retargeting, Gasto sem Retorno (zero conversão), Amostra Insuficiente, \
+Reimpacto de Público Ineficiente (canibalização), Gasto sem Retorno (zero conversão), Amostra Insuficiente, \
 Vazamento entre Clique e Página, Receita Abaixo da Meta com custo sob controle. \
 Use essa profundidade como referência — mas você não está limitado a esses padrões. \
 Detecte QUALQUER coisa relevante nos dados.
@@ -216,7 +216,7 @@ _METRIC_LABELS = {
     "cpa": ("CPA", "R$"),
     "roas": ("ROAS", "x"),
     "landing_page_views": ("LP Views", ""),
-    "lp_conversion_rate": ("Conv. LP", "%"),
+    "lp_conversion_rate": ("Conversão na página", "%"),
     "conversions": ("Conversões", ""),
     "weekly_conversions": ("Conv./semana", ""),
     "frequency": ("Frequência", ""),

@@ -43,7 +43,7 @@ const tilesCompletos: Tile[] = [
   ["Hook Rate", "10,0%", "var(--red)", "Crítico — abertura fraca.", "sistema", 12],
   ["Hold Rate", "8,0%", "var(--red)", "Abandono antes da CTA.", "gestor", 18],
   ["CTR Link", "0,9%", "var(--txt-2)", "Abaixo do esperado.", "sistema", 30],
-  ["Conversão LP", "40,0%", "var(--green)", "LP convertendo bem.", "gestor", 85],
+  ["Conversão na página", "40,0%", "var(--green)", "LP convertendo bem.", "gestor", 85],
   ["CPM", "R$ 20,00", "var(--txt-2)", "Leilão eficiente.", "sistema", 90],
   ["Frequência", "4,0", "var(--red)", "Saturação.", "gestor", 10]
 ]
@@ -79,16 +79,16 @@ describe("MetricFeed — Faixa de resultado", () => {
 describe("MetricFeed — Painel do funil", () => {
   it("renderiza barras só para as 4 métricas do funil presentes, na ordem do funil", () => {
     render(<MetricFeed c={vm(tilesCompletos)} />)
-    const rotulos = screen.getAllByText(/^(Hook Rate|Hold Rate|CTR Link|Conversão LP)$/, { selector: ".fb-lbl" })
+    const rotulos = screen.getAllByText(/^(Hook Rate|Hold Rate|CTR Link|Conversão na página)$/, { selector: ".fb-lbl" })
       .map((e) => e.textContent)
-    expect(rotulos).toEqual(["Hook Rate", "Hold Rate", "CTR Link", "Conversão LP"])
+    expect(rotulos).toEqual(["Hook Rate", "Hold Rate", "CTR Link", "Conversão na página"])
   })
 
   it("altura da barra reflete o score do engine (não um número novo)", () => {
     const { container } = render(<MetricFeed c={vm(tilesCompletos)} />)
     const barras = [...container.querySelectorAll(".funnel-bar")]
     const hook = barras.find((b) => b.querySelector(".fb-lbl")?.textContent === "Hook Rate")
-    const conv = barras.find((b) => b.querySelector(".fb-lbl")?.textContent === "Conversão LP")
+    const conv = barras.find((b) => b.querySelector(".fb-lbl")?.textContent === "Conversão na página")
     expect((hook!.querySelector(".fb-col") as HTMLElement).style.height).toBe("12%")
     expect((conv!.querySelector(".fb-col") as HTMLElement).style.height).toBe("85%")
   })
@@ -99,7 +99,7 @@ describe("MetricFeed — Painel do funil", () => {
   })
 
   it("sem nenhuma métrica de funil, mostra estado vazio em vez de painel em branco", () => {
-    const semFunil = tilesCompletos.filter((t) => !["Hook Rate", "Hold Rate", "CTR Link", "Conversão LP"].includes(t[0]))
+    const semFunil = tilesCompletos.filter((t) => !["Hook Rate", "Hold Rate", "CTR Link", "Conversão na página"].includes(t[0]))
     render(<MetricFeed c={vm(semFunil)} />)
     expect(screen.getByText(/nenhuma métrica de funil/i)).toBeInTheDocument()
   })
@@ -145,6 +145,53 @@ describe("MetricFeed — Métricas de contexto", () => {
     // "CPA" só deve existir uma vez no documento inteiro (Faixa), nunca também no Contexto.
     const cpaNoContexto = container.querySelector(".context-grid")?.textContent?.includes("CPA")
     expect(cpaNoContexto).toBe(false)
+  })
+
+  it("métrica de contexto com origem 'ausente' (meta não definida, ex. CPL) mostra a nota — as demais continuam sem nota", () => {
+    const comCplSemMeta: Tile[] = [
+      ...tilesCompletos,
+      ["CPL", "R$ 12,00", "var(--txt-3)", "Você não definiu uma meta para isso.", "ausente"]
+    ]
+    render(<MetricFeed c={vm(comCplSemMeta)} />)
+    expect(screen.getByText("Você não definiu uma meta para isso.")).toBeInTheDocument()
+    // Confirma que a mudança não vazou nota pras outras métricas de contexto.
+    expect(screen.queryByText("Leilão eficiente.")).not.toBeInTheDocument()
+  })
+})
+
+// Campanhas ficam salvas como `CampaignVM` JÁ ADAPTADO — `salvarCampanha()`
+// manda `payload: vm` e `listarCampanhasSalvas()` devolve `{...l.payload}` sem
+// reprocessar, e o localStorage guarda a mesma coisa. Ou seja: o RÓTULO da
+// métrica (`Tile[0]`) faz parte do formato persistido. Renomear "Conversão LP"
+// para "Conversão na página" (fase-5, PR7) tirou toda campanha analisada antes
+// da renomeação do painel do funil — ela caía no Contexto, sem barra, sem score
+// e sem tooltip. Não há reanálise para migrar esses dados, então o rótulo
+// antigo é canonizado na leitura.
+describe("MetricFeed — campanhas salvas antes da renomeação (fase-5 PR7)", () => {
+  const tilesLegado: Tile[] = tilesCompletos.map((t) =>
+    t[0] === "Conversão na página" ? (["Conversão LP", ...t.slice(1)] as Tile) : t
+  )
+
+  it("tile legado 'Conversão LP' continua no painel do funil, na mesma posição", () => {
+    render(<MetricFeed c={vm(tilesLegado)} />)
+    const rotulos = screen.getAllByText(/./, { selector: ".fb-lbl" }).map((e) => e.textContent)
+    expect(rotulos).toEqual(["Hook Rate", "Hold Rate", "CTR Link", "Conversão na página"])
+  })
+
+  it("tile legado mantém a barra com o score do engine (não vira card de contexto)", () => {
+    const { container } = render(<MetricFeed c={vm(tilesLegado)} />)
+    const conv = [...container.querySelectorAll(".funnel-bar")].find(
+      (b) => b.querySelector(".fb-lbl")?.textContent === "Conversão na página"
+    )
+    expect((conv!.querySelector(".fb-col") as HTMLElement).style.height).toBe("85%")
+    expect(container.querySelector(".context-grid")?.textContent).not.toContain("Conversão")
+  })
+
+  it("tile legado mantém a explicação da métrica (o achado #1 da auditoria)", () => {
+    render(<MetricFeed c={vm(tilesLegado)} />)
+    expect(
+      screen.getByRole("button", { name: /ajuda: das pessoas que abriram sua página de destino/i })
+    ).toBeInTheDocument()
   })
 })
 

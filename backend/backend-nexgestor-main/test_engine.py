@@ -212,6 +212,30 @@ class TestCenarioD:
         assert "R$" in cenario.root_cause
 
 
+class TestVocabularioCenarioD:
+    """
+    Achado da revisão da PR7 (fora do escopo original): o catálogo público
+    anunciava "Cenário D — LP Mismatch" — abreviação solta + jargão em inglês
+    num título visível — enquanto a análise já usava "Desalinhamento com
+    Landing Page". Mesmo defeito do Cenário K (P2), instância diferente.
+    """
+
+    def test_catalogo_e_analise_nomeiam_o_cenario_da_mesma_forma(self):
+        import re
+        from app.routes.routes import _SCENARIO_CATALOG
+        r, codes = run(Metrics(
+            impressions=80000, spend=2000,
+            link_clicks=2000, conversions=5,
+            landing_page_views=1900, reach=65000,
+        ))
+        assert ScenarioCode.LP_MISMATCH in codes
+        cenario = next(s for s in r.scenarios if s.code == ScenarioCode.LP_MISMATCH)
+        visivel = re.sub(r"\s*\(.*\)\s*$", "", cenario.title)
+        verbete = next(s for s in _SCENARIO_CATALOG if s["code"] == ScenarioCode.LP_MISMATCH)
+        assert visivel == verbete["title"]
+        assert "LP" not in verbete["title"]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CENÁRIO E — Fadiga de Criativo
 # ─────────────────────────────────────────────────────────────────────────────
@@ -451,8 +475,59 @@ class TestCenarioJ:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CENÁRIO K — Canibalização de Retargeting
+# CENÁRIO K — Canibalização por reimpacto de público
 # ─────────────────────────────────────────────────────────────────────────────
+
+class TestVocabularioCenarioK:
+    """
+    Fase-5, PR7: "Retargeting" é jargão de agência (não aparece em painel nativo
+    de plataforma nenhuma) e saiu de todo TÍTULO visível. O contrato é sobre o
+    título, não sobre o texto inteiro: o PRD pede explicitamente para MANTER
+    "retargeting" no corpo explicativo, que é lido por quem já opera a conta.
+
+    O cenário K tem DOIS produtores de título — o catálogo público
+    (`GET /api/v1/campaign/scenarios`) e a própria análise. Eles são strings
+    separadas, sem nada que as amarre, então a renomeação tinha como sair pela
+    metade: catálogo anunciando um nome e o diagnóstico entregando outro.
+    """
+
+    def _cenario_K(self):
+        r, codes = run(Metrics(
+            impressions=30000, spend=500,
+            link_clicks=200, reach=4500,   # frequency = 6.67
+            roas=12.0, cpa=16.0,
+            conversions=31,
+        ))
+        assert ScenarioCode.RETARGETING_CANNIBAL in codes
+        return next(s for s in r.scenarios if s.code == ScenarioCode.RETARGETING_CANNIBAL)
+
+    def _verbete_K(self) -> dict:
+        from app.routes.routes import _SCENARIO_CATALOG
+        return next(s for s in _SCENARIO_CATALOG
+                    if s["code"] == ScenarioCode.RETARGETING_CANNIBAL)
+
+    def test_nenhum_titulo_visivel_traz_o_jargao(self):
+        assert "retargeting" not in self._cenario_K().title.lower()
+        assert "retargeting" not in self._verbete_K()["title"].lower()
+
+    def test_catalogo_e_analise_nomeiam_o_cenario_da_mesma_forma(self):
+        """
+        A UI mostra o título da análise sem o parêntese final (`shortTitle()` no
+        dashboard). É esse nome que precisa bater com o do catálogo — senão a
+        mesma campanha tem dois nomes conforme a tela. Vale para K
+        especificamente: outros verbetes divergem por desenho (o catálogo é uma
+        lista compacta), então não existe invariante geral a afirmar aqui.
+        """
+        import re
+        visivel = re.sub(r"\s*\(.*\)\s*$", "", self._cenario_K().title)
+        assert visivel == self._verbete_K()["title"]
+
+    def test_corpo_explicativo_preserva_o_termo_tecnico(self):
+        """Contraprova: a limpeza foi no título, não uma varredura cega."""
+        sc = self._cenario_K()
+        corpo = f"{sc.root_cause} {sc.funnel_impact} {sc.action} {sc.execution_rule}"
+        assert "retargeting" in corpo.lower()
+
 
 class TestCenarioK:
     def test_detecta_canibalizacao(self):
@@ -668,7 +743,7 @@ class TestPreprocessamento:
             link_clicks=2000, conversions=40,
             landing_page_views=1800, reach=65000,
         ))
-        ev = next((e for e in r.metric_evaluations if e.metric == "Conversão LP"), None)
+        ev = next((e for e in r.metric_evaluations if e.metric == "Conversão na página"), None)
         assert ev is not None
         assert ev.value == pytest.approx(40 / 1800 * 100, rel=0.01)
 

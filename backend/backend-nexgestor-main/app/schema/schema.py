@@ -131,7 +131,7 @@ class Targets(_FinitosApenas):
     min_roas: Optional[float] = Field(default=None, gt=0, description="ROAS mínimo — obrigatório p/ cenários G e K")
 
     # ── Landing Page ──
-    min_lp_conversion_rate: float = Field(default=1.0, gt=0, description="Conversão LP mínima (%)")
+    min_lp_conversion_rate: float = Field(default=1.0, gt=0, description="Conversão na página mínima (%)")
 
     # ── Frequência ──
     max_frequency_fatigue: float = Field(default=2.8, gt=0, description="Disparo de Cenário E")

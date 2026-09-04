@@ -170,3 +170,63 @@ describe("buildReply — roteia pra dados reais da campanha, nunca texto solto",
     expect(maiusculo).toBe(minusculo)
   })
 })
+
+// Fase-5, PR4 — critério §6 do PRD: "Nenhuma resposta do Copiloto usa sigla
+// sem contexto que já apareça na mesma frase". No `MetricFeed` a explicação
+// mora num tooltip (PR3); num chat não há onde pendurá-la, então ela entra no
+// texto. A sigla NÃO é traduzida — é o vocabulário do Ads Manager (§3, regra 1).
+describe("buildReply — sigla nunca aparece sem explicação (fase-5 PR4)", () => {
+  // Cada sigla e o trecho da glosa que precisa acompanhá-la em QUALQUER
+  // resposta que a cite. Verifica a regra, não a redação literal de uma frase.
+  const GLOSA_ESPERADA: [sigla: RegExp, glosa: RegExp][] = [
+    [/\bCPA\b/, /cada convers/i],
+    [/\bROAS\b/, /para cada R\$ 1 investido/i],
+    [/\bCTR\b/, /clicaram para ir/i]
+  ]
+
+  // Perguntas que cobrem todos os ramos de `buildReply` que citam sigla,
+  // incluindo os caminhos de dado ausente e o de cobertura baixa.
+  const PERGUNTAS = [
+    "qual o CPA dessa campanha?",
+    "qual o retorno?",
+    "como está o clique?",
+    "vale escalar o investimento?",
+    "tem risco de fadiga?",
+    "qual a causa disso?",
+    "o que eu faço agora?",
+    "qual é o sentido da vida?"
+  ]
+
+  const CENARIOS: [nome: string, c: CampaignVM][] = [
+    ["campanha completa", vm()],
+    ["sem CPA/ROAS/CTR registrados", vm({ cpaNum: null, roasNum: null, ctrNum: null, freqNum: null })],
+    ["cobertura baixa sem cenário", vm({ scenarios: [], confidence: "low", coverage: 12 })],
+    ["escalável", vm({ status: "BLUE" })]
+  ]
+
+  for (const [nome, campanha] of CENARIOS) {
+    for (const pergunta of PERGUNTAS) {
+      it(`${nome} · "${pergunta}"`, () => {
+        const reply = buildReply(pergunta, campanha)
+        for (const [sigla, glosa] of GLOSA_ESPERADA) {
+          if (sigla.test(reply)) {
+            expect(reply, `"${reply}" cita ${sigla} sem a glosa ${glosa}`).toMatch(glosa)
+          }
+        }
+      })
+    }
+  }
+
+  it("a sigla continua sendo a sigla — não é traduzida (§3, regra 1)", () => {
+    const reply = buildReply("qual o CPA?", vm({ cpaNum: 25 }))
+    expect(reply).toContain("CPA")
+    expect(reply).not.toMatch(/custo por aquisição/i)
+  })
+
+  it("uma única redação por termo — a glosa do ROAS é a mesma no caminho de dado ausente", () => {
+    const comDado = buildReply("qual o retorno?", vm({ roasNum: 4 }))
+    const semDado = buildReply("qual o retorno?", vm({ roasNum: null }))
+    expect(comDado).toContain("para cada R$ 1 investido")
+    expect(semDado).toContain("para cada R$ 1 investido")
+  })
+})

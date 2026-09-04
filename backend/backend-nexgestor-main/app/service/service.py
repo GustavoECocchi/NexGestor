@@ -225,7 +225,7 @@ _METRIC_WEIGHTS = {
     "CTR Link":         0.12,
     "Hook Rate":        0.10,
     "Hold Rate":        0.08,
-    "Conversão LP":     0.08,
+    "Conversão na página": 0.08,
     "Frequência":       0.07,
     "CPM":              0.05,
     "CPC":              0.03,
@@ -1005,7 +1005,7 @@ def _detect_retargeting_cannibal(m: Metrics, t: Targets) -> ScenarioDetail | Non
 
     return ScenarioDetail(
         code=ScenarioCode.RETARGETING_CANNIBAL,
-        title="Cenário K — Otimização de Retargeting Ineficiente (Efeito Canibalização)",
+        title="Cenário K — Reimpacto de Público Ineficiente (Efeito Canibalização)",
         root_cause=(
             f"ROAS {m.roas:.1f}x com frequência {m.frequency:.1f} — ilusão estatística. "
             "Retargeting coletando apenas quem compraria organicamente de qualquer forma. "
@@ -1067,10 +1067,10 @@ _METRIC_EVAL_CONFIG = [
         "YELLOW": "Meta: <R${meta:.2f}. ⚠ CPC acima do teto.",
         "RED":    "Meta: <R${meta:.2f}. ✗ CPC crítico — cada clique caro demais.",
     }),
-    ("lp_conversion_rate", "Conversão LP", "min_lp_conversion_rate", 0.5, False, {
+    ("lp_conversion_rate", "Conversão na página", "min_lp_conversion_rate", 0.5, False, {
         "GREEN":  "Meta: >{meta_txt}%. ✓ Landing Page convertendo bem.",
         "YELLOW": "Meta: >{meta_txt}%. ⚠ Conversão abaixo do esperado.",
-        "RED":    "Meta: >{meta_txt}%. ✗ LP com problema crítico — gargalo fora da campanha.",
+        "RED":    "Meta: >{meta_txt}%. ✗ Conversão na página com problema crítico — gargalo fora da campanha.",
     }),
 ]
 
@@ -1516,7 +1516,7 @@ _MISSING_DATA_HINTS = [
     ("hook_rate", "Hook Rate (ou video_views_3s + impressões)"),
     ("hold_rate", "Hold Rate (ou thruplays)"),
     ("ctr_all", "CTR Todos (ou all_clicks)"),
-    ("lp_conversion_rate", "conversão de LP (ou landing_page_views + conversões)"),
+    ("lp_conversion_rate", "conversão na página (ou landing_page_views + conversões)"),
 ]
 
 
