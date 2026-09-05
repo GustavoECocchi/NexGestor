@@ -90,6 +90,22 @@ class Settings(BaseSettings):
     GEMINI_TIMEOUT_SECONDS: float = 8.0
     GEMINI_ENABLED: bool = True
 
+    # ── Benchmark de mercado (fase-2b) ───────────────────
+    # Busca benchmark público (só CTR Link — ver benchmark_service.py) por
+    # nicho/plataforma via Gemini com grounding de busca, para métricas sem
+    # meta definida pelo gestor. Depende da IA estar disponível (mesma
+    # GEMINI_API_KEY) e da persistência estar ligada (cache SQLite — sem ela
+    # a rota fica indisponível, nunca gera custo por chamada não cacheada).
+    #
+    # ⚠️ Default DESLIGADO (revisão Opus, 2026-09-04): a rota
+    # `POST /api/v1/benchmark/mercado` é PÚBLICA e SEM AUTENTICAÇÃO, como o
+    # resto da API — `X-Nex-Dono` (usado em `/campaigns`) é só separação de
+    # visão, não segurança, e não cobre esta rota. Ligar isto em produção sem
+    # controle de custo/autenticação real expõe até uma chamada paga ao
+    # Gemini por request anônimo. Habilitar aqui é uma decisão explícita de
+    # quem opera o servidor, não o padrão de quem só clona o repo.
+    BENCHMARK_ENABLED: bool = False
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def _parse_cors_origins(cls, v):

@@ -1,8 +1,88 @@
 # PRD — Benchmark de mercado para metas não definidas
 
-Status: **rascunho para revisão do time antes de implementar.** PRD pequeno,
-gerado a partir de `docs/rascunho_prompt.md`. Nada implementado — só
-especificação, por instrução explícita do prompt de origem.
+Status: **implementada (PR A backend + PR B frontend), revisada
+criticamente pelo Opus e corrigida — 2026-09-04/05.** Ver
+`docs/sessions/2026-09-04.md` para o histórico completo em 3 fases:
+
+1. **Implementação inicial** (PR A + PR B) — rota, schema, cache, serviço de
+   grounding e UI. Suite full: backend 1592/1592, dashboard 461/461.
+2. **Revisão crítica (Opus)** — reprovou os lotes C (backend) e D (frontend)
+   antes do commit. Achados P1 confirmados por reprodução: a associação
+   fonte↔valor aceitava `grounding_chunks[0]` sem checar se o trecho
+   sustentava o número (a fonte podia vir de um chunk IRRELEVANTE, ex.
+   política de cookies); o nome da fonte vinha do texto livre do modelo, não
+   de metadado; falha transitória (parse malformado, sem suporte de
+   grounding) era cacheada como "mercado não tem benchmark" por 14 dias; o
+   frontend deixava uma resposta malformada do benchmark **derrubar uma
+   análise do engine já bem-sucedida**; e um 4º estado de tile ("mercado")
+   reescrevia cor/nota do tile sem o engine ter recalculado nada contra esse
+   número.
+3. **Correção** — todos os P1 corrigidos e testados (ver lotes 1–6 de
+   `docs/sessions/2026-09-04.md`, "(parte 6)"). Decisão conservadora
+   assumida nesta correção (documentada abaixo, não presumida antes disso):
+   **só CTR Link busca real agora** — CPA/CPL/CPM sempre caem em fallback
+   determinístico, porque o contrato ainda não tem país/moeda/período e
+   comparar custo em R$ contra uma fonte provavelmente em USD seria uma
+   comparação inválida disfarçada de benchmark confiável.
+
+**Não validado, registrado como limitação e não como concluído**: nenhuma
+chamada real ao Gemini com grounding — toda a lógica de parse, associação
+de fonte e cache foi provada com mock/doubles (inclusive os casos
+adversariais da revisão: chunk irrelevante, fontes ambíguas, URLs
+inseguras, valores fora de faixa), nunca contra a API real.
+
+### Retificação de 2026-09-05 (2ª revisão do Opus, com correção)
+
+Uma revisão independente do Opus 5 reproduziu **15 falhas** no que a rodada
+anterior declarou pronto — todas corrigidas e travadas por regressão nesta
+mesma data. As mais graves:
+
+- **Atribuição de fonte era mais fraca do que o texto acima afirma.** A
+  cobertura exigida era só SOBREPOSIÇÃO: um `grounding_support` de 1 byte
+  "atribuía" um número de 5. Além disso, os offsets do SDK são em **bytes**
+  dentro de uma **Part** (`part_index`) — o código os tratava como caracteres
+  do texto concatenado. Hoje a exigência é cobertura **integral** do trecho,
+  no sistema de coordenadas correto.
+- **Perda de dados no frontend**: o enriquecimento era apagado por
+  `marcarComoSalva` e por `mesclarComServidor`, e nunca chegava ao servidor.
+- **Custo duplicado**: cancelar um interessado cancelava a busca compartilhada
+  e o retry pagava de novo.
+- **Cache legado** (positivos sob a regra parcial, negativos de falha
+  transitória) seguia válido por 14 dias — resolvido com `regra_versao`.
+- `encontrado: false` ganhou `motivo_tipo`: **falta de contrato de moeda não
+  é prova de que o benchmark não existe**, e os dois casos agora são
+  distinguíveis pela UI.
+
+Detalhamento completo, com reprodução e teste de cada item, em
+`docs/sessions/2026-09-05.md` (parte 2). Grounding real do Gemini continua
+**não validado** — nenhuma chamada real foi feita em nenhuma das rodadas.
+
+Decisões que o §3.3/§6 tinham deixado em aberto:
+
+- **§3.2/§3.3 (sobreposição Fitness×Saúde)**: resolvida como "manter as duas
+  como nichos distintos" — decisão do prompt executor
+  (`docs/rascunho_prompt.md`), não deste PRD. A tabela de nichos tem **15**
+  linhas distintas — não há duplicação de "Pet" nem de nenhum outro nicho
+  (verificado na revisão do Opus).
+- **§3.1/§6 (niche obrigatório vs. opcional no schema)**: `Campaign.niche`
+  virou `Optional[CampaignNiche]` — enum fechado, mas **continua opcional a
+  nível de contrato** (não `Optional[str]` livre como antes, nem obrigatório
+  como o §6 cogitava). Decisão: tornar obrigatório no schema quebraria
+  `/campaign/analyze` para qualquer chamador que não manda `niche` — inclusive
+  toda campanha salva antes desta mudança, sem migração possível (payload
+  opaco). "Obrigatório" fica a cargo do FORMULÁRIO de criação nova (PR B,
+  implementado — `NewCampaignModal.tsx`), não do backend. Isso também torna
+  a linha `f"Nicho: {...}"` de `prompts.py` (que o §8/PR A cogitava como
+  "código morto") continuar viva — campanha sem nicho reconhecido é um caso
+  real, não só teórico.
+- **§3.4/item 4 do prompt (ROAS/Hook Rate e plataformas sem fonte)**: em vez
+  de tentar o Gemini e deixar a busca "quase sempre" voltar sem fonte, o
+  serviço faz o fallback ANTES de qualquer chamada — determinístico, sem
+  custo, sem depender de cache/persistência para essas combinações.
+- **§4 (contrato de moeda para CPA/CPL/CPM)**: nunca resolvido — em vez de
+  disso, a correção pós-revisão RESTRINGIU a busca real a só CTR Link
+  (percentual, sem problema de moeda) até que país/moeda/período existam no
+  contrato. CPA/CPL/CPM continuam só em fallback.
 
 ## 1. Problema
 
@@ -98,10 +178,14 @@ ressalva de confiança marcada onde a atribuição não foi tão direta.
 | Pet | — | "Dogs, Cats, and Pets" ~1,94% | Mantém, **confiança menor** — só via agregador, não confirmado na página da WordStream (ver §3.4) |
 | Moda e Vestuário | — | "Clothing and Fashion" ~2,84% | Mantém, **confiança menor** — mesma ressalva do Pet |
 
-**Nenhum nicho foi removido** — todos os 14 originais têm ao menos uma
-categoria de CTR publicamente atribuída à WordStream, direta ou via
-agregador. O que muda o desenho da feature são os dois achados abaixo, mais
-graves que "um nicho sem benchmark".
+**Nenhum nicho foi removido** — todos têm ao menos uma categoria de CTR
+publicamente atribuída à WordStream, direta ou via agregador. (Nota da
+implementação, 2026-09-04: a tabela acima lista **15** linhas, não 14 como
+esta frase diz — miscontagem deste PRD, não corrigida retroativamente aqui;
+`CampaignNiche` em `schema.py` implementa as 15, por não haver base para
+descartar nenhuma sem fabricar uma decisão não pedida.) O que muda o desenho
+da feature são os dois achados abaixo, mais graves que "um nicho sem
+benchmark".
 
 ### 3.3 Sobreposição não resolvida: Fitness e Academias × Saúde e Bem-estar
 

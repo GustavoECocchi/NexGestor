@@ -5,8 +5,9 @@ import { IconCheck, IconEdit, IconRefresh } from "~components/Icons"
 import { responseToVM } from "~lib/adapt"
 import { registrarAnalise } from "~lib/aiHealth"
 import { analyzeCampaign, API_BASE, IS_LOCAL_BACKEND, isApiError } from "~lib/api"
+import { isCampaignNiche, NICHE_LABELS, NICHE_VALUES } from "~lib/niche"
 import { nextLiveId } from "~lib/store"
-import type { AnalyzeInput, CampaignVM, Metrics, Targets } from "~types"
+import type { AnalyzeInput, CampaignNiche, CampaignVM, Metrics, Targets } from "~types"
 
 // Etapas reais da análise: enviar → engine processa → montar resultado.
 const STEPS = [
@@ -191,6 +192,24 @@ function pickEnum<T extends string>(
   return padrao
 }
 
+/**
+ * Mesma ideia de `pickEnum`, mas SEM default: `niche` (fase-2b) não tem um
+ * valor neutro seguro — inventar um atribuiria ao gestor uma escolha que ele
+ * nunca fez (mesmo erro de "zero fabricado" já corrigido em 2026-07-28 para
+ * métricas). Ausente OU fora da lista viram `undefined`, registrados do
+ * mesmo jeito em `invalidos` — o chamador é quem decide bloquear a análise.
+ */
+function pickEnumObrigatorio<T extends string>(
+  v: unknown,
+  ehValido: (v: unknown) => v is T,
+  campo: string,
+  invalidos: string[]
+): T | undefined {
+  if (ehValido(v)) return v
+  invalidos.push(`${campo} (${v == null ? "ausente" : `"${String(v)}"`} → obrigatório, selecione um valor válido)`)
+  return undefined
+}
+
 export type ParsedFile = {
   input: AnalyzeInput
   unknownKeys: string[]
@@ -248,7 +267,9 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   // pré-visualização e cai no default explicitamente, nunca em silêncio.
   const objectiveFromFile = pickEnum(rawCampaign.objective, OBJECTIVE_VALUES, "conversion", "campaign.objective", invalidValueKeys)
   const platformFromFile = pickEnum(rawCampaign.platform, PLATFORM_VALUES, "meta_ads", "campaign.platform", invalidValueKeys)
-  const nicheFromFile = typeof rawCampaign.niche === "string" ? rawCampaign.niche : null
+  // `niche` (fase-2b): ausente ou fora da lista bloqueia "Analisar campanha"
+  // (ver `runAnalyze`) — nunca cai num default inventado.
+  const nicheFromFile = pickEnumObrigatorio(rawCampaign.niche, isCampaignNiche, "campaign.niche", invalidValueKeys)
 
   const input: AnalyzeInput = {
     campaign: {
@@ -270,7 +291,17 @@ export function NewCampaignModal({
   onAnalyzed
 }: {
   onClose: () => void
-  onAnalyzed: (vm: CampaignVM) => void
+  /**
+   * `input` (fase-2b) vai junto de propósito: quem orquestra o
+   * enriquecimento de benchmark (`App.tsx`) precisa de `campaign.niche`/
+   * `platform`/`objective` CRUS, que não fazem parte do `CampaignVM`
+   * persistido. Ver achado da revisão Opus (2026-09-04): o enriquecimento
+   * não pode rodar AQUI, porque este componente desmonta assim que
+   * `onAnalyzed` é chamado (`onClose`/`setModal("none")` no mesmo tick) —
+   * uma promise em voo continuaria rodando, mas sem ninguém pra receber o
+   * resultado com segurança.
+   */
+  onAnalyzed: (vm: CampaignVM, input: AnalyzeInput) => void
 }) {
   // "auto" (coleta via content script no Ads Manager) existia só na extensão
   // — fora de escopo aqui, ver storage.py/CLAUDE.md sobre o pivô extensão →
@@ -283,6 +314,9 @@ export function NewCampaignModal({
   const [learningPhase, setLearningPhase] = useState("")
   const [objective, setObjective] = useState("conversion")
   const [platform, setPlatform] = useState("meta_ads")
+  // "" = não escolhido. Ao contrário de objective/platform, não tem default
+  // seguro (fase-2b) — `runAnalyze` bloqueia a análise enquanto estiver "".
+  const [niche, setNiche] = useState<CampaignNiche | "">("")
   const [values, setValues] = useState<Record<string, string>>({})
   const [fileRaw, setFileRaw] = useState("")
   const [fileError, setFileError] = useState<string | null>(null)
@@ -311,7 +345,8 @@ export function NewCampaignModal({
         id: nextLiveId(),
         name: name.trim() || "Campanha sem nome",
         objective,
-        platform
+        platform,
+        niche: niche || undefined
       },
       metrics,
       targets
@@ -340,6 +375,13 @@ export function NewCampaignModal({
       setError("Preencha pelo menos uma métrica para o engine analisar.")
       return
     }
+    // niche (fase-2b) não tem default seguro — ver comentário no <select> e em
+    // parseFileJSON. Bloqueia aqui em vez de inventar um valor, pros dois
+    // modos (manual e arquivo).
+    if (!input.campaign.niche) {
+      setError("Selecione o nicho da campanha antes de analisar.")
+      return
+    }
 
     setStep(0)
     timer.current = setTimeout(() => setStep(1), 500) // request em voo
@@ -353,7 +395,15 @@ export function NewCampaignModal({
       // estourada passam por lá como "disponível". Ver ~lib/aiHealth.
       registrarAnalise(res.ai_insights != null)
       const vm = responseToVM(res, input)
-      timer.current = setTimeout(() => onAnalyzed(vm), 450)
+
+      // Entrega IMEDIATA (fase-2b, achado da revisão Opus): a análise do
+      // engine já está pronta — o enriquecimento de benchmark de mercado
+      // roda depois, em segundo plano, orquestrado por quem chama
+      // `onAnalyzed` (`App.tsx`), nunca aqui. Prender a tela esperando uma
+      // chamada extra ao Gemini seria pior que mostrar o resultado e
+      // atualizar a campanha silenciosamente quando (e se) a referência
+      // chegar.
+      timer.current = setTimeout(() => onAnalyzed(vm, input), 450)
     } catch (e) {
       clearTimeout(timer.current)
       setStep(-1)
@@ -427,6 +477,7 @@ export function NewCampaignModal({
                 <div style={{ fontSize: 12.5, color: "var(--txt-2)" }}>
                   <b style={{ color: "var(--txt)" }}>{filePreview.input.campaign.name}</b>
                   {" · "}{filePreview.input.campaign.objective}{" · "}{filePreview.input.campaign.platform}
+                  {" · "}{filePreview.input.campaign.niche ? NICHE_LABELS[filePreview.input.campaign.niche] : "nicho ausente"}
                 </div>
 
                 {Object.keys(filePreview.input.metrics).length > 0 && (
@@ -539,6 +590,21 @@ export function NewCampaignModal({
                     <option value="google_ads">Google Ads</option>
                     <option value="tiktok_ads">TikTok Ads</option>
                     <option value="linkedin_ads">LinkedIn Ads</option>
+                  </select>
+                </div>
+                <div className="fld">
+                  <label>
+                    Nicho
+                    <FieldHint text="Usado só para buscar um benchmark de mercado nas métricas sem meta definida — não muda o diagnóstico do engine." />
+                  </label>
+                  <select
+                    value={niche}
+                    onChange={(e) => setNiche(e.target.value as CampaignNiche | "")}
+                  >
+                    <option value="">Selecione…</option>
+                    {NICHE_VALUES.map((v) => (
+                      <option key={v} value={v}>{NICHE_LABELS[v]}</option>
+                    ))}
                   </select>
                 </div>
               </div>

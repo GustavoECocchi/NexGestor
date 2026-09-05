@@ -8,8 +8,8 @@ Organizado em 3 blocos:
   4. RESPONSE final — agregação dos itens acima (CampaignAnalysisResponse)
 """
 import math
-from typing import Optional, Literal
-from pydantic import Field, BaseModel, field_validator
+from typing import Optional, Literal, Union, get_args, get_origin
+from pydantic import Field, BaseModel, field_validator, ValidationInfo
 
 from app.enum.campaign import CampaignStatus, ScenarioCode
 
@@ -24,6 +24,34 @@ from app.enum.campaign import CampaignStatus, ScenarioCode
 # atribuição de plataforma num relatório que o gestor lê como fato.
 CampaignObjective = Literal["conversion", "lead", "traffic"]
 CampaignPlatform = Literal["meta_ads", "google_ads", "tiktok_ads", "linkedin_ads"]
+
+# Lista fechada de nichos (fase-2b, benchmark de mercado — ver
+# docs/prds/fase-2b-benchmark-mercado.md §3.2/§3.3). `niche` era `str` livre
+# sem validação nenhuma; mesma transição que `platform` já passou (NG-T03,
+# 2026-07-28) pelo mesmo motivo: valor fora da lista nunca deve virar um
+# nicho inventado silenciosamente.
+#
+# "Fitness e Academias" e "Saúde e Bem-estar" apontam para a MESMA categoria
+# de benchmark externo (Meta "Health and Fitness") — mantidos como opções
+# distintas por decisão explícita (não fundir), documentado em
+# `benchmark_service.py` na hora de buscar o benchmark real, não aqui.
+CampaignNiche = Literal[
+    "ecommerce_varejo",
+    "educacao_cursos",
+    "saude_bem_estar",
+    "beleza_estetica",
+    "imobiliario",
+    "servicos_financeiros_seguros",
+    "servicos_juridicos",
+    "automotivo",
+    "viagens_turismo",
+    "alimentacao_restaurantes",
+    "software_tecnologia_b2b",
+    "fitness_academias",
+    "servicos_locais",
+    "pet",
+    "moda_vestuario",
+]
 
 
 class _FinitosApenas(BaseModel):
@@ -54,16 +82,59 @@ class _FinitosApenas(BaseModel):
         return v
 
 
-class Campaign(BaseModel):
+def _tipo_efetivo(anotacao):
+    """Reduz `Optional[X]` (== `Union[X, None]`) a `X`; demais tipos passam direto."""
+    if get_origin(anotacao) is Union:
+        args = [a for a in get_args(anotacao) if a is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return anotacao
+
+
+class _SemBooleanoEmInteiro(BaseModel):
+    """
+    Rejeita `true`/`false` em campos cuja anotação é `int` (ou `Optional[int]`).
+
+    Motivo (auditoria de 2026-09): `bool` é subclasse de `int` em Python, e o
+    Pydantic v2, em modo lax, aceita silenciosamente `true`/`false` como
+    `1`/`0` em qualquer campo inteiro — um erro de tipagem do cliente vira um
+    valor plausível em vez de 422. A checagem olha a ANOTAÇÃO do campo, não o
+    tipo do valor recebido, então campos de fato booleanos (ex:
+    `Metrics.learning_phase`) continuam aceitando bool normalmente. Roda em
+    modo "before": depois da coerção do Pydantic o `bool` já virou `int`, e a
+    distinção se perde.
+    """
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _rejeita_bool_em_campo_inteiro(cls, v, info: ValidationInfo):
+        if not isinstance(v, bool):
+            return v
+        campo = cls.model_fields.get(info.field_name)
+        if campo is not None and _tipo_efetivo(campo.annotation) is int:
+            raise ValueError("valor inteiro não aceita booleano (true/false)")
+        return v
+
+
+class Campaign(_SemBooleanoEmInteiro):
     """Identificação e contexto da campanha sendo analisada."""
     id: int
     name: str = Field(min_length=1, max_length=200, description="Nome da campanha (1–200 chars)")
     objective: Optional[CampaignObjective] = Field(default="conversion", description="conversion | lead | traffic")
     platform: Optional[CampaignPlatform] = Field(default="meta_ads", description="meta_ads | google_ads | tiktok_ads | linkedin_ads")
-    niche: Optional[str] = Field(default=None, max_length=100, description="Ex: SaaS, ecommerce, infoproduto")
+    niche: Optional[CampaignNiche] = Field(
+        default=None,
+        description=(
+            "Nicho da campanha — lista fechada (fase-2b). Opcional a nível de "
+            "contrato: campanhas salvas antes desta mudança não têm nicho "
+            "reconhecido e continuam abrindo normalmente (sem benchmark de "
+            "mercado); o formulário de criação nova é quem torna a escolha "
+            "obrigatória na prática."
+        ),
+    )
 
 
-class Metrics(_FinitosApenas):
+class Metrics(_FinitosApenas, _SemBooleanoEmInteiro):
     """
     Métricas brutas da campanha. Todas opcionais — o engine analisa o que receber.
     Métricas derivadas (hook_rate, hold_rate, ctr_link, ctr_all, cpm, cpc, cpa,
@@ -109,7 +180,7 @@ class Metrics(_FinitosApenas):
     learning_phase: Optional[bool] = Field(default=None, description="True = conjunto em Aprendizado Limitado")
 
 
-class Targets(_FinitosApenas):
+class Targets(_FinitosApenas, _SemBooleanoEmInteiro):
     """
     Metas/thresholds que o gestor define para a campanha.
     Defaults são baseados nos benchmarks do PDF de referência.

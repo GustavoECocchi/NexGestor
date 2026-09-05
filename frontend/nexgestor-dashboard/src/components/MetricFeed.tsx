@@ -1,6 +1,7 @@
 import { FieldHint } from "~components/FieldHint"
 import { IconInfo } from "~components/Icons"
-import type { CampaignVM, Tile } from "~types"
+import { referenciaDeMercadoValida } from "~lib/api"
+import type { BenchmarkReferencia, CampaignVM, Tile } from "~types"
 
 // Ordem de leitura pedida (docs/rascunho_prompt.md, 2026-08-31): resultado →
 // causa → ação → contexto. Faixa de resultado e Painel do funil têm posição
@@ -64,6 +65,7 @@ export function MetricFeed({ c }: { c: CampaignVM }) {
   const funnelTiles = FUNNEL_LABELS.map((l) => porRotulo(tiles, l)).filter((t): t is Tile => !!t)
   const usados = new Set([...resultTiles, ...funnelTiles].map((t) => t[0]))
   const contextTiles = tiles.filter((t) => !usados.has(t[0]))
+  const benchmarks = c.benchmarks ?? []
 
   return (
     <>
@@ -83,7 +85,7 @@ export function MetricFeed({ c }: { c: CampaignVM }) {
       <ResultRow tiles={resultTiles} />
 
       <div className="funnel-row">
-        <FunnelPanel tiles={funnelTiles} diagnosis={c.summary} />
+        <FunnelPanel tiles={funnelTiles} diagnosis={c.summary} benchmarks={benchmarks} />
         <ActionsPanel actions={c.actions} />
       </div>
 
@@ -113,7 +115,15 @@ function ResultRow({ tiles }: { tiles: Tile[] }) {
   )
 }
 
-function FunnelPanel({ tiles, diagnosis }: { tiles: Tile[]; diagnosis: string }) {
+function FunnelPanel({
+  tiles,
+  diagnosis,
+  benchmarks
+}: {
+  tiles: Tile[]
+  diagnosis: string
+  benchmarks: BenchmarkReferencia[]
+}) {
   return (
     <div className="funnel-panel">
       <div className="fp-title">Onde a campanha quebra</div>
@@ -128,6 +138,7 @@ function FunnelPanel({ tiles, diagnosis }: { tiles: Tile[]; diagnosis: string })
                 </div>
                 <div className="fb-lbl">{t[0]}{METRIC_HINT[t[0]] && <FieldHint text={METRIC_HINT[t[0]]} />}</div>
                 <div className="fb-val" style={{ color: t[2] }}>{t[1]}</div>
+                <BenchmarkNote benchmarks={benchmarks} label={t[0]} />
               </div>
             )
           })}
@@ -136,6 +147,32 @@ function FunnelPanel({ tiles, diagnosis }: { tiles: Tile[]; diagnosis: string })
         <div className="fp-empty">Nenhuma métrica de funil enviada nesta análise.</div>
       )}
       <div className="fp-diagnosis">{diagnosis}</div>
+    </div>
+  )
+}
+
+/**
+ * Referência de mercado (fase-2b) — SEPARADA da nota/cor/score do tile de
+ * propósito (revisão Opus, 2026-09-04): o engine não recalculou nada contra
+ * esse número, então nunca pode parecer parte do veredito. Link real
+ * (`target="_blank"` + `rel="noopener noreferrer"`, nunca
+ * `dangerouslySetInnerHTML`) — o texto vem de metadado do Google (grounding),
+ * não do modelo, mas ainda assim é conteúdo externo, renderizado como texto.
+ */
+function BenchmarkNote({ benchmarks, label }: { benchmarks: BenchmarkReferencia[]; label: string }) {
+  const ref = benchmarks.find((b) => b.metric === label)
+  // Revalida ANTES de renderizar (revisão Opus, 2026-09-05): `benchmarks`
+  // pode ter vindo do `localStorage` ou do payload opaco da API de
+  // campanhas, escrito por uma versão anterior (ou adulterado) — caminhos
+  // que a validação de `buscarBenchmarkMercado` nunca tocou. Sem isto,
+  // `href` e `toFixed` rodam sobre dado não verificado.
+  if (!ref || !referenciaDeMercadoValida(ref)) return null
+  return (
+    <div className="fb-note fonte-mercado">
+      Referência informativa de mercado — não usada no diagnóstico:{" "}
+      <a href={ref.fonte_url} target="_blank" rel="noopener noreferrer">
+        {ref.fonte} — {ref.value.toFixed(2)}%
+      </a>
     </div>
   )
 }

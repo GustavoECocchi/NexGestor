@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { responseToVM } from "~lib/adapt"
-import type { AnalyzeInput, CampaignAnalysisResponse, MetricEvaluation, ScenarioDetail } from "~types"
+import { benchmarksEncontrados, metricasElegiveisParaBenchmark, responseToVM } from "~lib/adapt"
+import type { AnalyzeInput, CampaignAnalysisResponse, MetricEvaluation, ResultadoBenchmark, ScenarioDetail, Tile } from "~types"
 
 function baseInput(overrides: Partial<AnalyzeInput> = {}): AnalyzeInput {
   return {
@@ -512,5 +512,71 @@ describe("responseToVM — sugestão nunca exibe só o número da lista", () => 
     )
     expect(vm.sugg[0].impact).not.toBe("1")
     expect(vm.sugg[0].impact.startsWith("Revisar a segmentação")).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fase-2b — benchmark de mercado (transformação PURA; fetch mora no componente)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("metricasElegiveisParaBenchmark", () => {
+  // Decisão conservadora pós-revisão Opus (2026-09-04): só CTR Link tem
+  // busca real hoje — CPA/CPL/CPM (mesmo sem meta) nunca são elegíveis, ao
+  // contrário do desenho original.
+  it("CTR Link sem meta ('sistema') é elegível", () => {
+    const tiles: Tile[] = [["CTR Link", "1,20%", "var(--txt-2)", "meta padrão", "sistema"]]
+    expect(metricasElegiveisParaBenchmark(tiles)).toEqual(["ctr_link"])
+  })
+
+  it("CPA/CPL/CPM/ROAS nunca são elegíveis, mesmo sem meta do gestor", () => {
+    const tiles: Tile[] = [
+      ["CPA", "R$ 40,00", "var(--txt-3)", "sem meta", "ausente"],
+      ["CPL", "R$ 20,00", "var(--txt-3)", "sem meta", "ausente"],
+      ["CPM", "R$ 30,00", "var(--txt-2)", "meta padrão", "sistema"],
+      ["ROAS", "—", "var(--txt-3)", "sem meta", "ausente"]
+    ]
+    expect(metricasElegiveisParaBenchmark(tiles)).toEqual([])
+  })
+
+  it("CTR Link com meta do gestor ('gestor') não é elegível", () => {
+    const tiles: Tile[] = [["CTR Link", "1,20%", "var(--green)", "nota", "gestor", 90]]
+    expect(metricasElegiveisParaBenchmark(tiles)).toEqual([])
+  })
+
+  it("sem tiles elegíveis devolve lista vazia (não quebra)", () => {
+    expect(metricasElegiveisParaBenchmark([])).toEqual([])
+  })
+})
+
+describe("benchmarksEncontrados", () => {
+  it("encontrado:true vira BenchmarkReferencia — nunca toca o tile (isso é feito em outro lugar)", () => {
+    const resultados: ResultadoBenchmark[] = [
+      { metric: "ctr_link", encontrado: true, value: 1.5, fonte: "WordStream 2025", fonte_url: "https://x.example", capturado_em: "2026-09-05T00:00:00Z" }
+    ]
+    const referencias = benchmarksEncontrados(resultados)
+    expect(referencias).toEqual([
+      { metric: "CTR Link", value: 1.5, fonte: "WordStream 2025", fonte_url: "https://x.example", capturado_em: "2026-09-05T00:00:00Z" }
+    ])
+  })
+
+  it("encontrado:false não gera nenhuma referência", () => {
+    const resultados: ResultadoBenchmark[] = [{ metric: "ctr_link", encontrado: false, motivo: "sem fonte" }]
+    expect(benchmarksEncontrados(resultados)).toEqual([])
+  })
+
+  it("métrica fora do vocabulário mapeado (ex: cpa, que não tem busca real) é ignorada", () => {
+    const resultados: ResultadoBenchmark[] = [
+      { metric: "cpa", encontrado: true, value: 40, fonte: "F", fonte_url: "https://x.example", capturado_em: "2026-09-05T00:00:00Z" }
+    ]
+    expect(benchmarksEncontrados(resultados)).toEqual([])
+  })
+
+  it("resultado encontrado:true sem fonte/url/valor/timestamp é descartado — nunca uma referência incompleta", () => {
+    const resultados: ResultadoBenchmark[] = [{ metric: "ctr_link", encontrado: true } as ResultadoBenchmark]
+    expect(benchmarksEncontrados(resultados)).toEqual([])
+  })
+
+  it("lista vazia devolve lista vazia", () => {
+    expect(benchmarksEncontrados([])).toEqual([])
   })
 })

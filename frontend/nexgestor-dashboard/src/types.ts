@@ -13,13 +13,32 @@ export type ScenarioCode =
   // abaixo da meta com custo sob controle.
   | "L" | "M" | "N" | "O"
 
+// Lista fechada (fase-2b, benchmark de mercado) — espelha CampaignNiche em
+// app/schema/schema.py. Rótulos visíveis: ~lib/niche.ts (NICHE_LABELS).
+export type CampaignNiche =
+  | "ecommerce_varejo"
+  | "educacao_cursos"
+  | "saude_bem_estar"
+  | "beleza_estetica"
+  | "imobiliario"
+  | "servicos_financeiros_seguros"
+  | "servicos_juridicos"
+  | "automotivo"
+  | "viagens_turismo"
+  | "alimentacao_restaurantes"
+  | "software_tecnologia_b2b"
+  | "fitness_academias"
+  | "servicos_locais"
+  | "pet"
+  | "moda_vestuario"
+
 // ---- INPUT (POST /campaign/analyze) ----
 export interface Campaign {
   id: number
   name: string
   objective?: string // conversion | lead | traffic
   platform?: string // meta_ads | google_ads | tiktok_ads | linkedin_ads
-  niche?: string | null
+  niche?: CampaignNiche | null
 }
 
 export interface Metrics {
@@ -71,6 +90,24 @@ export interface AnalyzeInput {
   campaign: Campaign
   metrics: Metrics
   targets: Targets
+}
+
+// ---- Benchmark de mercado (fase-2b, POST /benchmark/mercado) ----
+export interface ResultadoBenchmark {
+  metric: string
+  encontrado: boolean
+  value?: number
+  fonte?: string
+  fonte_url?: string
+  capturado_em?: string
+  motivo?: string
+  /**
+   * `nao_elegivel` = a busca NÃO aconteceu (custo sem contrato de moeda,
+   * plataforma sem fonte). `nao_encontrado` = a busca aconteceu e concluiu
+   * ausência. Distinguir os dois evita afirmar que "não existe benchmark"
+   * quando na verdade nem procuramos (revisão Opus, 2026-09-05).
+   */
+  motivo_tipo?: string
 }
 
 // ---- OUTPUT do engine determinístico ----
@@ -165,6 +202,14 @@ export interface ScenarioVM {
 //   confirmou. "ausente" = métrica sem default (CPA/CPL/ROAS): meta em
 //   branco não tem contra o que comparar, o tile é sintetizado no frontend
 //   (ver lib/adapt.ts, fase-2 §11).
+//
+// Achado da revisão Opus (2026-09-04): um 4º estado "mercado" chegou a
+// existir aqui e REESCREVIA cor/nota do tile quando a busca de benchmark
+// achava uma fonte — mas o engine nunca recalculou status/score contra
+// esse número, então a UI estaria fingindo uma comparação que não
+// aconteceu. Removido de propósito: benchmark de mercado é informação
+// SEPARADA (ver `CampaignVM.benchmarks` abaixo), nunca reescreve a origem,
+// cor, nota ou score que o engine (ou o default do sistema) já decidiu.
 export type TileOrigin = "gestor" | "sistema" | "ausente"
 // `score` = a nota 0–100 que o engine deu à métrica (MetricEvaluation.score),
 // carregada aqui só para o painel do funil (feed reorganizado, rascunho de
@@ -296,4 +341,27 @@ export interface CampaignVM {
    * depois que a causa mudou ou a campanha sincronizou com sucesso.
    */
   syncAviso?: string
+  /**
+   * Referências de benchmark de mercado (fase-2b) encontradas para métricas
+   * sem meta do gestor — SEPARADO dos `tiles`, de propósito (revisão Opus,
+   * 2026-09-04): é informação neutra, nunca reescreve origem/cor/nota/score
+   * de um tile (o engine não recalculou nada contra esse número). Ausente em
+   * campanhas analisadas antes desta feature, com busca desligada/
+   * indisponível, ou sem nenhuma métrica elegível — tratar como "sem
+   * referência", nunca como erro.
+   */
+  benchmarks?: BenchmarkReferencia[]
+}
+
+/**
+ * Uma referência de mercado já resolvida (`encontrado: true` da API) pronta
+ * pra exibir — `metric` é o RÓTULO visível (ex: "CTR Link"), o mesmo usado
+ * em `Tile[0]`, pra casar por igualdade simples em `MetricFeed.tsx`.
+ */
+export interface BenchmarkReferencia {
+  metric: string
+  value: number
+  fonte: string
+  fonte_url: string
+  capturado_em: string
 }

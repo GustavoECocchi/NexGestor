@@ -5,31 +5,39 @@ allowed-tools: Bash(git *), Bash(pytest *), Bash(tsc *), Read, Edit, Write
 
 Antes de encerrar a sessão:
 
-1. Roda a suite de testes: pytest em backend/backend-nexgestor-main,
+1. Reconcilia `git status`/`git diff` com o registro de hoje e com o roadmap.
+   Toda tarefa ou PR tocada precisa ter estado honesto em
+   `docs/sessions/AAAA-MM-DD.md`; toda mudança de fase precisa aparecer no
+   item correspondente de `docs/roadmap.md`. Este é o mecanismo de segurança
+   para capturar omissões — o registro deveria ter sido feito assim que cada
+   tarefa terminou, conforme `CLAUDE.md`.
+
+2. Roda a suite de testes: pytest em backend/backend-nexgestor-main,
    e npm test + tsc -b em frontend/nexgestor-dashboard se houver mudanças lá.
    Só o que passar de fato pode ser documentado como "funcionando".
 
-2. Cria um arquivo novo em docs/sessions/AAAA-MM-DD.md (data de hoje;
+3. Cria um arquivo novo em docs/sessions/AAAA-MM-DD.md (data de hoje;
    se já existir um arquivo pra hoje, acrescenta uma seção "(parte N)")
    com o progresso real da sessão (não otimista): o que foi implementado
    E VALIDADO, decisões tomadas, e o que ficou pendente, incompleto, ou
-   implementado mas não testado. NUNCA escreve isso no CLAUDE.md.
+   implementado mas não testado. Registra separadamente se cada tarefa está
+   commitada, enviada e implantada. NUNCA escreve o log no CLAUDE.md.
 
-3. Atualiza docs/roadmap.md SÓ se algum item mudou de fase (concluído,
+4. Atualiza docs/roadmap.md SÓ se algum item mudou de fase (concluído,
    bloqueado, mudou de prioridade) — edita a linha do item existente,
    não anexa histórico novo. Se o item já resume o estado atual
    corretamente, não mexe.
 
-4. Se — e só se — algo mudou de forma estrutural (novo componente
+5. Se — e só se — algo mudou de forma estrutural (novo componente
    arquitetural, mudança de stack, novo diretório importante), atualiza
    o CLAUDE.md raiz (cabeçalho + estrutura). Isso deve ser raro.
    CLAUDE.md nunca recebe log de sessão, decisão pontual ou pendência
    de curto prazo — isso vai em docs/sessions/.
 
-5. Commita as mudanças (do repositório único na raiz) com uma mensagem
+6. Commita as mudanças (do repositório único na raiz) com uma mensagem
    descritiva do que foi feito (inclua contagem de testes passando, se mudou).
 
-6. Faz push pro repositório remoto (origin main).
+7. Faz push pro repositório remoto (origin main).
 
-7. Me dá um resumo curto do que foi commitado e do que fica como
+8. Me dá um resumo curto do que foi commitado e do que fica como
    próximo passo pra próxima sessão.

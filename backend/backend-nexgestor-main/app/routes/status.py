@@ -18,6 +18,7 @@ achando que estava avaliando o todo.
 from fastapi import APIRouter
 
 from app.core.config import settings
+from app.routes import benchmark
 from app.service import storage
 from app.service.ai_service import is_ai_available
 
@@ -53,4 +54,5 @@ def status():
         "persistence": {
             "enabled": storage.persistencia_ativa(),
         },
+        "benchmark": benchmark.benchmark_status_block(),
     }

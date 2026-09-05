@@ -13,10 +13,12 @@
 
 import type {
   AnalyzeInput,
+  BenchmarkReferencia,
   CampaignAnalysisResponse,
   CampaignVM,
   MetricEvaluation,
   Priority,
+  ResultadoBenchmark,
   ScenarioDetail,
   SuggestionVM,
   Targets,
@@ -302,4 +304,52 @@ export function responseToVM(
     aiInsights: res.ai_insights?.contextual_insights ?? [],
     aiRisks: res.ai_insights?.risk_warnings ?? []
   }
+}
+
+// ── benchmark de mercado (fase-2b) ──────────────────────────────────────────
+// Decisão conservadora pós-revisão Opus (2026-09-04): só CTR Link busca real
+// hoje — CPA/CPL/CPM dependem de país/moeda/período que o contrato ainda não
+// tem (comparar custo em R$ contra uma fonte provavelmente em USD seria uma
+// comparação semanticamente inválida). Espelha `_METRICAS_COM_FONTE_REAL` em
+// app/service/benchmark_service.py — manter em sincronia.
+const METRICA_PARA_CAMPO_BENCHMARK: Record<string, string> = {
+  "CTR Link": "ctr_link"
+}
+
+/**
+ * Tiles elegíveis pra busca de benchmark: label é uma métrica com fonte real
+ * E o gestor não definiu meta pra ela (origem "ausente" ou "sistema" — ver
+ * TileOrigin em types.ts). Devolve os nomes de campo que a rota espera
+ * (`ctr_link`), nunca o rótulo visível.
+ */
+export function metricasElegiveisParaBenchmark(tiles: Tile[]): string[] {
+  return tiles
+    .filter((t) => (t[4] === "ausente" || t[4] === "sistema") && METRICA_PARA_CAMPO_BENCHMARK[t[0]])
+    .map((t) => METRICA_PARA_CAMPO_BENCHMARK[t[0]])
+}
+
+/**
+ * Converte os resultados `encontrado: true` da API em `CampaignVM.benchmarks`
+ * — transformação PURA (sem fetch aqui; a orquestração assíncrona mora em
+ * `App.tsx`, a camada que sobrevive ao fechamento do modal). `encontrado:
+ * false` e falhas técnicas nunca chegam a esta função pra começo de conversa
+ * (`buscarBenchmarkMercado` já filtra e devolve só o que é seguro usar).
+ *
+ * Achado da revisão Opus (2026-09-04): a versão anterior reescrevia origem/
+ * cor/nota do TILE — o engine nunca recalculou status/score contra o
+ * benchmark, então a UI estaria fingindo uma comparação que não aconteceu.
+ * Agora é só uma lista separada, renderizada como referência informativa
+ * (ver `MetricFeed.tsx`), nunca tocando o tile em si.
+ */
+export function benchmarksEncontrados(resultados: ResultadoBenchmark[]): BenchmarkReferencia[] {
+  const CAMPO_PARA_METRICA = Object.fromEntries(
+    Object.entries(METRICA_PARA_CAMPO_BENCHMARK).map(([label, campo]) => [campo, label])
+  )
+  const referencias: BenchmarkReferencia[] = []
+  for (const r of resultados) {
+    const metric = CAMPO_PARA_METRICA[r.metric]
+    if (!metric || !r.encontrado || r.value == null || !r.fonte || !r.fonte_url || !r.capturado_em) continue
+    referencias.push({ metric, value: r.value, fonte: r.fonte, fonte_url: r.fonte_url, capturado_em: r.capturado_em })
+  }
+  return referencias
 }

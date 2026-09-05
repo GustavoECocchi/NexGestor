@@ -283,7 +283,7 @@ class TestGeminiSDKLayer:
             from app.service.service import analyze_campaign_async
 
             data = AnalyzeInput(
-                campaign=Campaign(id=1, name="Test", niche="SaaS"),
+                campaign=Campaign(id=1, name="Test", niche="software_tecnologia_b2b"),
                 metrics=Metrics(impressions=50000, reach=42000, spend=1500.0,
                                 video_views_3s=8000, link_clicks=500, conversions=15),
                 targets=Targets(max_cpa=60.0),
@@ -592,6 +592,20 @@ class TestVocabularioDoPrompt:
     def test_engine_e_prompt_usam_o_mesmo_rotulo(self, field):
         assert self._label_do_prompt(field) == self._label_do_engine(field)
 
+    def test_nenhum_rotulo_do_prompt_usa_abreviacao_lp_solta(self):
+        """
+        Achado da revisão Opus (2026-09-04): a PR5 tinha corrigido "LP" solto
+        em `service.py`, mas `_METRIC_LABELS`/`_TARGET_LABELS` (o vocabulário
+        que a IA lê no prompt) ainda tinham "LP Views" e "Taxa de conv. LP
+        mínima" — o mesmo defeito, num arquivo diferente da varredura original.
+        """
+        import re
+        from app.service.prompts import _METRIC_LABELS, _TARGET_LABELS
+
+        for tabela in (_METRIC_LABELS, _TARGET_LABELS):
+            for campo, (label, _sufixo) in tabela.items():
+                assert not re.search(r"\bLP\b", label), f"{campo!r} ainda usa 'LP' solto: {label!r}"
+
     def test_prompt_nao_ensina_a_IA_um_nome_de_cenario_que_o_engine_nao_usa(self):
         """
         A lista de "padrões clássicos" do system prompt é vocabulário que a IA
@@ -601,3 +615,99 @@ class TestVocabularioDoPrompt:
         from app.service.prompts import SYSTEM_PROMPT
         assert "Canibalização de Retargeting" not in SYSTEM_PROMPT
         assert "Reimpacto de Público" in SYSTEM_PROMPT
+
+
+class TestGlosaDeSiglasNoPromptDaIA:
+    """
+    Fase-5, PR6: a IA deve glosar CPA/ROAS/CPM/CPC/CPL/CTR na primeira menção
+    de cada resposta, com o mesmo texto de definição usado no Copiloto
+    (`GLOSA`, fase-5 PR4) e no glossário do PRD — sem inventar uma segunda
+    versão da explicação por camada do produto. Como a resposta em si vem de
+    uma chamada real ao Gemini (fora do escopo validável sem custo), o teste
+    verifica a MONTAGEM determinística do prompt: a instrução chega ao
+    modelo, sem reformulação, em toda chamada.
+    """
+
+    @pytest.mark.parametrize("sigla", ["CPA", "ROAS", "CPM", "CPC", "CPL", "CTR"])
+    def test_cada_sigla_preservada_tem_instrucao_de_glosa(self, sigla):
+        from app.service.prompts import SYSTEM_PROMPT
+        assert sigla in SYSTEM_PROMPT
+
+    def test_definicoes_batem_com_o_glossario_da_fase_5(self):
+        from app.service.prompts import SYSTEM_PROMPT
+        assert "quanto custou, em média, cada conversão" in SYSTEM_PROMPT
+        assert "quanto voltou em receita para cada R$1 investido" in SYSTEM_PROMPT
+        assert "custo a cada mil impressões" in SYSTEM_PROMPT
+        assert "custo por clique" in SYSTEM_PROMPT
+        assert "custo por lead" in SYSTEM_PROMPT
+        assert "percentual de quem viu o anúncio e clicou" in SYSTEM_PROMPT
+
+    def test_instrucao_pede_glosa_so_na_primeira_mencao_de_cada_campo(self):
+        """
+        Achado da revisão Opus (2026-09-04): a redação original era ambígua
+        entre "primeira vez em cada TEXTO" e "não repetir na mesma RESPOSTA"
+        — dois escopos diferentes (campo isolado vs. resposta inteira) que se
+        contradiziam quando a mesma sigla aparecia em dois campos. Corrigido
+        para deixar explícito que o escopo é o CAMPO, não a resposta —
+        necessário porque a UI pode exibir um campo isolado (ex: só
+        extra_scenarios) sem o restante da resposta.
+        """
+        from app.service.prompts import SYSTEM_PROMPT
+        texto = SYSTEM_PROMPT.replace("\n", " ")
+        assert "PRIMEIRA vez que uma sigla aparecer" in texto
+        assert "DESSE MESMO CAMPO" in texto
+        assert "avaliado de forma INDEPENDENTE" in texto
+
+    def test_instrui_usar_conversao_na_pagina_nunca_lp(self):
+        from app.service.prompts import SYSTEM_PROMPT
+        assert '"Conversão na página"' in SYSTEM_PROMPT
+        assert 'nunca a abreviação "Conversão LP"' in SYSTEM_PROMPT
+
+    def test_nao_manda_traduzir_as_siglas_preservadas(self):
+        # Regressão de intenção: a instrução tem que reforçar preservar as
+        # siglas, não é permissão para trocar CPA/ROAS por termo em português.
+        from app.service.prompts import SYSTEM_PROMPT
+        assert "traduzir criaria" in SYSTEM_PROMPT
+
+
+class TestPromptRealEnviadoContemInstrucaoPR6:
+    """
+    Achado da revisão Opus (2026-09-04): os testes de PR6 só inspecionavam a
+    constante `SYSTEM_PROMPT` isolada — isso prova que a instrução EXISTE,
+    não que ela CHEGA ao Gemini na chamada real. Este teste intercepta
+    `call_gemini` (o ponto onde `analyze_with_ai` de fato despacha o prompt
+    montado) e inspeciona o argumento recebido, pelo fluxo de produção
+    completo (`analyze_campaign_async` → `analyze_with_ai` →
+    `build_user_prompt`/`SYSTEM_PROMPT` → `call_gemini`).
+    """
+
+    @pytest.mark.asyncio
+    async def test_prompt_despachado_contem_a_instrucao_de_glosa(self):
+        from app.service import ai_service
+        from app.service.prompts import SYSTEM_PROMPT
+
+        capturado = {}
+
+        async def fake_call_gemini(prompt, response_schema=None):
+            capturado["prompt"] = prompt
+            return None  # IA "falha" — não importa pro que este teste prova
+
+        with patch("app.service.ai_service.settings") as ms, \
+             patch.object(ai_service, "call_gemini", side_effect=fake_call_gemini):
+            ms.ai_available = True
+            ms.GEMINI_ENABLED = True
+            ms.GEMINI_API_KEY = "AIzaFAKE"
+            ms.GEMINI_TIMEOUT_SECONDS = 8.0
+
+            data = AnalyzeInput(
+                campaign=Campaign(id=1, name="Teste", niche="pet"),
+                metrics=Metrics(impressions=50000, spend=1500.0, link_clicks=500, cpa=90.0),
+                targets=Targets(max_cpa=60.0),
+            )
+            await analyze_campaign_async(data)
+
+        assert "prompt" in capturado, "call_gemini nunca foi chamado — fluxo não exercitou a IA"
+        enviado = capturado["prompt"]
+        assert SYSTEM_PROMPT in enviado, "o SYSTEM_PROMPT completo precisa estar no que foi despachado"
+        assert "GLOSE SIGLAS NA PRIMEIRA MENÇÃO DE CADA CAMPO" in enviado
+        assert "quanto custou, em média, cada conversão" in enviado

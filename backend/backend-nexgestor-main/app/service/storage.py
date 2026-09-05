@@ -30,10 +30,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -46,6 +48,19 @@ logger = logging.getLogger(__name__)
 # concorrendo na primeira requisição depois do boot.
 _init_lock = threading.Lock()
 _iniciado = False
+# Caminho para o qual `_iniciado` vale (revisão Opus, 2026-09-05): o flag era
+# global e booleano, então trocar `DB_PATH` em runtime deixava o módulo
+# achando que a base NOVA já tinha schema — a primeira consulta estourava
+# `OperationalError: no such table`. Guardar o caminho torna a troca
+# detectável e a reinicialização automática.
+_iniciado_para: Optional[str] = None
+
+# Versão da regra de atribuição de fonte do benchmark. Linhas de cache
+# gravadas sob uma regra anterior não podem ser reaproveitadas — antes da v1,
+# um positivo podia vir de fonte que cobria só parte do número, e um negativo
+# podia ser uma falha transitória cacheada indevidamente. Só invalida
+# BENCHMARKS; campanhas e dados do usuário não são tocados.
+REGRA_BENCHMARK_VERSAO = 1
 
 
 class PersistenciaDesligada(RuntimeError):
@@ -95,14 +110,21 @@ def _conexao() -> Iterator[sqlite3.Connection]:
 
 
 def inicializar() -> None:
-    """Cria o schema. Idempotente — pode rodar a cada boot."""
-    global _iniciado
+    """
+    Cria o schema. Idempotente — pode rodar a cada boot.
+
+    Reinicializa quando `DB_PATH` muda (revisão Opus, 2026-09-05): o flag
+    global antigo fazia a base nova herdar o "já inicializado" da anterior, e
+    a primeira consulta estourava `no such table`.
+    """
+    global _iniciado, _iniciado_para
     if not persistencia_ativa():
         logger.info("Persistência desligada (DB_PATH vazio).")
         return
 
+    caminho_atual = settings.DB_PATH
     with _init_lock:
-        if _iniciado:
+        if _iniciado and _iniciado_para == caminho_atual:
             return
         with _conexao() as conn:
             conn.execute(
@@ -146,8 +168,49 @@ def inicializar() -> None:
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_campanhas_dono_client"
                 " ON campanhas(dono, client_id)"
             )
+            # Cache de benchmark de mercado (fase-2b, 04/09/2026). Chave por
+            # (nicho, plataforma, objetivo, métrica) — não por campanha, então
+            # duas campanhas do mesmo dono no mesmo nicho/plataforma
+            # reaproveitam a mesma linha. Sem coluna `dono`: benchmark de
+            # mercado não é dado privado de ninguém. `encontrado=0` (métrica
+            # sem fonte pública, ex: ROAS/Hook Rate) é cacheado com o MESMO
+            # prazo — sem isso toda análise geraria uma chamada Gemini nova
+            # para uma métrica que sabidamente não tem fonte.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS benchmarks_mercado (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nicho         TEXT NOT NULL,
+                    plataforma    TEXT NOT NULL,
+                    objetivo      TEXT NOT NULL,
+                    metrica       TEXT NOT NULL,
+                    valor         REAL,
+                    encontrado    INTEGER NOT NULL,
+                    fonte         TEXT,
+                    fonte_url     TEXT,
+                    capturado_em  TEXT NOT NULL,
+                    expira_em     TEXT NOT NULL,
+                    UNIQUE (nicho, plataforma, objetivo, metrica)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_benchmarks_expiracao"
+                " ON benchmarks_mercado(expira_em)"
+            )
+            # Coluna de versão da regra de atribuição (ver REGRA_BENCHMARK_VERSAO).
+            # Bases criadas antes disto ficam com 0 em toda linha existente —
+            # exatamente o que queremos: o serviço as trata como miss.
+            try:
+                conn.execute(
+                    "ALTER TABLE benchmarks_mercado ADD COLUMN regra_versao INTEGER NOT NULL DEFAULT 0"
+                )
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
             conn.commit()
         _iniciado = True
+        _iniciado_para = caminho_atual
         logger.info("Persistência pronta em %s", settings.DB_PATH)
 
 
@@ -293,3 +356,113 @@ def remover(campanha_id: int, dono: str) -> bool:
         ).rowcount
         conn.commit()
     return bool(n)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CACHE DE BENCHMARK DE MERCADO (fase-2b)
+# ─────────────────────────────────────────────────────────────────────────────
+
+CACHE_BENCHMARK_TTL_DIAS = 14
+
+
+def buscar_cache_benchmark(
+    nicho: str, plataforma: str, objetivo: str, metrica: str
+) -> Optional[dict[str, Any]]:
+    """
+    Linha de cache ainda válida para a chave, ou `None` (miss OU expirada).
+
+    Expiração é checada aqui (comparando `expira_em` com o relógio atual), não
+    apagando a linha — uma linha expirada é sobrescrita na próxima escrita
+    (`ON CONFLICT` em `salvar_cache_benchmark`), então não precisa de rotina
+    de limpeza separada.
+    """
+    inicializar()
+    with _conexao() as conn:
+        linha = conn.execute(
+            "SELECT valor, encontrado, fonte, fonte_url, capturado_em, expira_em, regra_versao"
+            " FROM benchmarks_mercado"
+            " WHERE nicho = ? AND plataforma = ? AND objetivo = ? AND metrica = ?",
+            (nicho, plataforma, objetivo, metrica),
+        ).fetchone()
+
+    if linha is None:
+        return None
+    # `expira_em` corrompido (não-ISO, NULL) nunca pode virar "ainda válido"
+    # por acidente de comparação de string — trata como expirado.
+    expira = linha["expira_em"]
+    if not isinstance(expira, str) or expira <= _agora():
+        return None
+
+    return {
+        "valor": linha["valor"],
+        "encontrado": bool(linha["encontrado"]),
+        "fonte": linha["fonte"],
+        "fonte_url": linha["fonte_url"],
+        "capturado_em": linha["capturado_em"],
+        "regra_versao": linha["regra_versao"],
+    }
+
+
+def salvar_cache_benchmark(
+    nicho: str,
+    plataforma: str,
+    objetivo: str,
+    metrica: str,
+    *,
+    encontrado: bool,
+    valor: Optional[float] = None,
+    fonte: Optional[str] = None,
+    fonte_url: Optional[str] = None,
+) -> dict[str, str]:
+    """
+    Grava (ou substitui) o resultado de benchmark para a chave — inclusive
+    `encontrado=False`, com o mesmo TTL de 14 dias (ver nota em `inicializar`).
+
+    `ON CONFLICT ... DO UPDATE` — mesma técnica de escrita idempotente já
+    usada em `salvar()` — reescreve a linha existente em vez de falhar por
+    violar o índice único, então re-buscar a mesma chave (ex: cache expirado)
+    é uma escrita normal, não um caso de erro.
+
+    Valida invariantes ANTES de gravar (revisão Opus, 2026-09-04): um
+    `encontrado=True` sem valor finito ou sem URL http(s) nunca deveria
+    chegar aqui — se chegar, é bug de quem chamou, não dado a persistir como
+    se fosse confiável. Levanta `ValueError` em vez de gravar lixo.
+    """
+    if encontrado:
+        # Importado aqui (não no topo) porque `benchmark_service` importa
+        # `storage` — no topo seria import circular.
+        from app.service.benchmark_service import url_publica_valida, valor_plausivel
+
+        if not valor_plausivel(metrica, valor):
+            raise ValueError(f"cache de benchmark encontrado=True exige valor plausível para {metrica}")
+        if not isinstance(fonte, str) or not fonte.strip():
+            raise ValueError("cache de benchmark encontrado=True exige fonte não vazia")
+        if not url_publica_valida(fonte_url):
+            raise ValueError("cache de benchmark encontrado=True exige fonte_url http(s) com host")
+
+    inicializar()
+    agora = _agora()
+    expira = (
+        datetime.now(timezone.utc) + timedelta(days=CACHE_BENCHMARK_TTL_DIAS)
+    ).isoformat(timespec="seconds")
+
+    with _conexao() as conn:
+        conn.execute(
+            "INSERT INTO benchmarks_mercado"
+            " (nicho, plataforma, objetivo, metrica, valor, encontrado,"
+            "  fonte, fonte_url, capturado_em, expira_em, regra_versao)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(nicho, plataforma, objetivo, metrica) DO UPDATE SET"
+            "   valor = excluded.valor, encontrado = excluded.encontrado,"
+            "   fonte = excluded.fonte, fonte_url = excluded.fonte_url,"
+            "   capturado_em = excluded.capturado_em, expira_em = excluded.expira_em,"
+            "   regra_versao = excluded.regra_versao",
+            (
+                nicho, plataforma, objetivo, metrica,
+                valor, int(encontrado), (fonte.strip() if isinstance(fonte, str) else fonte), fonte_url,
+                agora, expira, REGRA_BENCHMARK_VERSAO,
+            ),
+        )
+        conn.commit()
+
+    return {"capturado_em": agora, "expira_em": expira}

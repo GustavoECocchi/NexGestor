@@ -85,7 +85,7 @@ _SCENARIO_CATALOG: list[dict] = [
     {
         "code": ScenarioCode.LP_MISMATCH,
         "title": "Cenário D — Desalinhamento com Landing Page",
-        "trigger": "CTR Link > 1.5x meta E LP conv. < min_lp_conversion_rate",
+        "trigger": "CTR Link > 1.5x meta E conversão na página < min_lp_conversion_rate",
         "metrics": ["ctr_link", "lp_conversion_rate"],
         "priority": "1 crítico",
     },
@@ -99,7 +99,7 @@ _SCENARIO_CATALOG: list[dict] = [
     {
         "code": ScenarioCode.COLD_LEAD,
         "title": "Cenário F — Lead Frio",
-        "trigger": "CPA/CPL ok E LP conv. < 50% do mínimo",
+        "trigger": "CPA/CPL ok E conversão na página < 50% do mínimo",
         "metrics": ["cpa", "cpl", "lp_conversion_rate"],
         "priority": "2 urgente",
     },
@@ -132,7 +132,7 @@ _SCENARIO_CATALOG: list[dict] = [
     {
         "code": ScenarioCode.OVERSPENDING,
         "title": "Cenário J — Overspending",
-        "trigger": "CPM > max_cpm E LP saudável E CPA > max_cpa",
+        "trigger": "CPM > max_cpm E página convertendo bem E CPA > max_cpa",
         "metrics": ["cpm", "lp_conversion_rate", "cpa"],
         "priority": "2 urgente",
     },
@@ -160,7 +160,7 @@ _SCENARIO_CATALOG: list[dict] = [
     {
         "code": ScenarioCode.CLICK_LEAK,
         "title": "Cenário N — Vazamento entre Clique e Página",
-        "trigger": "LP views < 70% dos cliques no link (mínimo 50 cliques)",
+        "trigger": "Views da página < 70% dos cliques no link (mínimo 50 cliques)",
         "metrics": ["link_clicks", "landing_page_views", "spend"],
         "priority": "1 crítico se <50% | 2 urgente caso contrário",
     },

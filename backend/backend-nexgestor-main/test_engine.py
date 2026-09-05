@@ -12,6 +12,7 @@ Executar:
   pytest tests/test_engine.py -v
 """
 
+import re
 import sys
 import pytest
 
@@ -234,6 +235,78 @@ class TestVocabularioCenarioD:
         verbete = next(s for s in _SCENARIO_CATALOG if s["code"] == ScenarioCode.LP_MISMATCH)
         assert visivel == verbete["title"]
         assert "LP" not in verbete["title"]
+
+
+class TestVocabularioFase5PR5SemAbreviacaoLP:
+    """
+    Fase-5, PR5: o glossário manda usar "Conversão na página" (nunca a
+    abreviação solta "LP") em todo texto visível ao usuário — a PR7 já tinha
+    corrigido o RÓTULO da métrica (`_METRIC_EVAL_CONFIG`), mas o mesmo "LP"
+    ainda vazava nos textos de causa/impacto dos cenários D, F, J e N (achado
+    ao revisar o engine para o PR5). Nenhum threshold/condição muda aqui — só
+    a redação; os testes de detecção de cada cenário continuam intactos.
+    """
+
+    def _textos(self, cenario) -> str:
+        return " ".join([
+            cenario.title, cenario.root_cause, cenario.funnel_impact,
+            cenario.action, cenario.execution_rule,
+        ])
+
+    def test_cenario_d_sem_lp_solto(self):
+        r, codes = run(Metrics(
+            impressions=80000, spend=3000,
+            link_clicks=2000, conversions=5,
+            landing_page_views=1900, reach=65000,
+        ))
+        cenario = next(s for s in r.scenarios if s.code == ScenarioCode.LP_MISMATCH)
+        assert not re.search(r"\bLP\b", self._textos(cenario))
+
+    def test_cenario_f_sem_lp_solto(self):
+        r, codes = run(Metrics(
+            impressions=80000, spend=3000,
+            link_clicks=1500, reach=65000,
+            cpa=70.0, lp_conversion_rate=0.3,
+        ))
+        cenario = next(s for s in r.scenarios if s.code == ScenarioCode.COLD_LEAD)
+        assert not re.search(r"\bLP\b", self._textos(cenario))
+
+    def test_cenario_j_sem_lp_solto(self):
+        r, codes = run(
+            Metrics(
+                impressions=50000, spend=3500,
+                link_clicks=1200, reach=42000,
+                conversions=30, landing_page_views=1150,
+                cpa=116.0, lp_conversion_rate=2.6,
+            ),
+            targets=make_targets(max_cpa=80.0, max_cpm=50.0),
+        )
+        cenario = next(s for s in r.scenarios if s.code == ScenarioCode.OVERSPENDING)
+        assert not re.search(r"\bLP\b", self._textos(cenario))
+
+    def test_cenario_n_sem_lp_solto(self):
+        r, codes = run(Metrics(
+            impressions=80000, spend=2000, link_clicks=1600,
+            landing_page_views=300, conversions=20, frequency=1.3,
+        ), Targets(max_cpa=80.0))
+        cenario = next(s for s in r.scenarios if s.code == ScenarioCode.CLICK_LEAK)
+        assert not re.search(r"\bLP\b", self._textos(cenario))
+
+    def test_catalogo_publico_de_cenarios_sem_lp_solto(self):
+        """
+        Achado da revisão Opus (2026-09-04): a varredura original do PR5
+        cobriu os textos que o ENGINE gera (root_cause/funnel_impact/etc),
+        mas não o catálogo estático de `GET /api/v1/campaign/scenarios`
+        (`app/routes/routes.py`, `_SCENARIO_CATALOG`) — que também é texto
+        público visível, e tinha "LP" solto em 4 triggers.
+        """
+        from app.routes.routes import _SCENARIO_CATALOG
+        vazando = [
+            (s["code"].value, s["trigger"])
+            for s in _SCENARIO_CATALOG
+            if re.search(r"\bLP\b", s["trigger"])
+        ]
+        assert vazando == []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -9,9 +9,50 @@ import { HelpCenter } from "~components/HelpCenter"
 import { Home } from "~components/Home"
 import { NewCampaignModal } from "~components/NewCampaignModal"
 import { CAMPAIGNS } from "~data/mock"
-import { apagarCampanha, idLocalDoServidor, listarCampanhasSalvas, salvarCampanha } from "~lib/api"
-import { garantirClientId, loadLive, marcarComoSalva, marcarFalhaPermanente, mesclarComServidor, registrarAvisoTransitorio, removeLive, upsertLive } from "~lib/store"
-import type { CampaignVM } from "~types"
+import { benchmarksEncontrados, metricasElegiveisParaBenchmark } from "~lib/adapt"
+import { apagarCampanha, buscarBenchmarkMercado, buscarStatus, idLocalDoServidor, listarCampanhasSalvas, salvarCampanha } from "~lib/api"
+import { aplicarBenchmarkNaLive, garantirClientId, loadLive, marcarComoSalva, marcarFalhaPermanente, mesclarComServidor, registrarAvisoTransitorio, removeLive, upsertLive } from "~lib/store"
+import type { AnalyzeInput, BenchmarkReferencia, CampaignVM } from "~types"
+
+/**
+ * Enriquecimento de benchmark de mercado (fase-2b) — SEMPRE depois da
+ * análise principal já ter sido entregue (`onAnalyzed` já rodou quando isto
+ * é chamado). Roda aqui, e não em `NewCampaignModal.tsx` (achado da revisão
+ * Opus, 2026-09-04): o modal desmonta no mesmo tick que `onAnalyzed`
+ * dispara, e `App` é o componente que sobrevive por toda a sessão — uma
+ * promise em voo aqui sempre tem alguém pra receber o resultado.
+ *
+ * Nunca lança: qualquer falha (rede, validação, `status.benchmark`
+ * ausente/desligado/indisponível, JSON malformado) é tratada como "sem
+ * referência agora" e a função simplesmente não atualiza nada — a campanha
+ * já entregue por `onAnalyzed` nunca é afetada.
+ */
+async function buscarReferenciasDeMercado(
+  vm: CampaignVM,
+  input: AnalyzeInput
+): Promise<{ clientId: string; benchmarks: BenchmarkReferencia[] } | null> {
+  if (!vm.clientId || !input.campaign.niche) return null
+  const metricas = metricasElegiveisParaBenchmark(vm.tiles)
+  if (metricas.length === 0) return null
+
+  // Compatível com backend antigo (sem o bloco `benchmark`) e com a rota
+  // desligada/indisponível — nunca tenta a chamada nesses casos.
+  const status = await buscarStatus()
+  if (!status?.benchmark?.available) return null
+
+  const resultados = await buscarBenchmarkMercado({
+    niche: input.campaign.niche,
+    platform: input.campaign.platform ?? "meta_ads",
+    objective: input.campaign.objective ?? "conversion",
+    metrics: metricas
+  })
+  if (!resultados) return null
+
+  const referencias = benchmarksEncontrados(resultados)
+  if (referencias.length === 0) return null
+
+  return { clientId: vm.clientId, benchmarks: referencias }
+}
 
 type Screen = { name: "home" } | { name: "detail"; id: number } | { name: "help" }
 type Modal = "none" | "new" | "compare"
@@ -214,7 +255,7 @@ export function App() {
         {modal === "new" && (
           <NewCampaignModal
             onClose={() => setModal("none")}
-            onAnalyzed={(vm) => {
+            onAnalyzed={(vm, input) => {
               // `garantirClientId` ANTES do `upsertLive` (achado R6, revisão
               // do Opus 2026-09-04): gera e persiste o clientId de uma vez
               // só. Na ordem antiga (`upsertLive(vm)` sem clientId, depois
@@ -240,6 +281,34 @@ export function App() {
                 else if (resultado.permanente) setLive(marcarFalhaPermanente(comId, resultado.explicacao))
                 else setLive(registrarAvisoTransitorio(comId, resultado.aviso))
               })
+
+              // Enriquecimento de benchmark de mercado (fase-2b) — em segundo
+              // plano, depois da campanha já estar na tela. `.catch` extra
+              // (defesa em profundidade): `buscarReferenciasDeMercado` já
+              // nunca lança, mas um bug futuro ali não pode virar um erro não
+              // tratado nem afetar a análise já entregue.
+              buscarReferenciasDeMercado(comId, input)
+                .then((achado) => {
+                  if (!achado) return
+                  const lista = aplicarBenchmarkNaLive(achado.clientId, achado.benchmarks)
+                  setLive(lista)
+
+                  // Sobe a versão ENRIQUECIDA (revisão Opus, 2026-09-05):
+                  // antes o enriquecimento só existia neste navegador, e a
+                  // primeira mesclagem com o servidor o apagava. Reenviar com
+                  // o MESMO `clientId` é idempotente por desenho — o backend
+                  // faz `ON CONFLICT (dono, client_id) DO UPDATE SET payload`,
+                  // então atualiza a linha existente em vez de duplicar
+                  // (verificado contra `storage.salvar`). Só sobe se a
+                  // campanha ainda existe: apagada no meio do caminho, o
+                  // `find` não acha e nada é enviado.
+                  const enriquecida = lista.find((c) => c.clientId === achado.clientId)
+                  if (!enriquecida) return
+                  salvarCampanha(enriquecida).then((r) => {
+                    if (r.ok) setLive(reancorar(enriquecida, r.id))
+                  })
+                })
+                .catch(() => {})
             }}
           />
         )}

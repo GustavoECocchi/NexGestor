@@ -1,5 +1,5 @@
 import { getDono } from "~lib/dono"
-import type { AnalyzeInput, CampaignAnalysisResponse, CampaignVM } from "~types"
+import type { AnalyzeInput, CampaignAnalysisResponse, CampaignVM, ResultadoBenchmark } from "~types"
 
 // Base do backend FastAPI. Defina VITE_API_BASE no .env para produção (ver
 // .env.example). As mensagens de erro citam o endereço REAL configurado, não
@@ -129,6 +129,123 @@ export async function analyzeCampaign(
 }
 
 // =============================================================================
+// Benchmark de mercado (fase-2b) — enriquece tiles sem meta do gestor.
+// =============================================================================
+
+/**
+ * Um item de `resultados` é aceito só se obedecer ao discriminante inteiro
+ * (`encontrado: true` exige `value` finito + `fonte` + `fonte_url` http(s) +
+ * `capturado_em`; `encontrado: false` exige `motivo`), a métrica pertencer à
+ * lista PEDIDA e não se repetir. Qualquer desvio — tipo errado, campo
+ * faltando, métrica que ninguém pediu, HTML/JSON parcial — descarta o
+ * corpo INTEIRO (`null`), nunca deixa um item malformado seguir sozinho
+ * (achado da revisão Opus, 2026-09-04: um item `null`/incoerente chegava
+ * intacto até `aplicarBenchmark` e quebrava a entrega da análise principal).
+ */
+/**
+ * URL exibível como link: http(s) COM host analisável. Prefixo não basta —
+ * `https://` sozinho passava na versão anterior (revisão Opus, 2026-09-05) e
+ * viraria um `href` quebrado na UI. Espelha `url_publica_valida` do backend.
+ */
+export function urlDeFonteValida(url: unknown): url is string {
+  if (typeof url !== "string" || !url.trim()) return false
+  try {
+    const u = new URL(url.trim())
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false
+    return !!u.hostname && (u.hostname.includes(".") || u.hostname === "localhost")
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Invariantes de uma referência de mercado EXIBÍVEL — aplicadas tanto na
+ * resposta nova da API quanto no que volta do `localStorage`/da API de
+ * campanhas (revisão Opus, 2026-09-05: validar só a resposta nova não
+ * protege o payload persistido, que `MetricFeed` renderiza direto).
+ *
+ * `0 < value <= 100` porque a única métrica com busca real hoje é CTR Link,
+ * percentual — espelha `_FAIXA_PLAUSIVEL` do backend.
+ */
+export function referenciaDeMercadoValida(r: unknown): boolean {
+  if (typeof r !== "object" || r === null) return false
+  const o = r as Record<string, unknown>
+  if (typeof o.value !== "number" || !Number.isFinite(o.value)) return false
+  if (o.value <= 0 || o.value > 100) return false
+  if (typeof o.fonte !== "string" || !o.fonte.trim()) return false
+  if (!urlDeFonteValida(o.fonte_url)) return false
+  if (typeof o.capturado_em !== "string" || Number.isNaN(Date.parse(o.capturado_em))) return false
+  return true
+}
+
+function validarResultadosBenchmark(
+  bruto: unknown,
+  metricasPedidas: readonly string[]
+): ResultadoBenchmark[] | null {
+  if (typeof bruto !== "object" || bruto === null) return null
+  const resultados = (bruto as { resultados?: unknown }).resultados
+  if (!Array.isArray(resultados)) return null
+
+  const pedidas = new Set(metricasPedidas)
+  const vistas = new Set<string>()
+  const validados: ResultadoBenchmark[] = []
+
+  for (const item of resultados) {
+    if (typeof item !== "object" || item === null) return null
+    const r = item as Record<string, unknown>
+
+    if (typeof r.metric !== "string" || !pedidas.has(r.metric) || vistas.has(r.metric)) return null
+    vistas.add(r.metric)
+
+    if (r.encontrado === true) {
+      if (!referenciaDeMercadoValida(r)) return null
+      validados.push({
+        metric: r.metric, encontrado: true, value: r.value as number,
+        fonte: (r.fonte as string).trim(), fonte_url: (r.fonte_url as string).trim(),
+        capturado_em: r.capturado_em as string
+      })
+    } else if (r.encontrado === false) {
+      if (typeof r.motivo !== "string" || !r.motivo.trim()) return null
+      validados.push({
+        metric: r.metric, encontrado: false, motivo: r.motivo,
+        motivo_tipo: typeof r.motivo_tipo === "string" ? r.motivo_tipo : undefined
+      })
+    } else {
+      return null // discriminante ausente ou fora de {true, false}
+    }
+  }
+  return validados
+}
+
+/**
+ * Busca benchmark de mercado pra métricas sem meta definida pelo gestor.
+ * `null` em QUALQUER falha (rede, timeout, 422/501/503/500, JSON inválido,
+ * corpo malformado) — é um enriquecimento opcional, nunca pode interromper
+ * ou atrasar a análise principal, que já foi entregue quando isto roda (a
+ * orquestração mora em `App.tsx`, ver `onAnalyzed`).
+ */
+export async function buscarBenchmarkMercado(entrada: {
+  niche: string
+  platform: string
+  objective: string
+  metrics: string[]
+}): Promise<ResultadoBenchmark[] | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/benchmark/mercado`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entrada),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    })
+    if (!res.ok) return null
+    const corpo: unknown = await res.json()
+    return validarResultadosBenchmark(corpo, entrada.metrics)
+  } catch {
+    return null
+  }
+}
+
+// =============================================================================
 // Estado das capacidades do servidor (IA, persistência).
 // =============================================================================
 
@@ -148,7 +265,16 @@ export type EstadoIA = "on" | "off" | "falhando" | "desconhecido"
 export interface StatusServidor {
   ai: { enabled: boolean; available: boolean; model: string }
   persistence: { enabled: boolean }
+  /** Ausente em servidor anterior à fase-2b — trate como benchmark indisponível. */
+  benchmark?: { enabled: boolean; available: boolean }
 }
+
+// Compartilha a MESMA promise entre chamadas concorrentes (ex: o selo de IA
+// no cabeçalho e a checagem de elegibilidade do benchmark, ambos podendo
+// disparar perto um do outro na mesma análise) — evita dois GETs simultâneos
+// pro mesmo dado. Limpo assim que a chamada resolve (sucesso ou falha): não é
+// um cache com TTL, só evita duplicar uma requisição já EM VOO.
+let _statusEmVoo: Promise<StatusServidor | null> | null = null
 
 /**
  * Lê as capacidades ligadas no servidor. `null` quando não deu para saber.
@@ -160,6 +286,17 @@ export interface StatusServidor {
  * Sem header de dono: capacidade do servidor não é dado de ninguém.
  */
 export async function buscarStatus(): Promise<StatusServidor | null> {
+  if (_statusEmVoo) return _statusEmVoo
+  const promessa = _buscarStatusAgora()
+  _statusEmVoo = promessa
+  try {
+    return await promessa
+  } finally {
+    if (_statusEmVoo === promessa) _statusEmVoo = null
+  }
+}
+
+async function _buscarStatusAgora(): Promise<StatusServidor | null> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/status`, {
       signal: AbortSignal.timeout(8000)

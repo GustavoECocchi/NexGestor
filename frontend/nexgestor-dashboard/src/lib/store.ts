@@ -7,7 +7,7 @@
 // campanhas vivas primeiro (são as do usuário).
 // =============================================================================
 
-import type { CampaignVM } from "~types"
+import type { BenchmarkReferencia, CampaignVM } from "~types"
 
 const KEY = "nex:live"
 const LIVE_ID_BASE = 1000
@@ -85,7 +85,9 @@ export function garantirClientId(vm: CampaignVM): CampaignVM {
  */
 export function marcarFalhaPermanente(vm: CampaignVM, explicacao: string): CampaignVM[] {
   const list = loadLive()
-  const nova = list.map((c) => (c.id === vm.id ? { ...c, syncFalhouPermanente: explicacao } : c))
+  const idx = indiceAtual(list, vm) // identidade estável — o `id` pode ter mudado
+  if (idx === -1) return list
+  const nova = list.map((c, i) => (i === idx ? { ...c, syncFalhouPermanente: explicacao } : c))
   persist(nova)
   return nova
 }
@@ -104,7 +106,9 @@ export function marcarFalhaPermanente(vm: CampaignVM, explicacao: string): Campa
  */
 export function registrarAvisoTransitorio(vm: CampaignVM, aviso: string | undefined): CampaignVM[] {
   const list = loadLive()
-  const nova = list.map((c) => (c.id === vm.id ? { ...c, syncAviso: aviso } : c))
+  const idx = indiceAtual(list, vm) // identidade estável — o `id` pode ter mudado
+  if (idx === -1) return list
+  const nova = list.map((c, i) => (i === idx ? { ...c, syncAviso: aviso } : c))
   persist(nova)
   return nova
 }
@@ -176,9 +180,40 @@ export function mesclarComServidor(
   locais: CampaignVM[] = loadLive()
 ): CampaignVM[] {
   const soLocais = locais.filter((c) => c.serverId === undefined)
-  const mesclada = [...soLocais, ...doServidor]
+  // Preserva o enriquecimento local (revisão Opus, 2026-09-05): o payload do
+  // servidor pode ter sido gravado ANTES do benchmark chegar, e sobrescrever
+  // com ele apagava as referências que já estavam na tela. Casamos por
+  // `clientId` (identidade estável) e só usamos o local quando o servidor
+  // ainda não tem nada — nunca o contrário, pra não ressuscitar dado velho.
+  const porClientId = new Map(
+    locais.filter((c) => c.clientId).map((c) => [c.clientId as string, c])
+  )
+  const doServidorMesclado = doServidor.map((c) => {
+    const local = c.clientId ? porClientId.get(c.clientId) : undefined
+    if (!local?.benchmarks?.length || c.benchmarks?.length) return c
+    return { ...c, benchmarks: local.benchmarks }
+  })
+  const mesclada = [...soLocais, ...doServidorMesclado]
   persist(mesclada)
   return mesclada
+}
+
+/**
+ * Localiza uma campanha no estado ATUAL por identidade estável.
+ *
+ * `clientId` primeiro (não muda nunca), `id` só como fallback pra campanhas
+ * antigas que nunca ganharam um. Existe porque quase toda corrida deste
+ * arquivo vem de usar o `id`, que MUDA na reancoragem.
+ */
+function indiceAtual(lista: CampaignVM[], vm: CampaignVM): number {
+  if (vm.clientId) {
+    const porClientId = lista.findIndex((c) => c.clientId === vm.clientId)
+    if (porClientId !== -1) return porClientId
+    // Com clientId e sem correspondência, a campanha não está mais aqui —
+    // não cai pro `id`, que poderia casar com OUTRA campanha por acaso.
+    return -1
+  }
+  return lista.findIndex((c) => c.id === vm.id)
 }
 
 /**
@@ -192,15 +227,30 @@ export function mesclarComServidor(
  * ainda no objeto (`registrarAvisoTransitorio` não é chamado de novo no
  * caminho de sucesso) — sem limpar, o card mostraria "base cheia" numa
  * campanha que ACABOU de sincronizar com sucesso.
+ *
+ * Duas correções da revisão Opus de 2026-09-05:
+ *
+ *  1. **Mescla sobre o estado ATUAL, não sobre o snapshot `vm`.** O `vm` que
+ *     chega aqui foi capturado quando o save começou; qualquer edição feita
+ *     no meio do caminho (tipicamente o enriquecimento de benchmark, que
+ *     resolve depois) estava sendo APAGADA por `{ ...vm }`.
+ *  2. **Não ressuscita campanha apagada.** Se ela não está mais na lista, o
+ *     save em voo terminou depois do delete — devolver a lista intacta é a
+ *     única resposta correta; recriar traria de volta algo que o usuário
+ *     mandou apagar.
  */
 export function marcarComoSalva(
   vm: CampaignVM,
   serverId: number,
   idLocal: number
 ): CampaignVM[] {
-  const salva = { ...vm, serverId, id: idLocal, syncAviso: undefined }
-  const lista = loadLive().filter((c) => c.id !== vm.id && c.id !== idLocal)
-  const nova = [salva, ...lista]
+  const lista = loadLive()
+  const idx = indiceAtual(lista, vm)
+  if (idx === -1) return lista // apagada durante o save — no-op
+
+  const atual = lista[idx]
+  const salva = { ...atual, serverId, id: idLocal, syncAviso: undefined }
+  const nova = [salva, ...lista.filter((_, i) => i !== idx).filter((c) => c.id !== idLocal)]
   persist(nova)
   return nova
 }
@@ -208,6 +258,29 @@ export function marcarComoSalva(
 /** Remove uma campanha do cache local. Devolve a lista nova. */
 export function removeLive(id: number): CampaignVM[] {
   const nova = loadLive().filter((c) => c.id !== id)
+  persist(nova)
+  return nova
+}
+
+/**
+ * Aplica referências de benchmark de mercado (fase-2b) a uma campanha já
+ * salva — chamado depois que o enriquecimento em segundo plano resolve
+ * (ver `App.tsx`, `onAnalyzed`).
+ *
+ * Busca por `clientId`, NUNCA por `id` (achado da revisão Opus, 2026-09-04):
+ * `id` muda quando o servidor reancora a campanha (`marcarComoSalva`), mas
+ * `clientId` é estável por toda a vida da campanha. Sem isto, uma resposta
+ * de benchmark que chega depois da reancoragem procuraria um `id` que já não
+ * existe mais e a referência se perderia em silêncio.
+ *
+ * Campanha não encontrada (apagada, ou resposta atrasada de uma campanha que
+ * nunca existiu de verdade aqui) é NO-OP — nunca ressuscita nem cria nada.
+ */
+export function aplicarBenchmarkNaLive(clientId: string, benchmarks: BenchmarkReferencia[]): CampaignVM[] {
+  const list = loadLive()
+  const idx = list.findIndex((c) => c.clientId === clientId)
+  if (idx === -1) return list
+  const nova = list.map((c, i) => (i === idx ? { ...c, benchmarks } : c))
   persist(nova)
   return nova
 }

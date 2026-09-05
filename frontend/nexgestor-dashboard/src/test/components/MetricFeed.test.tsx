@@ -103,6 +103,35 @@ describe("MetricFeed — Painel do funil", () => {
     render(<MetricFeed c={vm(semFunil)} />)
     expect(screen.getByText(/nenhuma métrica de funil/i)).toBeInTheDocument()
   })
+
+  it("fase-2b: CTR Link com referência de mercado mostra a nota SEM tocar valor/cor do tile — outras barras continuam sem nota", () => {
+    // Achado da revisão Opus (2026-09-04): o tile em si (CTR Link, origem
+    // "sistema" no fixture, cor --txt-2) não pode ser reescrito por causa do
+    // benchmark — só uma nota SEPARADA aparece, em `CampaignVM.benchmarks`.
+    const original = tilesCompletos.find((t) => t[0] === "CTR Link")!
+    render(
+      <MetricFeed
+        c={vm(tilesCompletos, {
+          benchmarks: [{ metric: "CTR Link", value: 1.5, fonte: "WordStream 2025", fonte_url: "https://wordstream.example/relatorio", capturado_em: "2026-09-05T00:00:00Z" }]
+        })}
+      />
+    )
+    const nota = screen.getByText(/Referência informativa de mercado/)
+    expect(nota.className).toContain("fonte-mercado")
+    const link = screen.getByRole("link", { name: /WordStream 2025/ })
+    expect(link).toHaveAttribute("href", "https://wordstream.example/relatorio")
+    expect(link).toHaveAttribute("target", "_blank")
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"))
+    // O valor/cor do tile continuam exatamente os que o engine calculou.
+    expect(screen.getByText(original[1])).toBeInTheDocument()
+    // Hook Rate (sem referência de mercado no fixture) continua sem nota nenhuma.
+    expect(screen.queryByText(/Meta:/)).not.toBeInTheDocument()
+  })
+
+  it("fase-2b: sem CampaignVM.benchmarks, nenhuma nota de referência aparece", () => {
+    render(<MetricFeed c={vm(tilesCompletos)} />)
+    expect(screen.queryByText(/Referência informativa de mercado/)).not.toBeInTheDocument()
+  })
 })
 
 describe("MetricFeed — Coluna de ações", () => {
@@ -156,6 +185,26 @@ describe("MetricFeed — Métricas de contexto", () => {
     expect(screen.getByText("Você não definiu uma meta para isso.")).toBeInTheDocument()
     // Confirma que a mudança não vazou nota pras outras métricas de contexto.
     expect(screen.queryByText("Leilão eficiente.")).not.toBeInTheDocument()
+  })
+
+  it("fase-2b: CPL não é elegível pra benchmark real — uma referência pra ele (se aparecesse) não é renderizada no Contexto", () => {
+    // Decisão conservadora pós-revisão Opus: só CTR Link busca real hoje.
+    // `benchmarks` só é lido dentro do Funil (ver describe acima) — o
+    // Contexto nunca leu esse campo, então uma entrada "estranha" ali (bug
+    // upstream) simplesmente não aparece, não quebra a tela.
+    const comCplSemMeta: Tile[] = [
+      ...tilesCompletos,
+      ["CPL", "R$ 12,00", "var(--txt-3)", "Você não definiu uma meta para isso.", "ausente"]
+    ]
+    render(
+      <MetricFeed
+        c={vm(comCplSemMeta, {
+          benchmarks: [{ metric: "CPL", value: 10, fonte: "F", fonte_url: "https://x.example", capturado_em: "2026-09-05T00:00:00Z" }]
+        })}
+      />
+    )
+    expect(screen.queryByText(/Referência informativa de mercado/)).not.toBeInTheDocument()
+    expect(screen.getByText("Você não definiu uma meta para isso.")).toBeInTheDocument()
   })
 })
 

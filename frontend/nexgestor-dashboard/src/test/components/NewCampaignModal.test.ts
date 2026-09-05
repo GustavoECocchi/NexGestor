@@ -124,6 +124,55 @@ describe("parseFileJSON — a whitelist é a garantia de segurança aqui", () =>
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fase-2b — niche é lista fechada, mas SEM default (diferente de platform/objective)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("parseFileJSON — niche é lista fechada e não tem default seguro", () => {
+  it("niche válido é aceito e não gera aviso", () => {
+    const result = parseFileJSON(JSON.stringify({ campaign: { niche: "pet" } }))
+    if ("error" in result) throw new Error("não deveria ter erro")
+    expect(result.input.campaign.niche).toBe("pet")
+    expect(result.invalidValueKeys).toEqual([])
+  })
+
+  it("niche fora da lista fixa vira undefined e é reportado — nunca aceito", () => {
+    const result = parseFileJSON(JSON.stringify({ campaign: { niche: "chuteiras" } }))
+    if ("error" in result) throw new Error("não deveria ter erro")
+    expect(result.input.campaign.niche).toBeUndefined()
+    expect(result.invalidValueKeys.join(" ")).toContain("campaign.niche")
+  })
+
+  it("niche ausente TAMBÉM é reportado — ao contrário de platform/objective, não há default seguro", () => {
+    const result = parseFileJSON(JSON.stringify({ campaign: {} }))
+    if ("error" in result) throw new Error("não deveria ter erro")
+    expect(result.input.campaign.niche).toBeUndefined()
+    expect(result.invalidValueKeys.join(" ")).toContain("campaign.niche")
+  })
+
+  it("niche com tipo errado (número) é reportado do mesmo jeito que string inválida", () => {
+    const result = parseFileJSON(JSON.stringify({ campaign: { niche: 42 } }))
+    if ("error" in result) throw new Error("não deveria ter erro")
+    expect(result.input.campaign.niche).toBeUndefined()
+    expect(result.invalidValueKeys.join(" ")).toContain("campaign.niche")
+  })
+
+  it("todos os 15 nichos da lista fixa são aceitos", () => {
+    const nichos = [
+      "ecommerce_varejo", "educacao_cursos", "saude_bem_estar", "beleza_estetica",
+      "imobiliario", "servicos_financeiros_seguros", "servicos_juridicos", "automotivo",
+      "viagens_turismo", "alimentacao_restaurantes", "software_tecnologia_b2b",
+      "fitness_academias", "servicos_locais", "pet", "moda_vestuario"
+    ]
+    for (const niche of nichos) {
+      const result = parseFileJSON(JSON.stringify({ campaign: { niche } }))
+      if ("error" in result) throw new Error(`não deveria ter erro para ${niche}`)
+      expect(result.input.campaign.niche).toBe(niche)
+      expect(result.invalidValueKeys).toEqual([])
+    }
+  })
+})
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Regressão 2026-08-01 — campos que faltavam no formulário manual

@@ -33,7 +33,7 @@ O corpo tem três blocos: `campaign`, `metrics`, `targets`.
 | `name` | string | **sim** | — | Nome exibido |
 | `objective` | string | não | `"conversion"` | `conversion` \| `lead` \| `traffic` |
 | `platform` | string | não | `"meta_ads"` | `meta_ads` \| `google_ads` |
-| `niche` | string | não | `null` | Ex.: `SaaS`, `ecommerce`, `infoproduto` |
+| `niche` | string | não | `null` | Lista fechada (fase-2b) — ver a seção "Benchmark de mercado" abaixo para os 15 valores aceitos. Valor fora da lista é `422`, nunca aceito silenciosamente. |
 
 ### `metrics` — todas opcionais
 
@@ -158,7 +158,7 @@ const uiStatus = isEscalavel ? "BLUE" : mapStatus(response.final_status);
 {
   "campaign": {
     "id": 101, "name": "Black Friday - Topo",
-    "objective": "conversion", "platform": "meta_ads", "niche": "ecommerce"
+    "objective": "conversion", "platform": "meta_ads", "niche": "ecommerce_varejo"
   },
   "metrics": {
     "impressions": 50000, "reach": 42000, "spend": 1500.0,
@@ -208,7 +208,7 @@ const uiStatus = isEscalavel ? "BLUE" : mapStatus(response.final_status);
 {
   "campaign": {
     "id": 102, "name": "Lookalike 1% - Compradores",
-    "objective": "conversion", "platform": "meta_ads", "niche": "SaaS"
+    "objective": "conversion", "platform": "meta_ads", "niche": "software_tecnologia_b2b"
   },
   "metrics": {
     "impressions": 80000, "reach": 70000, "spend": 2000.0,
@@ -282,6 +282,121 @@ const uiStatus = isEscalavel ? "BLUE" : mapStatus(response.final_status);
 | `422` | Payload mal-formado (faltou `campaign.id` ou `name`, tipo errado) | Erro de validação do FastAPI |
 | `400` | Erro de validação semântica do domínio | `{ "detail": "..." }` |
 | `500` | Bug inesperado | `{ "detail": "Erro interno ao processar análise. ..." }` |
+
+---
+
+## Benchmark de mercado — `POST /api/v1/benchmark/mercado`
+
+Busca benchmark público (via Gemini com grounding de busca) para métricas sem
+meta definida pelo gestor. Ver `docs/prds/fase-2b-benchmark-mercado.md` e a
+revisão crítica em `docs/sessions/2026-09-04.md` para o histórico completo.
+
+⚠️ **Rota pública e SEM AUTENTICAÇÃO**, como o resto da API — mas ao
+contrário das outras, pode gerar **custo real** (chamada paga ao Gemini).
+`BENCHMARK_ENABLED` nasce **desligado** (`False`) — ligar em produção sem
+controle de custo/autenticação real é decisão explícita de quem opera o
+servidor, não o padrão. `X-Nex-Dono` (usado em `/campaigns`) não é
+segurança e não cobre esta rota.
+
+**Decisão conservadora (revisão do Opus, 2026-09-04): só `ctr_link` tem
+busca real hoje.** CPA/CPL/CPM/ROAS/Hook Rate e qualquer plataforma fora de
+Meta/Google Ads sempre caem em fallback determinístico (`encontrado:
+false`), sem chamar o Gemini — o request não carrega país/moeda/período, e
+comparar um custo em R$ contra uma fonte provavelmente em USD seria uma
+comparação semanticamente inválida disfarçada de benchmark confiável.
+
+**Lista fechada de `niche`** (`CampaignNiche`, `app/schema/schema.py`, 15
+valores): `ecommerce_varejo`, `educacao_cursos`, `saude_bem_estar`,
+`beleza_estetica`, `imobiliario`, `servicos_financeiros_seguros`,
+`servicos_juridicos`, `automotivo`, `viagens_turismo`,
+`alimentacao_restaurantes`, `software_tecnologia_b2b`, `fitness_academias`,
+`servicos_locais`, `pet`, `moda_vestuario`. `"fitness_academias"` e
+`"saude_bem_estar"` apontam para a mesma categoria de benchmark externo —
+mantidos como opções distintas de propósito (não fundir no frontend).
+
+**Request** (`BenchmarkEntrada`, `extra="forbid"` — campo desconhecido no
+corpo é `422`, não ignorado em silêncio):
+```json
+{
+  "niche": "pet",
+  "platform": "meta_ads",
+  "objective": "conversion",
+  "metrics": ["ctr_link", "cpa", "cpl", "cpm", "roas", "hook_rate"]
+}
+```
+`metrics` aceita o vocabulário `ctr_link | cpa | cpl | cpm | roas |
+hook_rate` (valor fora daí é `422`) — pode misturar a única métrica com
+busca real (`ctr_link`) com métricas que sempre caem em fallback na mesma
+solicitação. Duplicatas são normalizadas preservando a ordem de primeira
+aparição, nunca geram duas chamadas nem duas linhas de resultado.
+
+**Response 200** (`BenchmarkResposta` — união discriminada por
+`encontrado`, `response_model` da rota; um resultado interno inválido vira
+500 de validação, nunca escapa como 200 incoerente) — toda métrica pedida
+aparece na resposta, sempre:
+```json
+{
+  "resultados": [
+    { "metric": "ctr_link", "encontrado": true, "value": 2.69, "fonte": "WordStream 2025",
+      "fonte_url": "https://...", "capturado_em": "2026-09-04T20:00:00+00:00" },
+    { "metric": "roas", "encontrado": false,
+      "motivo": "sem fonte pública confiável segmentada por indústria para esta métrica",
+      "motivo_tipo": "nao_elegivel" }
+  ]
+}
+```
+`encontrado: true` sempre tem `value` na faixa plausível da métrica
+(`0 < value <= 100` para CTR), `fonte` não vazia, `fonte_url` http(s) **com
+host analisável** e `capturado_em` ISO válido. A fonte vem de
+`grounding_metadata`: os `grounding_supports` precisam cobrir
+**integralmente** o trecho do número (offsets em bytes, dentro da `Part`
+indicada por `part_index`) — nunca um chunk qualquer, nunca o nome que o
+modelo "declarou" no texto livre, e nunca uma cobertura parcial.
+
+`encontrado: false` é uma resposta **normal e completa**, HTTP 200, com
+`motivo` e `motivo_tipo`:
+
+| `motivo_tipo` | Significado |
+|---|---|
+| `nao_elegivel` | **Não buscamos.** Métrica de custo (sem contrato de país/moeda/período) ou plataforma sem fonte pública. Não é uma afirmação sobre o mercado. |
+| `nao_encontrado` | **Buscamos e concluímos ausência** — o modelo respondeu explicitamente que não há fonte citável. |
+
+Falha técnica nunca aparece aqui: vira 503 (ver abaixo).
+
+**Cache de 14 dias** por `(nicho, plataforma, objetivo, métrica)` — só para
+os dois desfechos DEFINITIVOS (`encontrado: true` verificado, ou resposta
+explícita "não encontrado"). Falha transitória (parse malformado, sem
+suporte de grounding, URL insegura, timeout) nunca é cacheada. O cache é
+**versionado** (`regra_versao`): quando a regra de atribuição de fonte muda,
+linhas antigas viram miss automaticamente — só benchmarks são invalidados,
+campanhas e dados do usuário não são tocados.
+
+**Concorrência**: duas requisições simultâneas para a mesma chave fazem UMA
+chamada ao Gemini (single-flight), e cancelar uma delas não cancela a busca
+compartilhada nem libera uma segunda chamada paga. O registro é **por
+processo** — com múltiplos workers, o pior caso são N chamadas simultâneas
+para a mesma chave, não 1.
+
+**Códigos de erro específicos:**
+
+| Status | Quando |
+|---|---|
+| `422` | `niche`/`platform`/`objective` fora da lista fechada, métrica fora do vocabulário aceito, mais de 6 métricas, lista vazia, ou campo desconhecido no corpo. |
+| `501` | Benchmark desligado neste servidor (`BENCHMARK_ENABLED=False`, o default). |
+| `503` | Persistência desligada (sem cache), IA sem chave configurada, falha ao LER o cache (SQLite travado/indisponível), ou busca real que falhou de forma NÃO definitiva (parse inesperado, cobertura de grounding parcial/ausente, URL insegura, valor fora de faixa, timeout) — `detail` explica qual. **Nunca** confundir com `encontrado: false`: 503 é "não deu para verificar agora", `encontrado: false` é "verificado, não existe" ou "não buscamos". |
+| `500` | Falha inesperada. |
+
+**`GET /api/v1/status`** ganhou um bloco `"benchmark"`, mesmo desenho de `"ai"`:
+```json
+{ "benchmark": { "enabled": false, "available": false } }
+```
+`enabled` = toggle de configuração. `available` = **as três** dependências
+reais: toggle ligado **e** IA disponível (mesma `GEMINI_API_KEY` do resto do
+produto) **e** persistência/cache ligada — sem as três, a rota devolve 503
+em toda busca real, então `available` não pode prometer capacidade que a
+rota não entrega. O frontend usa `status.benchmark?.available` (campo
+ausente = servidor anterior a esta fase, trate como indisponível) antes de
+chamar a rota.
 
 ---
 

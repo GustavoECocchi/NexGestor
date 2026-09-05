@@ -8,13 +8,7 @@ a profundidade ou o foco da IA, edite SYSTEM_PROMPT abaixo.
 from __future__ import annotations
 from typing import Any, Optional
 
-# Espelha CampaignPlatform em app/schema/schema.py — manter em sincronia.
-_PLATFORM_LABELS = {
-    "meta_ads": "Meta Ads",
-    "google_ads": "Google Ads",
-    "tiktok_ads": "TikTok Ads",
-    "linkedin_ads": "LinkedIn Ads",
-}
+from app.service.labels import NICHE_LABELS, PLATFORM_LABELS as _PLATFORM_LABELS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +48,22 @@ equivalente em português.
 
 5. PRIORIZE AÇÃO: cada cenário/insight/risco deve ter algo que o gestor possa fazer \
 HOJE. Sem "considere monitorar" ou "avalie a possibilidade".
+
+6. GLOSE SIGLAS NA PRIMEIRA MENÇÃO DE CADA CAMPO (fase-5, PR6): mantenha CPA, ROAS, \
+CPM, CPC, CPL e CTR exatamente como são — é o vocabulário real do Ads Manager, traduzir \
+criaria um segundo termo para o gestor decorar. Cada campo de texto da resposta é \
+avaliado de forma INDEPENDENTE — o executive_summary; o title+description de CADA item \
+de extra_scenarios; a explanation de CADA contextual_insight; a explanation de CADA \
+risk_warning. DENTRO DE UM ÚNICO CAMPO: a PRIMEIRA vez que uma sigla aparecer, grude uma \
+explicação curta na mesma frase; se a MESMA sigla aparecer de novo dentro DESSE MESMO \
+CAMPO, não repita a explicação. Um campo diferente que cite a mesma sigla pela primeira \
+vez DENTRO DELE precisa glosar de novo — a UI pode exibir cada campo isoladamente (ex: \
+só os extra_scenarios, sem o executive_summary), então cada um tem que se sustentar \
+sozinho. Use sempre estas definições, sem reformular: CPA = quanto custou, em média, \
+cada conversão; ROAS = quanto voltou em receita para cada R$1 investido; CPM = custo a \
+cada mil impressões; CPC = custo por clique; CPL = custo por lead; CTR = percentual de \
+quem viu o anúncio e clicou. Ao citar a taxa de conversão da landing page, use sempre \
+"Conversão na página" — nunca a abreviação "Conversão LP".
 
 REFERÊNCIAS DE QUALIDADE (vocabulário e profundidade esperados):
 
@@ -135,7 +145,8 @@ def build_user_prompt(
         f"Campanha: {campaign.name}\n"
         f"Plataforma: {label_plataforma}\n"
         f"Objetivo: {campaign.objective or 'conversion'}\n"
-        f"Nicho: {campaign.niche or 'não informado'}{nota_plataforma}"
+        f"Nicho: {NICHE_LABELS.get(campaign.niche, 'não informado') if campaign.niche else 'não informado'}"
+        f"{nota_plataforma}"
     )
 
     # Modo é decidido pela presença de cenários do engine.
@@ -215,7 +226,7 @@ _METRIC_LABELS = {
     "cpl": ("CPL", "R$"),
     "cpa": ("CPA", "R$"),
     "roas": ("ROAS", "x"),
-    "landing_page_views": ("LP Views", ""),
+    "landing_page_views": ("Views da página", ""),
     "lp_conversion_rate": ("Conversão na página", "%"),
     "conversions": ("Conversões", ""),
     "weekly_conversions": ("Conv./semana", ""),
@@ -238,7 +249,7 @@ _TARGET_LABELS = {
     "min_hold_rate": ("Hold Rate mínimo", "%"),
     "min_ctr_link": ("CTR Link mínimo", "%"),
     "max_ctr_all_ratio": ("CTR Todos máximo (suspeita de click-bait)", "%"),
-    "min_lp_conversion_rate": ("Taxa de conv. LP mínima", "%"),
+    "min_lp_conversion_rate": ("Taxa de conversão na página mínima", "%"),
     "max_frequency_fatigue": ("Frequência máx. (fadiga)", ""),
     "max_frequency_horizontal": ("Frequência de alerta (escala horizontal)", ""),
     "max_frequency_critical": ("Frequência crítica", ""),

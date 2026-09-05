@@ -13,8 +13,9 @@ banco mora no storage.
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from app.schema.schema import _SemBooleanoEmInteiro
 from app.service import storage
 
 logger = logging.getLogger(__name__)
@@ -22,8 +23,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/campaigns", tags=["Campanhas salvas"])
 
 
-class CampanhaEntrada(BaseModel):
-    """O payload é opaco de propósito — quem define o formato é o cliente (hoje, o dashboard web)."""
+class CampanhaEntrada(_SemBooleanoEmInteiro):
+    """
+    O payload é opaco de propósito — quem define o formato é o cliente (hoje, o dashboard web).
+
+    Herda `_SemBooleanoEmInteiro` (achado da revisão Opus, 2026-09-04): sem
+    isso, `{"id": true}` era coagido para `id=1` e o POST atualizava —
+    silenciosamente sobrescrevia — a campanha `id=1` de quem estivesse
+    chamando, em vez de 422.
+    """
 
     payload: dict = Field(..., description="Objeto da campanha como a UI o guarda.")
     id: int | None = Field(

@@ -382,24 +382,24 @@ def _detect_lp_mismatch(m: Metrics, t: Targets) -> ScenarioDetail | None:
     desperdicio = ""
     if m.spend is not None and m.landing_page_views and m.landing_page_views > 0:
         custo_por_view = m.spend / m.landing_page_views
-        desperdicio = f" Custo por visita à LP: R${custo_por_view:.2f} sendo desperdiçado por baixa conversão."
+        desperdicio = f" Custo por visita à página: R${custo_por_view:.2f} sendo desperdiçado por baixa conversão."
 
     return ScenarioDetail(
         code=ScenarioCode.LP_MISMATCH,
         title="Cenário D — Desalinhamento com Landing Page (Quebra de Expectativa)",
         root_cause=(
             f"CTR Link {m.ctr_link:.2f}% excelente confirma que o anúncio funciona. "
-            f"Taxa de conversão LP {m.lp_conversion_rate:.1f}% abaixo da meta de {t.min_lp_conversion_rate:.1f}% "
+            f"Taxa de conversão na página {m.lp_conversion_rate:.1f}% abaixo da meta de {t.min_lp_conversion_rate:.1f}% "
             f"— gargalo está na página: lenta, proposta de valor diferente ou alta fricção no formulário.{desperdicio}"
         ),
         funnel_impact=(
-            "Cliques pagos desperdiçados na entrada da LP. "
+            "Cliques pagos desperdiçados na entrada da página. "
             "CPA distorcido por problema externo à campanha. Pausar seria um erro."
         ),
         action="Manter campanhas ativas e abrir auditoria urgente na Landing Page.",
         execution_rule=(
             "1. Verificar carregamento no mobile — meta: abaixo de 3s. "
-            "2. Primeira dobra da LP deve usar a mesma headline do anúncio campeão. "
+            "2. Primeira dobra da página deve usar a mesma headline do anúncio campeão. "
             "3. Reduzir campos do formulário (cada campo extra reduz conversão ~10%). "
             "4. Testar versão simplificada com headline, benefícios e CTA único."
         ),
@@ -488,7 +488,7 @@ def _detect_cold_lead(m: Metrics, t: Targets) -> ScenarioDetail | None:
         title="Cenário F — Lead Frio / Persona Incorreta",
         root_cause=(
             f"{custo_info} dentro do {meta_info} — anúncio atrai volume. "
-            f"Porém conversão LP {m.lp_conversion_rate:.1f}% próxima de zero indica leads desqualificados: "
+            f"Porém conversão na página {m.lp_conversion_rate:.1f}% próxima de zero indica leads desqualificados: "
             "'caçadores de coisas grátis' ou público sem fit com o ticket do produto."
         ),
         funnel_impact=(
@@ -734,7 +734,7 @@ def _detect_overspending(m: Metrics, t: Targets) -> ScenarioDetail | None:
         code=ScenarioCode.OVERSPENDING,
         title="Cenário J — Janela de Eficiência (Overspending sem Retorno)",
         root_cause=(
-            f"CPM R${m.cpm:.2f} acima do teto de R${t.max_cpm:.2f} com LP convertendo bem "
+            f"CPM R${m.cpm:.2f} acima do teto de R${t.max_cpm:.2f} com a página convertendo bem "
             f"({m.lp_conversion_rate:.1f}%). Orçamento ultrapassou ponto de inflexão do público — "
             f"campanha força entrega em horários de alta concorrência.{economia}"
         ),
@@ -920,7 +920,7 @@ def _detect_click_leak(m: Metrics, t: Targets) -> ScenarioDetail | None:
         ),
         funnel_impact=(
             "O anúncio funciona e o dinheiro é gasto, mas o funil começa vazio. "
-            "Toda métrica abaixo deste ponto (conversão da LP, CPA) fica distorcida para pior "
+            "Toda métrica abaixo deste ponto (conversão na página, CPA) fica distorcida para pior "
             "sem que a causa esteja no anúncio nem na oferta."
         ),
         action="Medir o tempo de carregamento no celular e conferir o disparo do evento de visita.",

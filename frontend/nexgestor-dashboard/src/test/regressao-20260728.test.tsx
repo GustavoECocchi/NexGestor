@@ -392,8 +392,11 @@ describe("parseFileJSON — plataforma e objetivo são listas fechadas", () => {
   })
 
   it("valores válidos passam sem aviso", () => {
+    // niche incluído (fase-2b: ao contrário de platform/objective, não tem
+    // default — sem ele o próprio nicho geraria o único invalidValueKeys, o
+    // que confundiria o que este teste quer isolar).
     const r = parseFileJSON(
-      JSON.stringify({ campaign: { platform: "google_ads", objective: "lead" } })
+      JSON.stringify({ campaign: { platform: "google_ads", objective: "lead", niche: "pet" } })
     )
     if ("error" in r) throw new Error("não deveria falhar")
     expect(r.invalidValueKeys).toEqual([])
@@ -401,8 +404,10 @@ describe("parseFileJSON — plataforma e objetivo são listas fechadas", () => {
     expect(r.input.campaign.objective).toBe("lead")
   })
 
-  it("ausência dos campos usa o default sem virar aviso", () => {
-    const r = parseFileJSON(JSON.stringify({ metrics: { cpa: 10 } }))
+  it("ausência de platform/objective usa o default sem virar aviso", () => {
+    // niche continua incluído — sua própria ausência SEMPRE vira aviso
+    // (fase-2b, coberto em outro teste), diferente de platform/objective.
+    const r = parseFileJSON(JSON.stringify({ campaign: { niche: "pet" }, metrics: { cpa: 10 } }))
     if ("error" in r) throw new Error("não deveria falhar")
     expect(r.invalidValueKeys).toEqual([])
     expect(r.input.campaign.platform).toBe("meta_ads")
