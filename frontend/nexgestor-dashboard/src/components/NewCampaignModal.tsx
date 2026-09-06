@@ -453,7 +453,7 @@ export function NewCampaignModal({
 
             <button
               className="collect-btn"
-              style={{ marginTop: 10 }}
+              style={{ marginTop: 14 }}
               onClick={() => {
                 const result = parseFileJSON(fileRaw)
                 if ("error" in result) { setFileError(result.error); setFilePreview(null); return }
@@ -466,15 +466,15 @@ export function NewCampaignModal({
             {fileError && (
               <div
                 role="alert"
-                style={{ margin: "10px 0", padding: "10px 12px", borderRadius: 10, background: "var(--red-bg)", color: "var(--red)", fontSize: 12.5, lineHeight: 1.45 }}>
+                style={{ margin: "14px 0", padding: "14px 16px", borderRadius: 12, background: "var(--red-bg)", color: "var(--red)", fontSize: "var(--text-body)", lineHeight: 1.6 }}>
                 {fileError}
               </div>
             )}
 
             {filePreview && (
-              <div className="grp" style={{ marginTop: 12 }}>
+              <div className="grp" style={{ marginTop: 16 }}>
                 <div className="grp-h">Pré-visualização — confira antes de analisar</div>
-                <div style={{ fontSize: 12.5, color: "var(--txt-2)" }}>
+                <div style={{ fontSize: "var(--text-body)", color: "var(--txt-2)" }}>
                   <b style={{ color: "var(--txt)" }}>{filePreview.input.campaign.name}</b>
                   {" · "}{filePreview.input.campaign.objective}{" · "}{filePreview.input.campaign.platform}
                   {" · "}{filePreview.input.campaign.niche ? NICHE_LABELS[filePreview.input.campaign.niche] : "nicho ausente"}
@@ -482,7 +482,7 @@ export function NewCampaignModal({
 
                 {Object.keys(filePreview.input.metrics).length > 0 && (
                   <>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>MÉTRICAS</div>
+                    <div style={{ fontSize: "var(--text-label)", color: "var(--txt-2)", marginTop: 14 }}>MÉTRICAS</div>
                     <ul className="preview-list">
                       {Object.entries(filePreview.input.metrics).map(([k, v]) => (
                         <li key={k}><span>{k}</span><span>{String(v)}</span></li>
@@ -492,7 +492,7 @@ export function NewCampaignModal({
                 )}
                 {Object.keys(filePreview.input.targets).length > 0 && (
                   <>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>METAS</div>
+                    <div style={{ fontSize: "var(--text-label)", color: "var(--txt-2)", marginTop: 14 }}>METAS</div>
                     <ul className="preview-list">
                       {Object.entries(filePreview.input.targets).map(([k, v]) => (
                         <li key={k}><span>{k}</span><span>{String(v)}</span></li>
@@ -501,22 +501,22 @@ export function NewCampaignModal({
                   </>
                 )}
                 {filePreview.unknownKeys.length > 0 && (
-                  <div style={{ color: "var(--amber)", fontSize: 11.5, marginTop: 10 }}>
+                  <div style={{ color: "var(--amber)", fontSize: "var(--text-body)", marginTop: 14 }}>
                     Chaves desconhecidas ignoradas (não enviadas): {filePreview.unknownKeys.join(", ")}
                   </div>
                 )}
                 {filePreview.invalidTypeKeys.length > 0 && (
-                  <div style={{ color: "var(--red)", fontSize: 11.5, marginTop: 6 }}>
+                  <div style={{ color: "var(--red)", fontSize: "var(--text-body)", marginTop: 8 }}>
                     Valores com tipo inválido ignorados (não enviados): {filePreview.invalidTypeKeys.join(", ")}
                   </div>
                 )}
                 {filePreview.invalidValueKeys.length > 0 && (
-                  <div style={{ color: "var(--red)", fontSize: 11.5, marginTop: 6 }}>
+                  <div style={{ color: "var(--red)", fontSize: "var(--text-body)", marginTop: 8 }}>
                     Valor fora da lista aceita — revise antes de analisar: {filePreview.invalidValueKeys.join(", ")}
                   </div>
                 )}
 
-                <button className="submit" style={{ marginTop: 12 }} onClick={() => runAnalyze(filePreview.input)}>
+                <button className="submit" style={{ marginTop: 16 }} onClick={() => runAnalyze(filePreview.input)}>
                   Analisar campanha
                 </button>
               </div>
@@ -542,7 +542,7 @@ export function NewCampaignModal({
                   </div>
                   <div className="lt">{s.t}</div>
                   <div style={{ marginLeft: "auto" }}>
-                    {i < step ? <IconCheck style={{ width: 14, height: 14, color: "var(--green)" }} /> : i === step ? <div className="spin" /> : null}
+                    {i < step ? <IconCheck style={{ width: 20, height: 20, color: "var(--green)" }} /> : i === step ? <div className="spin" /> : null}
                   </div>
                 </div>
               )
@@ -554,13 +554,13 @@ export function NewCampaignModal({
           <div
             role="alert"
             style={{
-              margin: "10px 0",
-              padding: "10px 12px",
-              borderRadius: 10,
+              margin: "14px 0",
+              padding: "14px 16px",
+              borderRadius: 12,
               background: "var(--red-bg)",
               color: "var(--red)",
-              fontSize: 12.5,
-              lineHeight: 1.45
+              fontSize: "var(--text-body)",
+              lineHeight: 1.6
             }}>
             {error}
           </div>
@@ -571,7 +571,13 @@ export function NewCampaignModal({
             <div className="grp">
               <div className="grp-h">Identificação</div>
               <div className="fld-grid">
-                <div className="fld" style={{ gridColumn: "1/3" }}>
+                {/* "1/-1" (não "1/3"): a última linha, seja lá qual for —
+                    "1/3" faria o grid de 1 coluna do mobile (docs/rascunho_
+                    prompt.md, 2026-09-05) criar uma 2ª coluna implícita só
+                    pra caber o span, e Objetivo/Plataforma auto-posicionados
+                    voltavam a aparecer lado a lado mesmo com 1 coluna
+                    declarada — achado ao validar o formulário em 390px. */}
+                <div className="fld" style={{ gridColumn: "1/-1" }}>
                   <label>Nome da campanha</label>
                   <input placeholder="Ex: Black Friday — Conversão" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
@@ -635,7 +641,13 @@ export function NewCampaignModal({
                     afirmaria "não está em aprendizado" para quem simplesmente
                     não sabe — inventar evidência favorável é exatamente o
                     defeito que o gate do Cenário G existe para impedir. */}
-                <div className="fld" style={{ gridColumn: "1/3" }}>
+                {/* "1/-1" (não "1/3"): a última linha, seja lá qual for —
+                    "1/3" faria o grid de 1 coluna do mobile (docs/rascunho_
+                    prompt.md, 2026-09-05) criar uma 2ª coluna implícita só
+                    pra caber o span, e Objetivo/Plataforma auto-posicionados
+                    voltavam a aparecer lado a lado mesmo com 1 coluna
+                    declarada — achado ao validar o formulário em 390px. */}
+                <div className="fld" style={{ gridColumn: "1/-1" }}>
                   <label>
                     Aprendizado limitado
                     <FieldHint text={'As plataformas de anúncio (Meta, Google...) levam um tempo "aprendendo" o público ideal para sua campanha. Marque "Sim" se ela ainda está nessa fase inicial. Deixe "Não informado" se você não sabe.'} />

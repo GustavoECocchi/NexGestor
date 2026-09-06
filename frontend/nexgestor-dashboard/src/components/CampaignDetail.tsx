@@ -29,7 +29,12 @@ const COVERAGE_HINT_TEXT =
 
 export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => void }) {
   const s = STATUS[c.status]
-  const circ = 2 * Math.PI * 32
+  // Geometria do anel de score (docs/rascunho_prompt.md, 2026-09-05):
+  // width/height/cx/cy/r/strokeWidth do SVG são atributos fixos, não CSS —
+  // `.score-ring{width;height}` sozinho não escala o desenho. Cresceu junto
+  // com `.score-ring .num` (--text-metric-lg, o maior número da tela).
+  const RAIO_ANEL = 40
+  const circ = 2 * Math.PI * RAIO_ANEL
   const off = circ - (c.score / 100) * circ
 
   /**
@@ -78,10 +83,10 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
 
         <div className="score-wrap">
           <div className="score-ring">
-            <svg width={74} height={74}>
-              <circle cx={37} cy={37} r={32} fill="none" stroke="var(--line)" strokeWidth={6} />
+            <svg width={96} height={96}>
+              <circle cx={48} cy={48} r={RAIO_ANEL} fill="none" stroke="var(--line)" strokeWidth={8} />
               <circle
-                cx={37} cy={37} r={32} fill="none" stroke={s.stroke} strokeWidth={6}
+                cx={48} cy={48} r={RAIO_ANEL} fill="none" stroke={s.stroke} strokeWidth={8}
                 strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={off}
                 style={{ transition: "stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)" }}
               />
@@ -92,7 +97,7 @@ export function CampaignDetail({ c, onBack }: { c: CampaignVM; onBack: () => voi
           <div className="score-txt">
             <h3>Score de saúde</h3>
             {c.confidence && c.coverage != null && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0 6px", fontSize: 11, color: CONF[c.confidence].color }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0 8px", fontSize: "var(--text-label)", color: CONF[c.confidence].color }}>
                 <span className="dot" style={{ background: CONF[c.confidence].color }} />
                 Diagnóstico com {CONF[c.confidence].label} · cobertura de dados {c.coverage}%
                 <FieldHint text={COVERAGE_HINT_TEXT} />

@@ -2,7 +2,9 @@ import { useId, useLayoutEffect, useRef, useState } from "react"
 
 import { IconInfo } from "~components/Icons"
 
-const TIP_WIDTH = 220
+// 280 (era 220): o tooltip agora usa --text-body (18px, era 11.5px) —
+// docs/rascunho_prompt.md, 2026-09-05.
+const TIP_WIDTH = 280
 
 /**
  * Ícone "?" que mostra uma explicação em linguagem simples ao lado de um
@@ -23,7 +25,7 @@ export function FieldHint({ text }: { text: string }) {
       Math.max(8, r.left + r.width / 2 - TIP_WIDTH / 2),
       window.innerWidth - TIP_WIDTH - 8
     )
-    setPos({ top: r.bottom + 6, left })
+    setPos({ top: r.bottom + 8, left })
   }, [open])
 
   return (

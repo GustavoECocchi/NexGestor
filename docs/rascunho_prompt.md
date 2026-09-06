@@ -1,213 +1,183 @@
-# Opus 5 — revisar e corrigir a execução do Sonnet
+# Melhorar a legibilidade e aumentar a escala do dashboard
 
-Revise de forma independente o trabalho executado pelo Claude Code/Sonnet e
-corrija os erros confirmados. O pedido é revisão COM implementação: avance
-até validar as correções, sem encerrar apenas com plano ou lista de achados.
-Este prompt é destinado ao Opus 5; não altera automaticamente o modelo
-selecionado no Claude Code.
+Implemente uma revisão visual do frontend do NexGestor para facilitar a
+leitura. O usuário recebeu este feedback de um professor do ITA: as letras
+estão pequenas demais e exigem esforço para enxergar. A prioridade desta
+rodada é texto visivelmente maior e uma interface proporcionalmente mais
+espaçosa, confortável já no zoom padrão do navegador.
 
-## Contexto e evidências
+Execute a implementação e valide o resultado. As medidas abaixo são uma
+direção de design inicial definida para esta tarefa, não uma declaração de
+que qualquer tamanho garanta conforto para todas as pessoas. A confirmação
+de conforto pelo usuário/professor ficará para avaliação humana posterior.
 
-Leia AGENTS.md, CLAUDE.md, docs/roadmap.md e instruções locais aplicáveis.
-Leia docs/sessions/2026-09-04.md: parte 4 (revisão original do Opus),
-parte 5 (decisões do prompt anterior) e parte 6 (execução do Sonnet).
-Leia docs/sessions/2026-09-05.md, docs/prds/fase-2b-benchmark-mercado.md,
-docs/CONTRATO_API_FRONTEND.md e o PRD da fase-5.
+## Contexto e escopo
 
-Na preparação deste prompt, HEAD continuava em 63f9645; implementações,
-correções e arquivos novos estão no worktree. Confira git status, git log,
-diffs e untracked. O diff contra HEAD mistura várias rodadas: não atribua
-tudo ao Sonnet. Preserve alterações preexistentes, inclusive as de processo.
+Leia AGENTS.md, CLAUDE.md e docs/roadmap.md antes de trabalhar. Confira
+instruções locais, git status e os diffs. Preserve alterações preexistentes.
 
-O Sonnet declarou sete lotes concluídos, backend 1626/1626 e dashboard
-474/474. Essas são alegações históricas a auditar. Na preparação foram
-repetidos apenas os testes direcionados: backend 113/113 e dashboard
-107/107. Mesmo passando, deixaram de cobrir as falhas reproduzidas abaixo.
+Trabalhe em frontend/nexgestor-dashboard, o frontend ativo. Preserve a fonte
+Atkinson Hyperlegible Next, a identidade visual, os temas claro/escuro e a
+hierarquia de informações. Mantenha as correções recentes de benchmark,
+persistência e análise assíncrona. Não altere regras de negócio, contratos
+de API, backend ou a extensão congelada para realizar esta tarefa.
 
-## Decisões e limites
+Este prompt substitui a tarefa anterior de revisão de benchmark. Não retome
+aquela auditoria como objetivo desta execução. Não faça commit, push, deploy
+ou chamadas reais ao Gemini; use dados locais/demonstração e mocks para validar.
 
-- Benchmark permanece referência informativa separada: não altera score,
-  diagnóstico, cor, nota, origem da meta ou banner de default do sistema.
-- Só ctr_link em Meta/Google é elegível a busca real. Custos ficam em
-  fallback até existir contrato de país/moeda/período. Não amplie o escopo.
-- A análise principal aparece e é salva localmente antes de aguardar
-  benchmark. Falha de enriquecimento nunca invalida a análise.
-- BENCHMARK_ENABLED continua desligado por padrão. A rota pública não está
-  aprovada para buscas pagas em produção; X-Nex-Dono não é autenticação.
-- Campaign.niche continua opcional na API para compatibilidade, com enum
-  fechado quando presente. Criação nova no dashboard exige escolha explícita.
-- Preserve lógica, thresholds e prioridades do engine. Extensão congelada.
-- Trabalhe localmente com mocks e bancos temporários. Não leia/exiba .env
-  real, não chame Gemini real, não instale dependências, não acesse VPS,
-  não altere alertas remotos e não faça commit, push ou deploy.
+## Diagnóstico inicial a conferir no código
 
-## Método
+O style.css declara explicitamente que o dashboard herdou o sistema visual
+da extensão de aproximadamente 400 px. A casca ganhou sidebar e grade, mas
+muitos tamanhos pequenos permaneceram. Exemplos atuais:
 
-Monte uma matriz dos achados da revisão original e dos requisitos dos sete
-lotes: requisito, evidência, teste, situação e ajuste necessário. Diferencie
-corrigido, parcial, não corrigido e não verificável no ambiente. Comentários
-e contagem de testes não provam o comportamento.
+- Selo de IA: 10 px; tags/atalhos: aproximadamente 8,5–10 px.
+- Textos explicativos, avisos e ações: aproximadamente 11–13 px.
+- Navegação e botões da sidebar: 13,5 px.
+- Títulos de campanhas nos cards: 14,5 px; título do detalhe: 19 px.
+- Botões de ícone: 32 × 32 px; botão de exclusão: 26 × 26 px.
+- Sidebar: 240 px; cards com largura mínima de 300 px; modal desktop
+  limitado a 640 px.
+- Há fontSize inline em NewCampaignModal.tsx e CampaignDetail.tsx.
 
-Para cada bug confirmado, acrescente uma regressão que falhe antes da
-mudança, corrija e confirme o teste passando. Priorize perda de dados, fonte
-incorreta e custo duplicado. Classifique severidade pelo impacto real.
-Investigue regressões adjacentes no escopo; refute suspeitas com evidência
-quando necessário. Não use git checkout/reset para testes de mutação sobre
-arquivos com alterações preexistentes.
+Esses são achados por leitura do CSS, não medições de tela já realizadas.
+Inspecione os componentes e o estilo computado antes de alterar. Aumentar
+apenas body/html não alcança os muitos tamanhos explícitos em px.
 
-## 1. Persistência e corridas no frontend
+## Escala tipográfica desejada
 
-Revise src/components/App.tsx, src/lib/store.ts e src/lib/api.ts do dashboard.
+Use como referência os seguintes tamanhos computados em um navegador com
+fonte padrão de 16 px e zoom de 100%:
 
-Reproduções com as funções atuais de store.ts:
-- upsertLive(vm) → aplicarBenchmarkNaLive(clientId, refs) →
-  marcarComoSalva(vm, serverId, idLocal) apaga benchmarks: o último passo
-  sobrescreve o estado enriquecido com o snapshot antigo de vm.
-- Enriquecer localmente e depois mesclarComServidor com o payload original
-  também apaga benchmarks. App só atualiza localStorage/React no callback
-  do benchmark; não envia o payload enriquecido para a API.
-- removeLive(id) seguido de marcarComoSalva(vm, ...) recria a campanha.
-  Essa corrida envolve o save; o callback isolado de benchmark já é no-op
-  quando a campanha não existe. Não confunda as duas coisas.
+| Uso | Meta inicial |
+| --- | --- |
+| Texto principal, diagnóstico, explicações e orientações | 18 px |
+| Navegação, botões, campos, labels, avisos e notas importantes | pelo menos 16 px |
+| Metadados realmente auxiliares e atalhos | 14 px, piso excepcional |
+| Títulos de cards e seções | 20–24 px |
+| Títulos principais de página/modal | 28–32 px |
+| Valores principais de métricas/score | 28–36 px, conforme hierarquia |
 
-Corrija as duas ordens de resposta (save antes do benchmark e vice-versa),
-recarga, duas campanhas simultâneas e exclusão durante requests. Use
-identidade estável e estado atual ao mesclar, preservando outras edições.
-Sincronize o enriquecimento remotamente sem duplicatas. Confira a semântica
-de client_id: repetir criação sem serverId pode ser idempotente e ignorar o
-conteúdo novo, em vez de realizar o update pretendido.
+Texto necessário para decidir, entender um erro, preencher um campo ou
+interpretar uma métrica não é metadado dispensável: mantenha pelo menos
+16 px, com 18 px nas explicações. Não deixe os textos de apoio importantes
+pequenos enquanto aumenta apenas os títulos.
 
-Não ressuscite exclusões com callbacks tardios; trate também o save remoto
-que ainda estava em voo. Diferencie fechar o modal após entregar a análise
-(enriquecimento continua) de desmontar o App. Teste falhas de atualização,
-payload efetivamente enviado, estado do servidor e tela após recarregar.
+Crie tokens tipográficos semânticos e reutilizáveis em rem. Por exemplo:
+--text-caption, --text-label, --text-body, --text-section, --text-title,
+--text-metric. Use html em 100% para respeitar a preferência do navegador;
+1.125rem corresponde ao corpo de 18 px na referência acima. Padronize
+tamanhos inline e overrides que impedem a aplicação da escala.
 
-## 2. Cancelamento, timeout e busca compartilhada
+Use line-height sem unidade: aproximadamente 1.5–1.65 em parágrafos e
+1.2–1.35 em títulos. Mantenha pesos legíveis e espaço entre parágrafos.
+Evite longas frases em caixa alta ou espaçamento entre letras excessivo.
+Limite largura de leitura de textos extensos, aproximadamente 60–75ch.
 
-Em app/service/benchmark_service.py, buscar_benchmarks usa await tarefa
-diretamente. Reprodução com eventos e mock: cancelar o primeiro chamador
-cancelou a tarefa compartilhada; retry iniciou uma segunda busca. Isso
-contradiz o comentário de _buscar_e_cachear.
+O novo tamanho deve ser o padrão para todos. Não esconda a melhoria em
+um botão “A+” ou preferência desligada por padrão. Não crie um painel de
+configurações nesta rodada.
 
-Proteja a tarefa contra cancelamento individual e mantenha seu registro
-até o trabalho real terminar. Revise timeout do chamador, limpeza, exceções
-sem consumidores, shutdown e segunda leitura do cache dentro do trabalho
-compartilhado. Uma thread no executor pode continuar após cancelamento do
-await: não alegue que esse cancelamento interrompe custo.
+## Aumentar os componentes junto com as letras
 
-Teste com barreiras/eventos e double síncrono bloqueado no executor:
-cancelar/expirar um interessado não cancela outro nem permite nova chamada
-enquanto a primeira executa. Chaves diferentes continuam independentes.
-Evite sleeps frágeis. Documente o limite por processo se múltiplos workers
-não forem coordenados pelo desenho.
+Adapte padding, gaps, altura mínima, largura e ícones ao texto maior:
 
-## 3. Grounding ainda aceita cobertura parcial
+- Campos e botões principais: altura mínima inicial de 44–48 px, com
+  padding que permita crescimento e quebra de linha.
+- Botões somente com ícone, fechar e excluir: área acionável de pelo menos
+  44 × 44 px; ícone normalmente de 20–24 px. Preserve nomes acessíveis.
+- Cards/painéis: padding inicial de 20–24 px e gaps de 16–24 px conforme
+  o contexto, preservando agrupamentos visuais.
+- Reavalie sidebar (por exemplo 260–280 px quando houver espaço), largura
+  mínima dos cards e modal (por exemplo 720–800 px no desktop).
+  Esses valores são pontos de partida, não larguras rígidas para celular.
 
-Reprodução: texto VALOR: 12.34; número no intervalo [7, 12); support [7, 8)
-com um chunk HTTPS. _interpretar_resposta aceita 12.34 apesar de a fonte
-cobrir só um caractere. _localizar_fonte_associada verifica sobreposição,
-enquanto comentários e relatório afirmam cobertura exata.
+Não aplique zoom CSS nem transform: scale ao contêiner da aplicação.
+A escala deve existir nos tamanhos reais e no fluxo do layout. Transformações
+já usadas para pequenas animações não precisam ser removidas.
 
-Exija cobertura integral do trecho numérico. Confira os tipos do SDK
-instalado para segment, part_index, candidates e offsets; não presuma que
-response.text concatenado sempre coincide com o segmento original.
-Use fixtures realistas, preferencialmente objetos do SDK, incluindo várias
-partes e whitespace Unicode. Teste trecho parcial/fora do valor, índices
-inválidos, supports mistos e fontes ambíguas/sem nome útil.
+Reduza o número de colunas quando necessário. Permita mais rolagem vertical
+para manter leitura confortável. Não compacte novamente a fonte para fazer
+o conteúdo caber nem esconda texto importante com line-clamp/ellipsis.
+Nomes longos devem ter uma forma clara de leitura completa.
 
-Metadado insuficiente produz falha transitória, sem cache negativo.
-Associação de grounding prova atribuição local, não exatidão factual do
-benchmark publicado; registre essa limitação sem prometer validação ao vivo.
+Revise alturas fixas, overflow:hidden, nowrap e posicionamentos absolutos,
+sobretudo em header, cards, score, tooltips e rodapés de modal. Evite cortes
+silenciosos, botões sobre texto ou conteúdo coberto por elementos fixos.
+Modais devem manter título, fechamento e ações acessíveis em telas baixas.
 
-## 4. Cache, schema, URLs e validação runtime
+## Cobertura obrigatória da interface
 
-Falhas reproduzidas no backend:
-- _cache_e_valido aceita CTR 999 e capturado_em inválido.
-- valor textual no cache levanta TypeError em vez de produzir miss.
-- BenchmarkEncontrado aceita valor 999, fonte só com espaço, URL https://
-  sem host e timestamp vazio. Prefixo HTTP(S) não valida URL completa.
-- Inicializar banco A, trocar DB_PATH para B e consultar cache gera
-  OperationalError: no such table: benchmarks_mercado. _iniciado continua
-  global; as fixtures resetam esse estado e escondem a lacuna.
+Aplique a escala de forma consistente em:
 
-Aplique invariantes coerentes no parser, cache, response_model e frontend:
-CTR finito em 0 < value <= 100, tipos adequados (incluindo bool indevido),
-fonte não vazia após trim, URL HTTP(S) analisável com host e data válida.
-Defina/teste arrays parciais, duplicados e métricas extras. Resultado negativo
-não deve carregar dados positivos incoerentes. Corrupção vira miss seguro;
-falha de SQLite deve ter tratamento coerente, sem fingir ausência de fonte.
-Vincule inicialização e tarefas à base correta quando DB_PATH mudar.
+- Identificação inicial (DonoGate) e troca de usuário.
+- Sidebar, cabeçalho, busca e popover do estado da IA.
+- Home, resumo, filtros, cards, avisos de sincronização, exclusão e vazios.
+- Detalhe, score/confiança, métricas, metas, diagnósticos, fontes de
+  benchmark, ações prioritárias e textos do Copiloto.
+- Nova campanha: modo manual, importação, prévia, rótulos, valores,
+  dicas, validação, erros e progresso.
+- Comparação de campanhas, paleta de comandos e Central de Ajuda.
 
-Investigue cache legado: positivos sem atribuição comprovada e negativos
-por falha transitória podem continuar válidos por 14 dias na mesma chave.
-Reproduza com fixtures antigas; invalide/versione somente benchmarks se
-necessário, preservando campanhas e dados do usuário.
+Preserve texto completo e a distinção entre dados do gestor, defaults e
+referências informativas de mercado. Não mude conteúdo funcional para
+disfarçar um problema de espaço.
 
-No frontend, src/lib/api.ts valida finitude/prefixo/string de data, mas não
-faixa, host ou validade temporal. Revise também referências restauradas de
-localStorage e da API de campanhas: BenchmarkNote usa href e toFixed
-diretamente sobre payload persistido. Proteja os caminhos alcançáveis;
-validar apenas a resposta nova de benchmark não protege dados antigos.
+## Contraste e adaptação
 
-## 5. Integração HTTP e cobertura real dos testes
+Revise os usos de --txt-3 e --muted em texto importante nos dois temas.
+Adote como meta de projeto contraste de pelo menos 4.5:1 para texto normal,
+medido contra o fundo realmente composto, inclusive painéis translúcidos.
+Não declare conformidade completa de acessibilidade só por tamanho/contraste.
 
-App.benchmark.test.tsx mocka analyzeCampaign, buscarStatus e
-buscarBenchmarkMercado. O caso chamado {resultados:[null]} retorna null
-diretamente; 404/503/timeout fazem o mesmo. Isso testa a orquestração, mas
-não HTTP, parsing ou validação. O teste de exclusão esvazia localStorage
-diretamente, sem exercitar a ação da UI.
+Mantenha foco visível, navegação por teclado, rolagem utilizável e áreas de
+clique distintas. Garanta fallback legível se a fonte externa não carregar.
 
-Mantenha testes unitários úteis e adicione integração com App/modal/API
-reais, interceptando fetch na fronteira. Cubra status, análise, benchmark e
-persistência com respostas concretas e promessas controladas: JSON inválido,
-HTML, {resultados:[null]}, tipos incoerentes, 404/422/501/503, abort/timeout,
-fonte válida e todas as sequências da seção 1. Espere o fluxo terminar antes
-de assertivas negativas. Demonstre que falhas preservam a análise.
+Em telas estreitas, reorganize a navegação e empilhe blocos. Não simplesmente
+oculte funções da sidebar. Preserve a escala de leitura e não imponha uma
+largura mínima global que provoque rolagem horizontal da página.
 
-Os 107 testes direcionados passaram com warnings de updates fora de act.
-Corrija a coordenação dos testes sem suprimir avisos. Não descreva mocks da
-própria camada examinada como validação ponta a ponta dessa camada.
+## Validação visual e funcional
 
-## 6. Conferir os demais requisitos dos sete lotes
+Antes e depois, abra a aplicação em navegador real e registre capturas das
+mesmas telas com os mesmos dados, tema, viewport e zoom. Use os recursos de
+navegador já disponíveis no ambiente. Não confunda jsdom com validação de
+layout renderizado. Se faltar navegador, conclua as verificações possíveis
+e registre precisamente a validação visual pendente.
 
-- Revalide CampanhaEntrada.id: bool rejeitado com 422, payload original
-  preservado no SQLite, criação/update normal e outros inteiros públicos.
-- Confira LP em textos públicos e PR6 no prompt realmente despachado ao
-  Gemini mockado. Preserve identificadores internos e lógica do engine.
-- A paridade atual compara schema Python e labels Python. Tipagem TS
-  garante coerência dentro do frontend, não entre linguagens/documentação.
-  Compare as quatro fontes sem inventar uma quinta lista literal.
-- Fallback monetário usa motivo genérico de inexistência de benchmark.
-  Ausência de contrato de moeda não prova inexistência: diferencie
-  inelegibilidade, ausência explícita e indisponibilidade técnica, na UI
-  e no contrato. Não invente uma busca concluída.
-- Confira status.benchmark, deduplicação de status e reação a falhas.
-  Diferencie configuração disponível de saúde efetivamente comprovada.
-- Revise validade de referências exibidas/restauradas: TTL do cache no
-  servidor não expira automaticamente o conteúdo de uma campanha salva.
-- Confira redação de exceções e logs, sem expor chave/conteúdo bruto
-  desnecessário. Teste com sentinelas fictícias.
+Confira:
+- 1366 × 768 e 1920 × 1080 no desktop; 768 px e 390 px de largura.
+- Zoom real do navegador em 100% e 200%, quando a ferramenta permitir.
+  deviceScaleFactor/DPR não substitui zoom; registre o método utilizado.
+- Temas claro e escuro, nomes longos, textos extensos do Copiloto,
+  valores grandes e avisos de erro, além do caminho feliz.
+- Ausência de corte de texto, sobreposição, conteúdo inacessível e overflow
+  horizontal da página. Comparação deve se adaptar ou ter rolagem local
+  claramente acessível, se indispensável para sua estrutura.
+- Estilo computado de exemplos de cada categoria tipográfica, incluindo
+  descrições, labels e avisos; não verifique apenas os títulos.
+- Criar/importar campanha com respostas mockadas, abrir detalhe, comparar,
+  excluir, buscar, alternar tema e acessar Ajuda continuam funcionando.
 
-## Validação e entrega
+Execute no dashboard: npm test, npm run lint e npm run build. Não acrescente
+testes frágeis que apenas procuram valores literais de CSS; prefira checks
+de comportamento e medidas no navegador. Ajuste testes somente quando uma
+mudança intencional justificar; não enfraqueça as regressões funcionais.
+Finalize com git diff --check e revisão dos arquivos alterados.
 
-Após as correções, execute com IA desligada, chave fictícia e bancos
-temporários, usando dependências já instaladas:
-- Backend: python -m pytest -q em backend/backend-nexgestor-main.
-- Dashboard: npm test, npm run lint, npm run build.
-- OpenAPI, git diff --check e revisão dos arquivos novos e modificados.
+## Registro e entrega
 
-Se TestClient travar no sandbox, registre o problema e use o mecanismo de
-aprovação do ambiente quando necessário. Timeout não é teste aprovado.
+Registre a implementação e as evidências em docs/sessions/AAAA-MM-DD.md
+conforme CLAUDE.md. Atualize o roadmap somente se a frente mudar de fase.
+Não reescreva sessões anteriores nem declare avaliação humana já realizada.
 
-Registre cada lote validado em docs/sessions/AAAA-MM-DD.md conforme CLAUDE.md.
-Reconcilie PRD, contrato, CLAUDE e roadmap com o resultado observado.
-Confira alegações de “tudo commitado” diante do Git real e diferencie a
-contagem histórica do item 16 de uma contagem atual. Não reescreva sessões
-históricas: acrescente retificações datadas.
+Na entrega, informe:
+- tamanhos principais antes/depois e ajustes de layout;
+- telas, resoluções e temas efetivamente conferidos, com capturas locais;
+- resultados de testes/lint/build e limitações de verificação;
+- estado real: implementado, validado, commitado, enviado e implantado.
 
-Entregue achados com arquivo/linha, impacto, reprodução, correção e teste;
-matriz dos sete lotes; comandos/contagens observados e veredito local.
-Separe implementado, validado, commitado, enviado e implantado. Grounding
-real, nginx A2 e ativação em produção permanecem fora desta execução.
-Não aprove lotes com bugs confirmados sem correção/teste. Descreva qualquer
-impedimento real e o trabalho ainda necessário com precisão.
+A implementação deve demonstrar aumento perceptível em toda a interface.
+Deixe claro que o usuário/professor ainda precisa experimentar a versão
+para confirmar se o novo tamanho atende ao conforto de leitura esperado.
