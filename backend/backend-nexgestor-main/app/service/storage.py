@@ -60,7 +60,13 @@ _iniciado_para: Optional[str] = None
 # um positivo podia vir de fonte que cobria só parte do número, e um negativo
 # podia ser uma falha transitória cacheada indevidamente. Só invalida
 # BENCHMARKS; campanhas e dados do usuário não são tocados.
-REGRA_BENCHMARK_VERSAO = 1
+#
+# v2 (2026-09-07): um support sem chunk válido ainda contava pra cobertura
+# integral — um vizinho válido cobrindo o resto do trecho fazia os dois
+# juntos parecerem cobertura completa de uma fonte que sustentava só uma
+# fração do número (ver `_localizar_fonte_associada`). Positivos gravados
+# sob a v1 podem ter vindo dessa brecha — invalidados.
+REGRA_BENCHMARK_VERSAO = 2
 
 
 class PersistenciaDesligada(RuntimeError):

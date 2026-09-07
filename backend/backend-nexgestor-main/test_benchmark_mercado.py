@@ -340,6 +340,29 @@ class TestAssociacaoDeFonte:
             r = await benchmark_service.buscar_benchmarks("pet", "meta_ads", "conversion", ["ctr_link"])
         assert r[0].encontrado is True and r[0].value == 12.34
 
+    @pytest.mark.parametrize("indices_do_vizinho", [[], [99], [1]], ids=["sem_indice", "indice_invalido", "chunk_sem_web"])
+    @pytest.mark.asyncio
+    async def test_support_adjacente_sem_fonte_valida_nao_completa_cobertura(
+        self, base, ia_disponivel, indices_do_vizinho
+    ):
+        """
+        REGRESSÃO (análise de 2026-09-07): `VALOR: 12.34` com um support
+        válido cobrindo só `[7,8)` (1 dos 5 bytes) e um vizinho `[8,12)`
+        SEM fonte válida — antes, os dois juntos "completavam" a cobertura
+        integral e o número era aceito com a fonte do primeiro support, que
+        na real sustenta só uma fração dele. O vizinho sem fonte válida não
+        pode contar pra cobertura, então a integral não deve ser atingida.
+        """
+        resp = _resposta(
+            ["VALOR: 12.34"],
+            supports=[(0, 7, 8, [0]), (0, 8, 12, indices_do_vizinho)],
+            chunks=["https://fonte.example/relatorio", None],
+        )
+        with patch.object(benchmark_service, "_get_client", return_value=_fake_client(resp)):
+            with pytest.raises(benchmark_service.BenchmarkFalhaTransitoria):
+                await benchmark_service.buscar_benchmarks("pet", "meta_ads", "conversion", ["ctr_link"])
+        assert storage.buscar_cache_benchmark("pet", "meta_ads", "conversion", "ctr_link") is None
+
     @pytest.mark.asyncio
     async def test_offsets_sao_bytes_com_acento_antes_do_numero(self, base, ia_disponivel):
         """

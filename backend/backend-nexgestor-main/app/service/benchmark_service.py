@@ -413,6 +413,18 @@ def _montar_prompt(niche: str, platform: str, objective: str, metric: str) -> st
     )
 
 
+# A API do Gemini REJEITA (400 INVALID_ARGUMENT: "Manually set deadline Ns is
+# too short. Minimum allowed deadline is 10s.") uma chamada com o tool
+# `google_search` e deadline abaixo de 10s — achado ao vivo em 2026-09-07,
+# com GEMINI_TIMEOUT_SECONDS=8.0 (padrão que a chamada SEM grounding usa sem
+# problema). Por isso o benchmark usa um `http_options` próprio na CHAMADA,
+# não o timeout padrão do client (`ai_service._get_client`) — não dá pra só
+# subir GEMINI_TIMEOUT_SECONDS global, isso mudaria o orçamento de espera da
+# análise principal (`ai_service.call_gemini`) por uma exigência que só
+# existe pra busca com grounding. Margem de 2s acima do mínimo documentado.
+_TIMEOUT_BUSCA_MS = 12_000
+
+
 async def _executar_busca(niche: str, platform: str, objective: str, metric: str) -> BenchmarkResultado:
     loop = asyncio.get_running_loop()
     client = _get_client()
@@ -428,6 +440,7 @@ async def _executar_busca(niche: str, platform: str, objective: str, metric: str
             # e saída estruturada não combinam nesta versão da API.
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())],
+                http_options=types.HttpOptions(timeout=_TIMEOUT_BUSCA_MS),
             ),
         )
 
@@ -485,11 +498,19 @@ def _localizar_fonte_associada(
     trecho do número (`[inicio_b, fim_b)`, offsets em BYTES dentro da parte
     `part_index` — é o que o SDK documenta em `Segment`).
 
-    Duas correções da revisão Opus (2026-09-05):
+    Três correções, a mais recente da análise de 2026-09-07:
       1. antes bastava SOBREPOSIÇÃO — um support de 1 byte "atribuía" um
          número de 5 (reproduzido: `VALOR: 12.34` com support `[7, 8)`);
       2. os offsets eram tratados como caracteres do texto concatenado,
-         ignorando `part_index` e a codificação UTF-8.
+         ignorando `part_index` e a codificação UTF-8;
+      3. um support SEM chunk válido (índice fora de faixa, ou chunk sem
+         `web`) ainda contava pra COBERTURA — só era descartado depois, na
+         hora de montar `urls_por_indice`. Com um vizinho válido cobrindo o
+         resto do trecho, os dois juntos pareciam cobertura integral de uma
+         fonte que na real sustenta só uma fração do número (reproduzido:
+         `VALOR: 12.34` com supports `[7,8)→chunk válido` + `[8,12)→chunk
+         inválido/ausente`). Agora um support só entra na cobertura se ELE
+         MESMO citar pelo menos um chunk válido.
 
     Mais de uma URL distinta cobrindo o mesmo trecho é ambíguo: rejeitado,
     nunca escolhido arbitrariamente.
@@ -506,6 +527,17 @@ def _localizar_fonte_associada(
         if not supports or not chunks:
             return None
 
+        def _indices_validos(indices) -> list[int]:
+            validos = []
+            for idx in indices or []:
+                if not isinstance(idx, int) or idx < 0 or idx >= len(chunks):
+                    continue  # índice inválido — ignora, nunca estoura
+                web = getattr(chunks[idx], "web", None)
+                if web is None or not url_publica_valida(getattr(web, "uri", None)):
+                    continue
+                validos.append(idx)
+            return validos
+
         intervalos: list[tuple[int, int]] = []
         indices_associados: set[int] = set()
         for support in supports:
@@ -521,9 +553,15 @@ def _localizar_fonte_associada(
             s_fim = segmento.end_index if segmento.end_index is not None else s_inicio
             if not isinstance(s_inicio, int) or not isinstance(s_fim, int) or s_fim <= s_inicio:
                 continue
-            if s_inicio < fim_b and s_fim > inicio_b:  # toca o número
-                intervalos.append((s_inicio, s_fim))
-                indices_associados.update(support.grounding_chunk_indices or [])
+            if not (s_inicio < fim_b and s_fim > inicio_b):
+                continue  # não toca o número
+
+            validos_do_support = _indices_validos(support.grounding_chunk_indices)
+            if not validos_do_support:
+                continue  # sem fonte válida — não conta pra cobertura
+
+            intervalos.append((s_inicio, s_fim))
+            indices_associados.update(validos_do_support)
 
         if not intervalos or not _cobertura_integral(intervalos, inicio_b, fim_b):
             return None  # cobertura parcial ou inexistente — não atribui
@@ -531,11 +569,7 @@ def _localizar_fonte_associada(
         urls_por_indice: dict[int, str] = {}
         titulos_por_indice: dict[int, str] = {}
         for idx in indices_associados:
-            if not isinstance(idx, int) or idx < 0 or idx >= len(chunks):
-                continue  # índice inválido — ignora, nunca estoura
-            web = getattr(chunks[idx], "web", None)
-            if web is None or not url_publica_valida(getattr(web, "uri", None)):
-                continue
+            web = chunks[idx].web
             titulo = getattr(web, "title", None) or getattr(web, "domain", None) or ""
             titulo = titulo.strip() if isinstance(titulo, str) else ""
             urls_por_indice[idx] = web.uri.strip()
