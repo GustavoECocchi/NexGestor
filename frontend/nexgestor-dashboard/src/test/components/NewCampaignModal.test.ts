@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest"
-import { chavesDoFormularioManual, mensagemDeErro, normalizaCampo, num, parseFileJSON } from "~components/NewCampaignModal"
+import {
+  chavesDoFormularioManual, erroConversoesFaltando, mensagemDeErro, normalizaCampo, num, parseFileJSON
+} from "~components/NewCampaignModal"
 import { ApiError } from "~lib/api"
+import type { AnalyzeInput } from "~types"
 
 beforeEach(() => {
   localStorage.clear() // parseFileJSON chama nextLiveId(), que lê localStorage
@@ -173,6 +176,46 @@ describe("parseFileJSON — niche é lista fechada e não tem default seguro", (
   })
 })
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Achado P1 (auditoria de precisão, 2026-09-08) — CPA sem conversões
+// desligava as três proteções de volume do engine (score_confidence, gate de
+// escala do Cenário G, Cenário M). Bloqueia a criação da campanha nos dois
+// modos antes que o payload chegue no backend.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("erroConversoesFaltando — CPA sem conversões bloqueia a análise", () => {
+  const base: AnalyzeInput = {
+    campaign: { id: 1, name: "T", platform: "meta_ads", objective: "conversion" },
+    metrics: {},
+    targets: {}
+  }
+
+  it("cpa calculado/pronto sem conversions bloqueia", () => {
+    const input = { ...base, metrics: { cpa: 25 } }
+    expect(erroConversoesFaltando(input)).toContain("Conversões")
+  })
+
+  it("max_cpa (meta do gestor) sem conversions também bloqueia", () => {
+    const input = { ...base, targets: { max_cpa: 100 } }
+    expect(erroConversoesFaltando(input)).toContain("Conversões")
+  })
+
+  it("cpa + conversions preenchido passa", () => {
+    const input = { ...base, metrics: { cpa: 25, conversions: 3 } }
+    expect(erroConversoesFaltando(input)).toBeNull()
+  })
+
+  it("conversions=0 explícito conta como preenchido — não é a mesma coisa que ausente", () => {
+    const input = { ...base, metrics: { cpa: 25, conversions: 0 } }
+    expect(erroConversoesFaltando(input)).toBeNull()
+  })
+
+  it("sem cpa nem max_cpa, conversions ausente NÃO bloqueia — campanha de tráfego/awareness continua livre", () => {
+    const input = { ...base, metrics: { impressions: 1000, spend: 50 } }
+    expect(erroConversoesFaltando(input)).toBeNull()
+  })
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Regressão 2026-08-01 — campos que faltavam no formulário manual

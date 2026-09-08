@@ -153,6 +153,33 @@ export function chavesDoFormularioManual(): string[] {
   return [...FIELDS_DELIVERY, ...FIELDS_CREATIVE, ...FIELDS_TARGETS].map((f) => f.key)
 }
 
+/**
+ * Achado P1 (auditoria de precisão, 2026-09-08): informar CPA — calculado ou
+ * como meta — SEM informar conversões desliga as três proteções de volume do
+ * engine (`_score_confidence`, evidência de escala do Cenário G, Cenário M):
+ * omitir o campo produzia confiança MAIOR do que informar honestamente um
+ * volume baixo (reproduzido: mesma campanha, `conversions` ausente saía com
+ * confiança "high" e "aumentar orçamento agora"; `conversions=3` saía com
+ * confiança "low" e "acumular volume"). Decisão de produto: quem informa CPA
+ * precisa informar conversões — não dá pra ter um custo por aquisição sem
+ * saber quantas aquisições sustentam esse número. `conversions=0` (campanha
+ * zerada) conta como preenchido; só a ausência (`undefined`) bloqueia.
+ *
+ * Campanha de tráfego/awareness que nunca define CPA continua livre — a
+ * proteção do Cenário L pra `conversions is None` nesses casos não é afetada
+ * (ver `_detect_no_return` no backend).
+ *
+ * Mesmo padrão de bloqueio de `niche` acima: valida os DOIS modos (manual e
+ * arquivo) no único ponto em que ambos convergem (`runAnalyze`).
+ */
+export function erroConversoesFaltando(input: AnalyzeInput): string | null {
+  const exigeConversoes = input.metrics.cpa != null || input.targets.max_cpa != null
+  if (exigeConversoes && input.metrics.conversions == null) {
+    return "Informe Conversões antes de analisar — CPA sem volume de conversões conhecido gera confiança irreal no diagnóstico."
+  }
+  return null
+}
+
 // ── importação de arquivo (.json) ───────────────────────────────────────────
 // Lista fechada dos campos aceitos, com o MESMO nome usado em Metrics/Targets
 // (~types) e no contrato do backend (CONTRATO_API_FRONTEND.md). A cópia é
@@ -380,6 +407,11 @@ export function NewCampaignModal({
     // modos (manual e arquivo).
     if (!input.campaign.niche) {
       setError("Selecione o nicho da campanha antes de analisar.")
+      return
+    }
+    const erroConversoes = erroConversoesFaltando(input)
+    if (erroConversoes) {
+      setError(erroConversoes)
       return
     }
 
