@@ -125,6 +125,55 @@ para outra taxonomia neste MVP. Decisões duráveis pertencem ao documento
 pertinente, referenciado pela sessão; instruções globais não recebem estado
 temporário. Atualize o roadmap apenas quando uma frente mudar de fase.
 
+### Achados, bloqueios e encerramento
+
+Registre achados na sessão da tarefa, junto ao checkpoint existente: evidência,
+condição alcançável, impacto, relação com o escopo e próxima ação. Distinga
+defeito confirmado, hipótese e lacuna de validação. Use campos adicionais só
+quando o impacto justificar; não invente probabilidades ou custos numéricos.
+Não crie um cadastro paralelo. Ao planejar a próxima entrega, consulte os
+achados pertinentes, sem transformar todo o backlog em condição de início.
+
+Um bloqueador é um defeito ou uma incerteza material que impede atender ou
+validar um requisito da entrega. Identifique a ação afetada — implementação,
+aceite, merge ou deploy — e continue as partes independentes. A classificação
+exige evidência do impacto e do alcance: caso raro não significa impacto baixo,
+e severidade não transforma hipótese em fato. Teste obrigatório falhando impede
+declarar aquela validação aprovada; investigue se é defeito do produto ou
+limitação ambiental e delimite o que permanece sem validação.
+
+Revisão não autoriza implementar correções. Em execução autorizada, inclua os
+ajustes necessários ao requisito dentro do escopo vigente. Achado sem relação
+de dependência com a entrega recebe registro e próxima ação, sem ampliar o
+trabalho. Peça decisão apenas para escolha material ainda não resolvida pelos
+requisitos ou pela autorização; divergência documental ou arquivo adicional
+não exigem confirmação por si só. Um defeito externo que invalide a entrega
+bloqueia apenas sua parte dependente.
+
+Encerre a tarefa quando os critérios do escopo estiverem atendidos, as
+validações exigidas registradas e não houver bloqueador material dessa entrega.
+Dê destino às pendências e explicite os limites; não exija eliminar toda
+incerteza. Auditoria técnica concluída não comprova calibração empírica: se o
+aceite permitir encerrar a parte técnica, registre separadamente a validação
+com dados reais ainda pendente. Use os cinco estados de rastreabilidade acima,
+com revisão pendente no checkpoint e commit, envio e implantação separados.
+
+### Mudanças analíticas, contratos e dados
+
+Mudança de cálculo, limiar, confiança ou recomendação exige fundamento para o
+resultado esperado: requisito aprovado, fonte aplicável ou decisão de domínio
+explícita, com responsável pela decisão identificado. Casos de referência
+incluem controles positivos, negativos e fronteiras pertinentes; a saída do
+próprio engine não é fundamento independente. Registre a revisão independente
+da mudança de regra ou mantenha-a explicitamente pendente, sem inventar aceite.
+Reutilize testes existentes e execute as verificações pertinentes ao impacto.
+
+Quando contratos ou dados persistidos forem afetados, avalie consumidores,
+compatibilidade com dados existentes, ordem de atualização e reversibilidade,
+incluindo o impacto de rollback. Tarefas sem esse efeito dispensam essa análise.
+Use o checkpoint e as regras de conferência de versão e coordenação de edição
+acima; mudanças posteriores exigem revalidar o impacto, não reiniciar tudo.
+
 ## Backend — `backend/backend-nexgestor-main`
 
 - FastAPI. Rotas principais: `POST /api/v1/campaign/analyze` (+ `GET /api/v1/campaign/scenarios`), `GET /api/v1/status` (estado da IA) e `/api/v1/campaigns*` (persistência isolada por dono, header `X-Nex-Dono` obrigatório). Contrato completo em `docs/CONTRATO_API_FRONTEND.md`.
