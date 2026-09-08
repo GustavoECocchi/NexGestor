@@ -126,16 +126,23 @@ export function buildReply(question: string, c: CampaignVM): string {
   }
   if (/acao|proximo passo|o que.*faco|fazer agora/.test(q)) {
     const a = c.actions[0]
-    return a
-      ? `Prioridade agora: <b>${a.title}</b> (${a.prio}). ${a.why}`
-      : sc
-        ? `Ação recomendada: ${sc.action}`
-        : "Nenhuma ação crítica pendente — a campanha está estável."
+    if (a) return `Prioridade agora: <b>${a.title}</b> (${a.prio}). ${a.why}`
+    if (sc) return `Ação recomendada: ${sc.action}`
+    // Achado P2 (auditoria de precisão, 2026-09-08): sem cenário E com pouca
+    // cobertura, "a campanha está estável" é uma afirmação de saúde que os
+    // dados recebidos não sustentam — mesmo raciocínio já aplicado ao ramo
+    // "escalar" acima.
+    if (c.confidence === "low") {
+      return `Cobertura de apenas ${c.coverage ?? 0}% dos dados — nenhum problema foi identificado no que foi recebido, mas isso não é o mesmo que confirmar que está tudo bem. Envie mais métricas antes de decidir.`
+    }
+    return "Nenhuma ação crítica pendente — a campanha está estável."
   }
   if (/causa|por ?que|motivo|raiz/.test(q)) {
-    return sc
-      ? `A causa raiz identificada é: ${sc.root_cause}<br/><br/>Impacto no funil: ${sc.funnel_impact}`
-      : "Não há causa crítica no momento — as métricas estão dentro das metas configuradas."
+    if (sc) return `A causa raiz identificada é: ${sc.root_cause}<br/><br/>Impacto no funil: ${sc.funnel_impact}`
+    if (c.confidence === "low") {
+      return `Cobertura de apenas ${c.coverage ?? 0}% dos dados — nenhuma causa crítica foi identificada no que foi recebido, mas o restante permanece desconhecido, não confirmado como saudável.`
+    }
+    return "Não há causa crítica no momento — as métricas estão dentro das metas configuradas."
   }
   if (/oportunidade/.test(q)) {
     return c.opportunity || "Nenhuma oportunidade adicional destacada além do diagnóstico principal."
@@ -148,9 +155,13 @@ export function buildReply(question: string, c: CampaignVM): string {
   }
 
   // Fallback honesto: não finge entender a pergunta livre, dá o panorama geral.
-  return sc
-    ? `Não tenho uma resposta específica pra essa pergunta ainda, mas o ponto-chave da campanha hoje é o <b>Cenário ${sc.code} — ${sc.title}</b>: ${sc.root_cause}<br/><br/>Ação recomendada: ${sc.action}`
-    : "Não tenho uma resposta específica pra essa pergunta ainda. De modo geral, esta campanha não tem gargalo crítico no momento — o foco é manter e vigiar sinais de saturação (frequência subindo)."
+  if (sc) {
+    return `Não tenho uma resposta específica pra essa pergunta ainda, mas o ponto-chave da campanha hoje é o <b>Cenário ${sc.code} — ${sc.title}</b>: ${sc.root_cause}<br/><br/>Ação recomendada: ${sc.action}`
+  }
+  if (c.confidence === "low") {
+    return `Não tenho uma resposta específica pra essa pergunta ainda. Com a cobertura de apenas ${c.coverage ?? 0}% dos dados, também não dá pra afirmar que está tudo bem — nenhum gargalo foi identificado no que foi recebido, mas o restante permanece desconhecido.`
+  }
+  return "Não tenho uma resposta específica pra essa pergunta ainda. De modo geral, esta campanha não tem gargalo crítico no momento — o foco é manter e vigiar sinais de saturação (frequência subindo)."
 }
 
 export function Copilot({ c }: { c: CampaignVM }) {

@@ -1417,7 +1417,7 @@ def _lista_metricas(evals: list, limite: int = 4) -> str:
     return ", ".join(nomes) + (f" e mais {resto}" if resto > 0 else "")
 
 
-def _resumo_sem_cenario(metric_evals: list | None) -> tuple[str, str]:
+def _resumo_sem_cenario(metric_evals: list | None, coverage: int = 100) -> tuple[str, str]:
     """
     Resumo e ação principal quando NENHUM cenário de causa raiz disparou.
     Devolve (summary, primary_action).
@@ -1430,7 +1430,15 @@ def _resumo_sem_cenario(metric_evals: list | None) -> tuple[str, str]:
     enquanto o resumo afirmava que estava tudo dentro do esperado.
 
     A ressalva de cobertura (_partial_diagnosis_note) não cobria esse caso: ela
-    só é emitida com cobertura abaixo de 100%.
+    só é emitida com cobertura abaixo de 100% E existe métrica RED — nunca no
+    ramo "tudo verde" abaixo.
+
+    Achado P2 (auditoria de precisão, 2026-09-08): com `coverage` baixo (ex:
+    5%, só CPM recebido) este ramo ainda dizia "operando dentro dos parâmetros
+    esperados" — uma afirmação categórica de saúde apoiada em quase nenhum
+    dado, sem menção à cobertura. Corte em 40%, mesmo limiar que
+    `_score_confidence` usa pra rotular confiança "low" — abaixo dele a UI já
+    mostra o selo de confiança baixa, então o texto agora concorda com o selo.
     """
     reds = _weighted_reds(metric_evals or [])
     yellows = _weighted_yellows(metric_evals or [])
@@ -1448,6 +1456,14 @@ def _resumo_sem_cenario(metric_evals: list | None) -> tuple[str, str]:
             f"Nenhum gargalo crítico identificado, mas {len(yellows)} métrica(s) "
             f"fora da meta definida: {_lista_metricas(yellows)}. Monitorar de perto.",
             f"Acompanhar {yellows[0].metric}: está fora da meta definida.",
+        )
+
+    if coverage < 40:
+        return (
+            f"Cobertura de apenas {coverage}% dos dados recebidos — nenhum problema foi "
+            "identificado no que foi enviado, mas isso não é o mesmo que \"campanha "
+            "saudável\": o restante permanece desconhecido, não avaliado como bom.",
+            "Enviar mais métricas — cobertura insuficiente para confirmar que está tudo bem.",
         )
 
     return (
@@ -1624,7 +1640,7 @@ def _build_summary(
     nota_parcial += _nota_score_alto_com_status_critico(status, scenarios, overall_score)
 
     if not scenarios:
-        base, _ = _resumo_sem_cenario(metric_evals)
+        base, _ = _resumo_sem_cenario(metric_evals, coverage)
         return base + nota_parcial
 
     criticos = [s for s in scenarios if s.priority == 1 and s.code != ScenarioCode.VERTICAL_SCALE]
@@ -1703,7 +1719,7 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
     else:
         # Sem cenário, a ação tem de refletir o estado das métricas: mandar
         # "manter campanha ativa" com métrica em vermelho contradiz o selo.
-        _, primary_action = _resumo_sem_cenario(metric_evals)
+        _, primary_action = _resumo_sem_cenario(metric_evals, score_coverage)
 
     return CampaignAnalysisResponse(
         campaign_id=data.campaign.id,

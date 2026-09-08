@@ -38,6 +38,54 @@ describe("norm — normalização pra roteamento por tema", () => {
   })
 })
 
+// Achado P2 (auditoria de precisão, 2026-09-08): sem cenário E com pouca
+// cobertura, os ramos "ação"/"causa"/fallback afirmavam saúde ("está
+// estável", "dentro das metas") sem mencionar que os dados recebidos não
+// sustentam essa afirmação — mesmo raciocínio que o ramo "escalar" já
+// aplicava. Cobre os três ramos com confiança baixa e confirma que o texto
+// original (confiança default/alta) continua intacto.
+describe("buildReply — ressalva de cobertura baixa sem cenário (achado P2)", () => {
+  const semCenarioBaixaCobertura = vm({ scenarios: [], actions: [], confidence: "low", coverage: 12 })
+  const semCenarioAltaCobertura = vm({ scenarios: [], actions: [] })
+
+  it("'o que eu faço agora' menciona a cobertura em vez de afirmar estabilidade", () => {
+    const reply = buildReply("o que eu faço agora?", semCenarioBaixaCobertura)
+    expect(reply).toContain("12%")
+    expect(reply).not.toContain("a campanha está estável")
+  })
+
+  it("'qual a causa' menciona a cobertura em vez de afirmar que está dentro das metas", () => {
+    const reply = buildReply("qual a causa disso?", semCenarioBaixaCobertura)
+    expect(reply).toContain("12%")
+    expect(reply).not.toContain("dentro das metas configuradas")
+  })
+
+  it("fallback de pergunta livre menciona a cobertura em vez de afirmar ausência de gargalo", () => {
+    const reply = buildReply("qual é o sentido da vida?", semCenarioBaixaCobertura)
+    expect(reply).toContain("12%")
+    expect(reply).not.toContain("não tem gargalo crítico no momento")
+  })
+
+  it("controle positivo — confiança alta/default preserva o texto original nos três ramos", () => {
+    expect(buildReply("o que eu faço agora?", semCenarioAltaCobertura)).toContain("a campanha está estável")
+    expect(buildReply("qual a causa disso?", semCenarioAltaCobertura)).toContain("dentro das metas configuradas")
+    expect(buildReply("qual é o sentido da vida?", semCenarioAltaCobertura)).toContain("não tem gargalo crítico no momento")
+  })
+
+  it("cenário presente continua prevalecendo sobre a ressalva de cobertura", () => {
+    const comCenario = vm({
+      actions: [],
+      confidence: "low",
+      coverage: 12,
+      scenarios: [{
+        code: "E", title: "Fadiga de Criativo", root_cause: "r",
+        funnel_impact: "i", action: "Trocar o criativo agora.", priority: 1
+      }]
+    })
+    expect(buildReply("o que eu faço agora?", comCenario)).toContain("Trocar o criativo agora.")
+  })
+})
+
 describe("buildReply — roteia pra dados reais da campanha, nunca texto solto", () => {
   it("pergunta sobre CPA responde com o CPA real da campanha", () => {
     const reply = buildReply("qual o CPA dessa campanha?", vm({ cpaNum: 83.33 }))
