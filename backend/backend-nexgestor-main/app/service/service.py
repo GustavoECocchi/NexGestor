@@ -770,6 +770,24 @@ _MIN_CONVERSOES_CONFIAVEL = 10
 _MIN_CONVERSOES_ESTAVEL = 30
 
 
+def _trafego_suficiente_para_concluir(m: Metrics) -> bool:
+    """
+    Piso de tráfego mínimo pra afirmar que zero conversão indica rastreamento
+    ou página quebrados, em vez de "a campanha mal começou a rodar".
+
+    Achado P3 (auditoria de precisão, 2026-09-08): com meta de CPA definida,
+    o gatilho antigo comparava só `spend` contra o teto — sem exigir volume
+    de clique nenhum. Reproduzido: `spend=25, max_cpa=20, link_clicks=5` já
+    abria "Pausar a veiculação" com 5 cliques; e o MESMO gasto/cliques virava
+    "Pausar" ou "Acompanhar" só conforme o teto de custo que o gestor
+    digitou, nunca pela quantidade real de tráfego entregue. Cliques no link
+    OU visitas à LP contam — campanha que só mede uma das duas não fica
+    bloqueada por isso; o piso de LP é metade do de clique porque página
+    naturalmente recebe menos visita que clique (perda de carregamento).
+    """
+    return (m.link_clicks or 0) >= 100 or (m.landing_page_views or 0) >= 50
+
+
 def _detect_no_return(m: Metrics, t: Targets) -> ScenarioDetail | None:
     """
     Cenário L — Gasto relevante sem NENHUMA conversão.
@@ -786,17 +804,20 @@ def _detect_no_return(m: Metrics, t: Targets) -> ScenarioDetail | None:
     if m.conversions is None or m.conversions != 0 or m.spend is None or m.spend <= 0:
         return None
 
-    # "Gasto relevante" = já passou do ponto em que uma conversão na meta
-    # deveria ter acontecido. Sem meta de CPA, exige volume de clique real,
-    # para não acusar campanha que mal começou a rodar.
-    if t.max_cpa is not None:
-        relevante = m.spend >= t.max_cpa
-        referencia = f"o teto de CPA (R${t.max_cpa:.2f})"
-    else:
-        relevante = (m.link_clicks or 0) >= 100
-        referencia = "volume de cliques suficiente para esperar resultado"
-    if not relevante:
+    # Piso de tráfego OBRIGATÓRIO nos dois ramos (ver docstring do helper) —
+    # antes só o ramo sem meta de CPA exigia isso.
+    if not _trafego_suficiente_para_concluir(m):
         return None
+
+    # "Gasto relevante" = já passou do ponto em que uma conversão na meta
+    # deveria ter acontecido. Sem meta de CPA, o piso de tráfego acima já
+    # basta — não há teto de custo pra comparar.
+    if t.max_cpa is not None:
+        if m.spend < t.max_cpa:
+            return None
+        referencia = f"o teto de CPA (R${t.max_cpa:.2f}), com tráfego suficiente pra esperar resultado"
+    else:
+        referencia = "volume de tráfego suficiente para esperar resultado, mesmo sem meta de CPA definida"
 
     perdido = f"R${m.spend:.2f}"
     sinais = []
@@ -811,9 +832,9 @@ def _detect_no_return(m: Metrics, t: Targets) -> ScenarioDetail | None:
         title="Cenário L — Gasto sem Retorno (Zero Conversão)",
         root_cause=(
             f"{perdido} investidos e NENHUMA conversão registrada — o gasto já passou "
-            f"{referencia}.{trafego} Quando há tráfego mas nenhuma conversão, o problema "
-            "está depois do clique: rastreamento quebrado, página fora do ar/lenta, "
-            "formulário com erro ou oferta sem aderência ao público."
+            f"{referencia}.{trafego} Quando há tráfego mas nenhuma conversão, os candidatos "
+            "mais prováveis são rastreamento quebrado, página fora do ar/lenta, formulário "
+            "com erro ou oferta sem aderência ao público — a verificação abaixo aponta qual."
         ),
         funnel_impact=(
             "Cada real a mais é perda direta: não existe CPA para otimizar porque não "

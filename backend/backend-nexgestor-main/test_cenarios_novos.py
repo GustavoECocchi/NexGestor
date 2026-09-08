@@ -95,6 +95,67 @@ class TestCenarioL:
         assert ScenarioCode.LOW_SAMPLE not in codes
 
 
+class TestCenarioLExigeTrafegoMinimo:
+    """
+    REGRESSÃO (achado P3 da auditoria de precisão, 2026-09-08). Reproduzido:
+    `spend=25, link_clicks=5, max_cpa=20` já disparava "Pausar a veiculação e
+    validar rastreamento e página" com só 5 cliques — o ramo COM meta de CPA
+    comparava só `spend` contra o teto, sem nenhum piso de tráfego (o ramo
+    SEM meta já exigia `link_clicks >= 100`). O mesmo gasto/cliques também
+    alternava entre "Pausar" (Cenário L) e "Acompanhar CTR" só conforme o
+    teto de custo que o gestor digitou — uma afirmação sobre rastreamento
+    quebrado não deveria depender da meta de custo, e sim do tráfego real.
+    """
+
+    def test_gasto_passou_do_teto_mas_trafego_e_minimo_nao_dispara(self):
+        _, codes = run(
+            Metrics(impressions=800, spend=25.0, link_clicks=5, conversions=0),
+            Targets(max_cpa=20.0),
+        )
+        assert ScenarioCode.NO_RETURN not in codes
+
+    def test_mesmo_caso_com_trafego_suficiente_dispara(self):
+        """Controle positivo: o piso de tráfego não mata o cenário legítimo."""
+        _, codes = run(
+            Metrics(impressions=8000, spend=25.0, link_clicks=100, conversions=0),
+            Targets(max_cpa=20.0),
+        )
+        assert ScenarioCode.NO_RETURN in codes
+
+    def test_landing_page_views_tambem_conta_como_trafego(self):
+        """Piso alternativo: 50 visitas à LP bastam, mesmo com poucos cliques."""
+        _, codes = run(
+            Metrics(impressions=8000, spend=25.0, link_clicks=10,
+                    landing_page_views=50, conversions=0),
+            Targets(max_cpa=20.0),
+        )
+        assert ScenarioCode.NO_RETURN in codes
+
+    def test_veredito_nao_muda_so_por_causa_do_teto_de_cpa_do_gestor(self):
+        """
+        Mesmos dados (spend=120, 40 cliques, 0 conversão): o piso de tráfego
+        (100 cliques) não é atingido, então NENHUM teto de CPA dispara o
+        cenário — o veredito para de depender só da meta que o gestor digitou.
+        """
+        base = Metrics(impressions=5000, spend=120.0, link_clicks=40, conversions=0)
+        for teto in (5.0, 20.0, 100.0, 500.0):
+            _, codes = run(base, Targets(max_cpa=teto))
+            assert ScenarioCode.NO_RETURN not in codes, f"disparou com max_cpa={teto}"
+
+    def test_root_cause_apresenta_causas_como_hipotese_nao_fato(self):
+        """
+        Achado P3: o texto antigo afirmava "o problema está depois do
+        clique" como fato. Agora apresenta candidatos, não conclusão.
+        """
+        r, _ = run(
+            Metrics(impressions=80000, spend=2000, link_clicks=1600, conversions=0),
+            Targets(max_cpa=80.0),
+        )
+        cenario = next(s for s in r.scenarios if s.code == ScenarioCode.NO_RETURN)
+        assert "o problema está depois do clique" not in cenario.root_cause
+        assert "candidatos" in cenario.root_cause.lower()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cenário M — Amostra Insuficiente
 #
