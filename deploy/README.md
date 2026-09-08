@@ -327,6 +327,14 @@ marca a última cópia funcional; documentação completa em
 não existem mais aqui — não há distribuição ativa por este caminho enquanto o
 dashboard web não tiver um canal próprio (ver `docs/roadmap.md` item 10).
 
+### Build do dashboard para publicação
+
+O build de produção em `frontend/nexgestor-dashboard` exige `VITE_API_BASE`
+apontando para o backend que os usuários acessarão. O guard em
+`src/lib/buildEnv.ts` rejeita variável ausente e URLs HTTP(S) com host
+`localhost` ou `127.0.0.1`. Ajuste o valor antes de executar `npm run build`;
+consulte o `.env.example` do dashboard. Gerar o build não publica o dashboard.
+
 ---
 
 ## Anexo — montar do zero num servidor sem proxy
