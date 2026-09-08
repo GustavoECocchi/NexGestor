@@ -1,254 +1,100 @@
-Com base em tudo que discutimos até agora sobre:
-
-* Context Governor / Context-Aware Execution;
-* Cross-Agent Collaboration Protocol;
-* auditoria cruzada;
-* arquitetura consolidada;
-* e principalmente os ajustes e decisões que acabamos de discutir sobre a implementação;
-
-quero que você agora transforme o que foi decidido em uma **implementação concreta e mínima dentro do projeto**.
-
-Não volte para uma nova exploração arquitetural ampla.
-
-Antes de alterar arquivos, faça apenas uma consolidação curta contendo:
-
-1. decisões finais que ficaram acordadas;
-2. mudanças que serão implementadas agora;
-3. mudanças que deliberadamente ficarão fora do MVP;
-4. arquivos que serão criados;
-5. arquivos que serão modificados;
-6. arquivos existentes que serão reutilizados em vez de duplicados.
-
-Se existir alguma divergência entre a proposta original e o que discutimos posteriormente, **as decisões mais recentes da nossa discussão têm prioridade**.
-
-Depois dessa consolidação, prossiga com a implementação sem pedir nova confirmação, desde que não exista um bloqueio real.
-
-## Objetivo do MVP
-
-Quero que Claude Code e Codex consigam trabalhar no mesmo projeto com:
-
-* estado compartilhado;
-* continuidade entre sessões;
-* consciência de contexto;
-* milestones recuperáveis;
-* handoff quando realmente necessário;
-* ausência de territorialidade sobre commits e alterações;
-* proteção contra sobrescrever trabalho desconhecido;
-* repository state como fonte principal de verdade;
-* separação entre documentação permanente e estado operacional temporário.
-
-## Princípios obrigatórios
-
-### 1. Shared repository ownership
-
-Nenhum agente é dono de código, arquivos ou commits.
-
-Claude e Codex podem ter papéis preferenciais, mas o estado atual pertence ao projeto.
-
-Autoria é metadata.
-
-Responsabilidade sobre o estado atual é compartilhada.
-
-### 2. Repository reality first
-
-Quando houver conflito, usar como referência:
-
-Repository state
-→ tests
-→ git diff/history
-→ architecture / decisions
-→ active PRD
-→ shared operational state
-→ handoff
-→ agent memory
-
-Nunca confiar cegamente em STATE ou HANDOFF.
-
-### 3. Unknown changes are preserved until understood
-
-Ao encontrar alterações que o agente não reconhece:
-
-* inspecionar;
-* entender;
-* validar;
-* comparar com requisitos;
-* só então modificar.
-
-Nunca reverter, sobrescrever ou apagar trabalho apenas porque foi produzido por outro agente.
-
-### 4. Context-aware execution
-
-Antes de iniciar uma unidade significativa de trabalho, considerar:
-
-* trabalho restante;
-* tamanho do próximo milestone;
-* contexto disponível quando essa informação estiver acessível;
-* risco de deixar o repositório em estado intermediário.
-
-Quando houver pressão de contexto:
-
-* reduzir escopo;
-* terminar a menor unidade segura;
-* validar;
-* persistir estado;
-* criar handoff somente se realmente necessário.
-
-Não criar falsa precisão de porcentagens se não houver dados confiáveis.
-
-### 5. Atomic work
-
-Preferir:
-
-implement
-→ validate
-→ checkpoint
-→ continue
-
-em vez de mudanças transversais enormes antes de testar.
-
-### 6. Estado operacional não é development log
-
-Não registrar cada comando ou pequena alteração.
-
-Persistir apenas aquilo necessário para continuidade:
-
-* milestone atual;
-* concluído;
-* pendente;
-* decisões temporárias relevantes;
-* testes;
-* blockers;
-* próximo passo exato.
-
-### 7. Minimal infrastructure
-
-Não construir agora:
-
-* daemon;
-* serviço externo;
-* dashboard;
-* banco próprio;
-* sistema complexo de telemetria;
-* automação pesada;
-* orquestrador sofisticado;
-
-a menos que algo disso tenha sido explicitamente aprovado na nossa discussão.
-
-O MVP deve funcionar primeiro principalmente através das regras, estrutura e estado compartilhado do próprio repositório.
-
-## Integração Claude Code ↔ Codex
-
-As instruções devem levar os agentes a pensar em:
-
-* current implementation;
-* current repository state;
-* active task;
-* current workflow stage;
-
-e evitar mentalidade como:
-
-* "my changes";
-* "Codex's files";
-* "Claude's implementation";
-* "that wasn't my task";
-
-quando autoria não for tecnicamente relevante.
-
-Especialização não significa propriedade exclusiva.
-
-## AGENTS.md e CLAUDE.md
-
-Evite copiar blocos enormes idênticos para os dois arquivos.
-
-As regras devem ficar no local de maior autoridade possível.
-
-Se existir uma regra compartilhada que possa ser referenciada de maneira simples, prefira uma fonte única.
-
-AGENTS.md e CLAUDE.md devem conter apenas as instruções necessárias para garantir que cada agente realmente siga o protocolo.
-
-Não transforme esses arquivos em documentação arquitetural gigantesca.
-
-## Compatibilidade com a política de documentação existente
-
-Respeite a classificação já existente no projeto:
-
-* instruções globais de agente → AGENTS.md / CLAUDE.md;
-* arquitetura → docs/architecture/;
-* decisões arquiteturais → docs/decisions/;
-* feature planejada → prds/active/;
-* PRD concluído → prds/completed/.
-
-Estado transitório de execução não deve contaminar essas categorias.
-
-## Durante a implementação
-
-Antes de modificar:
-
-* git status;
-* diff atual;
-* branch atual;
-* arquivos relevantes;
-* documentação existente.
-
-Preserve trabalho não relacionado.
-
-Faça alterações pequenas e verificáveis.
-
-Depois de cada unidade relevante:
-
-* valide;
-* execute testes apropriados;
-* verifique se não introduziu inconsistências.
-
-## Ao finalizar
-
-Faça uma auditoria da própria implementação.
-
-Verifique:
-
-1. se existem regras duplicadas;
-2. se Claude e Codex recebem instruções incompatíveis;
-3. se alguma regra incentiva territorialidade;
-4. se STATE/HANDOFF/TASKS possuem responsabilidades sobrepostas;
-5. se existe documentação operacional demais;
-6. se o sistema consegue sobreviver a uma nova sessão;
-7. se outro agente consegue assumir a tarefa lendo o repositório;
-8. se alterações desconhecidas estão protegidas;
-9. se contexto é tratado como orçamento sem depender de precisão inexistente;
-10. se o MVP ficou menor ou igual ao necessário.
-
-Execute os testes relevantes.
-
-Depois entregue um relatório final contendo:
-
-### Implementado
-
-O que entrou no projeto.
-
-### Arquivos alterados
-
-Arquivo → finalidade da alteração.
-
-### Comportamento resultante
-
-Como Claude e Codex devem operar agora.
-
-### Validação
-
-Testes e verificações executadas.
-
-### Fora do MVP
-
-O que foi propositalmente deixado para depois.
-
-### Riscos restantes
-
-Problemas ainda possíveis.
-
-### Próxima evolução recomendada
-
-Somente a evolução imediatamente posterior que faça sentido após testarmos o MVP em uso real.
-
-Não implemente funcionalidades futuras apenas porque seriam interessantes.
-
-O objetivo desta etapa é sair com um **MVP pequeno, funcional e testável em sessões reais de Claude Code + Codex**.
+# Retomada — concluir correções e auditar precisão/confiabilidade
+
+## Objetivo
+
+Finalize a rodada de correções já autorizada e depois execute a auditoria de
+`docs/prds/auditoria-precisao-confiabilidade.md` como etapa separada.
+Queremos saber quando o diagnóstico merece confiança e onde pode induzir
+decisões inadequadas, especialmente pausa e escala.
+
+Este prompt substitui integralmente o conteúdo anterior sobre o MVP de agentes.
+Não implemente novamente aquele MVP nem crie outra política de execução.
+Siga AGENTS.md e CLAUDE.md; o PRD continua sendo a referência do escopo da auditoria.
+
+## 1. Conferir a tarefa e o estado real
+
+- Leia as instruções, o roadmap e os checkpoints pertinentes da sessão.
+- Confira branch, HEAD, status, diff inclusive staged e arquivos novos.
+- Identifique quais correções estão em andamento, quais já foram autorizadas
+  pelo usuário e quais foram implementadas/validadas. Preserve trabalho existente.
+- Há divergência a esclarecer: o usuário informa que a auditoria de precisão
+  ainda não foi executada, mas `docs/sessions/2026-09-08.md` contém uma seção
+  que a declara concluída. Confira evidências e contexto da sua conversa.
+  Explique se houve execução completa, parcial, rascunho ou registro incorreto.
+  Não trate o texto do checkpoint nem uma contagem de testes como prova suficiente.
+- Se o registro estiver incorreto, acrescente uma retificação identificável,
+  preservando o histórico e deixando claro o estado atual. Se houver trabalho
+  comprovado, aproveite-o na versão correspondente, sem repeti-lo sem necessidade.
+
+## 2. Fechar a rodada atual de correções
+
+Conclua somente as correções já autorizadas e os testes pertinentes. Este
+pedido não autoriza corrigir automaticamente todos os novos achados.
+
+Para cada correção, registre problema, comportamento resultante e evidência
+de validação. Quando pertinente, demonstre que a reprodução falha sem a
+correção e passa com ela. Distinga validação nova de resultados anteriores.
+
+Defina um ponto de encerramento: correções autorizadas concluídas e validadas,
+ou pendência identificada com motivo e próxima ação. Não espere encontrar
+“zero bugs” para iniciar a auditoria. Um impedimento localizado não deve
+paralisar as verificações independentes.
+
+Não execute commit, push ou deploy por causa deste prompt.
+
+## 3. Executar a auditoria em uma versão identificada
+
+Ao encerrar a rodada, registre HEAD e alterações locais que compõem a base
+analisada. Não é necessário criar commit para identificar essa base.
+
+Execute o PRD integralmente, sem implementar correções de produto, testes
+permanentes ou configuração durante a auditoria. Pode usar reproduções
+temporárias isoladas, conforme os limites do PRD.
+
+Priorize:
+- confiança excessiva com dados ausentes ou amostra pequena;
+- recomendações indevidas de pausar ou aumentar investimento;
+- adequação de metas e regras ao contexto da campanha;
+- consistência entre diagnóstico, nota, confiança, IA e apresentação;
+- hipóteses de causa apresentadas como certeza.
+
+Para cada achado, registre entrada, esperado, observado, arquivo/linha,
+impacto, evidência e recomendação. Diferencie bug de implementação, decisão
+de produto, heurística não validada e ausência de evidência empírica.
+Inclua controles positivos e suspeitas refutadas.
+
+Se o código mudar durante a auditoria, identifique a nova versão e reavalie
+os trechos afetados. Não misture resultados de versões diferentes.
+Se um defeito impedir parte da avaliação, documente o limite e siga nas demais.
+
+## 4. Precisão real e limites
+
+Testes passando comprovam comportamento nos casos exercitados; não comprovam
+automaticamente que as regras representam bem campanhas reais.
+
+Sem campanhas anonimizadas autorizadas e avaliação independente de gestor,
+conclua a parte técnica e entregue o protocolo de comparação previsto no PRD.
+Mantenha a validação empírica explicitamente pendente; não invente taxa de acerto.
+
+Respeite os limites do PRD: sem chamadas pagas, produção/VPS, leitura de
+segredos, uso de bancos reais ou instalação de dependências. Use testes
+isolados, configuração fictícia e IA desligada.
+
+## 5. Entrega e critério de encerramento
+
+Entregue:
+1. Esclarecimento da divergência sobre a auditoria registrada.
+2. Correções anteriores finalizadas, validações e pendências.
+3. Versão examinada e veredito por frente definida no PRD.
+4. Achados priorizados e condições em que a análise merece ou não confiança.
+5. Até cinco próximas ações, separando correções de decisões de produto
+   e validação com campanhas reais.
+
+A etapa termina com o escopo técnico examinado, evidências registradas e
+limitações explícitas; não depende de corrigir todos os achados.
+Se faltar requisito do PRD, declare a auditoria parcial e indique o que falta.
+
+Registre a entrega na sessão da data corrente conforme CLAUDE.md, coordenando
+a edição se outro agente estiver no mesmo arquivo. Atualize o roadmap apenas
+se uma frente mudar de fase. Informe separadamente implementação, validação,
+commit, envio e implantação.
