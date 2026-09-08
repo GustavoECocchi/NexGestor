@@ -156,6 +156,56 @@ class TestCenarioLExigeTrafegoMinimo:
         assert "candidatos" in cenario.root_cause.lower()
 
 
+def _analisar_com_plataforma(metrics: Metrics, targets: Targets, platform=None):
+    return analyze_campaign(AnalyzeInput(
+        campaign=Campaign(id=1, name="Teste", **({"platform": platform} if platform else {})),
+        metrics=metrics, targets=targets,
+    ))
+
+
+class TestAvisoDePlataformaNaoMeta:
+    """
+    REGRESSÃO (achado P4 da auditoria de precisão, 2026-09-08). Nenhum
+    detector nem os limiares de `Targets` (Hook Rate 35%, CPM R$50 etc.)
+    consultam `platform` — o mesmo payload gerava diagnóstico IDÊNTICO para
+    Meta, Google, TikTok e LinkedIn Ads, sem qualquer aviso de que os
+    limiares são calibrados só para o primeiro. Correção deliberadamente
+    conservadora: só avisa no `summary`, não suprime nenhum cenário.
+    """
+
+    M = Metrics(impressions=100_000, reach=80_000, spend=4_000.0, link_clicks=1_200,
+                landing_page_views=1_000, conversions=40, video_views_3s=25_000,
+                thruplays=8_000, hold_rate=9.9)
+    T = Targets(max_cpa=150.0)
+
+    def test_meta_ads_nao_recebe_o_aviso(self):
+        r = _analisar_com_plataforma(self.M, self.T, "meta_ads")
+        assert "calibrados para Meta Ads" not in r.summary
+
+    def test_plataforma_default_ausente_equivale_a_meta_ads(self):
+        """`platform` tem default 'meta_ads' no schema — sem o campo, sem aviso."""
+        r = _analisar_com_plataforma(self.M, self.T, None)
+        assert "calibrados para Meta Ads" not in r.summary
+
+    def test_google_ads_recebe_o_aviso_nomeando_a_plataforma(self):
+        r = _analisar_com_plataforma(self.M, self.T, "google_ads")
+        assert "calibrados para Meta Ads" in r.summary
+        assert "Google Ads" in r.summary
+
+    def test_tiktok_e_linkedin_tambem_recebem_o_aviso(self):
+        for plataforma, rotulo in [("tiktok_ads", "TikTok Ads"), ("linkedin_ads", "LinkedIn Ads")]:
+            r = _analisar_com_plataforma(self.M, self.T, plataforma)
+            assert rotulo in r.summary
+
+    def test_aviso_nao_suprime_nem_altera_os_cenarios_detectados(self):
+        """Controle positivo: o aviso é aditivo, não substitui o diagnóstico."""
+        r_meta = _analisar_com_plataforma(self.M, self.T, "meta_ads")
+        r_google = _analisar_com_plataforma(self.M, self.T, "google_ads")
+        assert {s.code for s in r_meta.scenarios} == {s.code for s in r_google.scenarios}
+        assert r_meta.overall_score == r_google.overall_score
+        assert r_meta.final_status == r_google.final_status
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cenário M — Amostra Insuficiente
 #

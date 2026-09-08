@@ -9,6 +9,7 @@ from app.schema.schema import (
     Targets,
 )
 from app.enum.campaign import CampaignStatus, ScenarioCode
+from app.service.labels import PLATFORM_LABELS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1643,6 +1644,33 @@ def _nota_score_alto_com_status_critico(
     )
 
 
+def _nota_plataforma_nao_meta(platform: str | None) -> str:
+    """
+    Achado P4 (auditoria de precisão, 2026-09-08): nenhum detector nem os
+    limiares de `Targets` (Hook Rate 35%, CPM R$50 etc.) consultam
+    `platform`/`objective`/`niche` — grep confirma zero ocorrências em
+    service.py. Diagnóstico idêntico para Google/TikTok/LinkedIn Ads não é
+    evidência de que os limiares servem lá; é ausência de calibração (o Hook
+    Rate default, por exemplo, é sobre "criativo invisível NO FEED",
+    vocabulário de vídeo do Meta). Até existir contrato por plataforma (mesmo
+    bloqueio que já trava busca real de benchmark de custo — fase-2b), o
+    produto avisa explicitamente em vez de fingir precisão equivalente.
+
+    Correção CONSERVADORA de propósito: só avisa, não suprime nenhum cenário.
+    Suprimir exigiria decidir quais dos 15 detectores são específicos do Meta
+    e quais são universais — julgamento de domínio fora do escopo desta
+    correção pontual.
+    """
+    if platform is None or platform == "meta_ads":
+        return ""
+    label = PLATFORM_LABELS.get(platform, platform)
+    return (
+        f" Atenção: os limiares desta análise (Hook Rate, CPM etc.) foram "
+        f"calibrados para Meta Ads e ainda não têm validação específica para "
+        f"{label} — leia o diagnóstico com essa ressalva."
+    )
+
+
 def _build_summary(
     scenarios: list[ScenarioDetail],
     status: CampaignStatus,
@@ -1651,6 +1679,7 @@ def _build_summary(
     coverage: int = 100,
     t: Targets | None = None,
     overall_score: int | None = None,
+    platform: str | None = None,
 ) -> str:
     """Monta o resumo textual da análise — achados principais + ressalva de cobertura."""
     nota_parcial = ""
@@ -1659,6 +1688,7 @@ def _build_summary(
     if m is not None and t is not None:
         nota_parcial += _nota_escala_bloqueada(m, t, scenarios)
     nota_parcial += _nota_score_alto_com_status_critico(status, scenarios, overall_score)
+    nota_parcial += _nota_plataforma_nao_meta(platform)
 
     if not scenarios:
         base, _ = _resumo_sem_cenario(metric_evals, coverage)
@@ -1734,7 +1764,7 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
     score_confidence = _score_confidence(score_coverage, m)
     final_status   = _resolve_final_status(scenarios, metric_evals, overall_score)
     summary        = _build_summary(scenarios, final_status, metric_evals, m, score_coverage, t,
-                                    overall_score)
+                                    overall_score, data.campaign.platform)
     if scenarios:
         primary_action = scenarios[0].action
     else:
