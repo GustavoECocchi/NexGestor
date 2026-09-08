@@ -1,10 +1,11 @@
 # Mini-PRD — Revisão de vocabulário e linguagem do NexGestor
 
-Status: **rascunho para revisão do time antes de implementar.** Gerado a
-partir de `docs/rascunho_prompt.md`, em cima da auditoria de vocabulário
-rodada nesta mesma sessão (2026-08-31, ver "Sessão de 2026-08-31" no
-`CLAUDE.md`). **Nada implementado — só especificação**, por instrução
-explícita do prompt de origem.
+Status reconciliado em 2026-09-07: **PR1–PR7 implementados, com validação local
+registrada e aceite real do PR6 pendente** (1–2 chamadas ao Gemini para validar
+a linguagem). Ver `../roadmap.md`, item 17, e `../sessions/2026-09-04.md` e
+`../sessions/2026-09-07.md`. O corpo preserva requisitos e diagnóstico original
+de 2026-08-31; os problemas descritos abaixo não são automaticamente pendências
+atuais. Não repetir a implementação com base na redação histórica.
 
 Objetivo declarado pelo usuário: não é "simplificar os textos" — é reduzir
 onde a interpretação falha, **sem perder precisão técnica**. O NexGestor

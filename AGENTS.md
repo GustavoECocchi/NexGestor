@@ -4,6 +4,10 @@ Antes de trabalhar, leia `CLAUDE.md` e `docs/roadmap.md`, preserve alterações
 preexistentes do worktree e use o código/testes atuais como evidência do estado
 real.
 
+Para execução, revisão, criação de prompts e retomada entre agentes, siga
+**Execução compartilhada e continuidade** em `CLAUDE.md`, a fonte única da
+política. Confira o checkpoint da tarefa contra o repositório antes de retomar.
+
 ## Registro obrigatório de conclusão
 
 Siga integralmente a seção **Rastreabilidade obrigatória de tarefas** de

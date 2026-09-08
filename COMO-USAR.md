@@ -1,14 +1,18 @@
-# Como usar o NexGestor
+﻿# Como usar o NexGestor
 
-A extensão Chrome que este guia descrevia foi **descontinuada em
-2026-08-24**. O produto ativo agora é o **dashboard web**
-(`frontend/nexgestor-dashboard`), que ainda não tem um canal de distribuição
-pronto para a equipe (roda só localmente, via `npm run dev` — ver
-`docs/roadmap.md` item 10).
+O produto ativo é o dashboard web. Para iniciar localmente, siga o
+[README](README.md#desenvolvimento-local). Use o endereço exibido pelo Vite.
 
-- Instruções de como a extensão funcionava, preservadas para quem ainda tem
-  a versão antiga instalada: [`docs/historico/nexgestor-extensao.md`](docs/historico/nexgestor-extensao.md).
-- Estado atual do projeto e próximos passos: [`docs/roadmap.md`](docs/roadmap.md).
+1. Informe sua identificação ao entrar. Ela separa as campanhas, mas não é login com senha.
+2. Abra **Nova campanha**, preencha os dados manualmente ou importe JSON.
+3. Execute a análise e abra o detalhe para consultar diagnóstico, métricas e ações.
+4. Use o atalho do Copiloto para perguntar sobre a campanha e a **Ajuda** para orientação.
 
-Quando o dashboard tiver um caminho de acesso para a equipe, este arquivo
-volta a ser o guia ativo.
+Os cards de exemplo são demonstrações. Gemini é uma camada opcional;
+o Copiloto também possui respostas locais. Disponibilidade da IA e da
+persistência depende da instância usada. Sem persistência no servidor,
+os dados ficam no navegador.
+
+A distribuição para a equipe deve ser conferida no [roadmap](docs/roadmap.md).
+O guia da antiga extensão está preservado no
+[histórico](docs/historico/nexgestor-extensao.md).

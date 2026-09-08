@@ -1,6 +1,6 @@
 # PRD — Ajuda em linguagem simples no formulário "Criar campanha"
 
-Status: **implementado em 2026-08-25** (`components/FieldHint.tsx` + `NewCampaignModal.tsx` + `style.css`), ainda não commitado. Escopo fechado para caber num único PR pequeno.
+Status: **implementado**, presente no código versionado (`components/FieldHint.tsx`, `NewCampaignModal.tsx` e `style.css`). O corpo preserva o escopo original de 2026-08-25; descrições de "hoje" nas seções seguintes são o diagnóstico daquela data. Aceite com leigo: acompanhar junto à fase-2, sem duplicar tarefa. Evidências em `../sessions/2026-08-25.md`; estado consolidado em `../roadmap.md`.
 
 ## 1. Problema
 

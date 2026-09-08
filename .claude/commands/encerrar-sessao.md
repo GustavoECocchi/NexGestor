@@ -5,15 +5,26 @@ allowed-tools: Bash(git *), Bash(pytest *), Bash(tsc *), Read, Edit, Write
 
 Antes de encerrar a sessão:
 
+Este fluxo de encerramento inclui entrega Git; não o acione apenas para
+registrar um checkpoint intermediário. Para isso, siga **Execução compartilhada
+e continuidade** em `CLAUDE.md` e registre diretamente na sessão, sem commit/push.
+
 1. Reconcilia `git status`/`git diff` com o registro de hoje e com o roadmap.
    Toda tarefa ou PR tocada precisa ter estado honesto em
    `docs/sessions/AAAA-MM-DD.md`; toda mudança de fase precisa aparecer no
    item correspondente de `docs/roadmap.md`. Este é o mecanismo de segurança
    para capturar omissões — o registro deveria ter sido feito assim que cada
    tarefa terminou, conforme `CLAUDE.md`.
+   Confira também se tarefas incompletas têm checkpoint identificável com
+   versão observada, validação pendente e próxima ação. Reutilize o registro
+   da tarefa em vez de criar STATE/HANDOFF paralelos. Coordene a escrita se
+   outro agente estiver editando a mesma sessão.
 
-2. Roda a suite de testes: pytest em backend/backend-nexgestor-main,
-   e npm test + tsc -b em frontend/nexgestor-dashboard se houver mudanças lá.
+2. Valide conforme o que mudou: pytest em backend/backend-nexgestor-main
+   para backend; npm test + tsc -b em frontend/nexgestor-dashboard para
+   dashboard. Para alterações somente documentais, revise conteúdo, referências
+   e `git diff --check`. Reutilize validação já executada sobre a mesma versão;
+   mudanças posteriores exigem reavaliar o impacto e repetir os checks pertinentes.
    Só o que passar de fato pode ser documentado como "funcionando".
 
 3. Cria um arquivo novo em docs/sessions/AAAA-MM-DD.md (data de hoje;

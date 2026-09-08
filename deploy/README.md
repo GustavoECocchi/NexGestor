@@ -1,7 +1,8 @@
 # Deploy do backend NexGestor no VPS
 
-O backend **já está no ar**. Este arquivo descreve a montagem real, como ligar
-a camada de IA e como manter tudo funcionando.
+Este runbook reúne configuração local e observações históricas do VPS.
+Confirme o servidor antes de aplicar mudanças: os registros abaixo não são
+consulta atual. Estado consolidado em [roadmap](../docs/roadmap.md).
 
 ## Estado atual — verificado em 14/08/2026
 
@@ -22,16 +23,16 @@ a camada de IA e como manter tudo funcionando.
 A renovação do certificado está coberta pelo Gabriel, que montou o servidor
 (informado por ele; o mecanismo não foi verificado daqui).
 
-### Campanhas salvas — base compartilhada (temporária)
+### Campanhas salvas — implementação local, implantação a conferir
 
-Desde 14/08/2026 o servidor guarda as campanhas analisadas num SQLite
-(`/dados/nexgestor.db`, volume `nexgestor-dados`). Endpoints:
+O código e o compose incluem persistência SQLite (`DB_PATH=/dados/nexgestor.db`
+no volume definido pelo compose). Isso não prova que ela esteja no VPS;
+o último registro do roadmap aponta API antiga sem essas rotas. Endpoints locais:
 `GET/POST /api/v1/campaigns` e `DELETE /api/v1/campaigns/{id}`.
 
-> ⚠️ **Sem login e sem dono**: toda a equipe vê e pode apagar as campanhas de
-> todo mundo. Foi decidido assim **para o período de testes**. Antes de abrir
-> para usuários reais isto precisa virar dado por pessoa — o caminho de
-> migração está escrito em `app/service/storage.py`.
+> **Isolamento por X-Nex-Dono, sem autenticação real.** As rotas atuais exigem
+> o identificador. Quem o conhece pode forjá-lo; autenticação continua pendente
+> antes de abrir a clientes reais. Referência: `app/service/storage.py`.
 
 O que já foi verificado com container real (podman), não presumido:
 

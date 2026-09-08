@@ -19,14 +19,10 @@ partir de `prompt.md` da sessão de 2026-08-26.
 > saiu do MVP; e a seção "Sobreposições a resolver" ganhou o overlap com
 > `d63ee20` em `style.css`. Nenhum escopo novo foi adicionado.
 
-> **§11 adicionada em 2026-08-27**, pedido novo do time via
-> `docs/rascunho_prompt.md` — **apenas especificação, nada implementado**. O
-> achado principal: os "cards de status de métrica" pedidos **já existem** como
-> os tiles de "Métricas" no detalhe; o gap é que o frontend descarta o
-> veredito em português que o engine já escreve (`lib/adapt.ts:76`). Nenhuma
-> rota nova é necessária. A seção também registra uma tensão não resolvida com
-> a hierarquia de fases — este PRD já usou os 2 PRs do orçamento (ver nota ao
-> fim do §11).
+> **§11 implementada em 2026-08-31:** o adapter preserva o veredito completo
+> das métricas. Ver `../roadmap.md`, item 14. O diagnóstico e o planejamento
+> no corpo deste PRD descrevem a situação anterior à implementação; não são
+> uma lista atual de bugs. O aceite manual acima continua pendente.
 
 ## 1. Contexto
 

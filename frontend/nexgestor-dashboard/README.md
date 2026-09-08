@@ -1,32 +1,13 @@
-# React + TypeScript + Vite
+﻿# Dashboard NexGestor
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Frontend ativo: Vite + React + TypeScript. Substitui a extensão descontinuada.
 
-Currently, two official plugins are available:
+- Iniciar backend e dashboard: [README da raiz](../../README.md#desenvolvimento-local).
+- Usar a interface: [COMO-USAR.md](../../COMO-USAR.md).
+- API: [contrato](../../docs/CONTRATO_API_FRONTEND.md).
+- Requisitos e histórico: [mapa da documentação](../../docs/README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+`VITE_API_BASE` configura a API no processo ou `.env` local. O desenvolvimento
+aceita localhost; o build de produção exige endereço de destino e rejeita
+localhost. Scripts disponíveis em `package.json`: dev, build, preview, test,
+test:watch e lint. Verificação TypeScript: `npx tsc -b`.

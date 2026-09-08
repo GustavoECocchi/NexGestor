@@ -1,5 +1,11 @@
 # PRD — NexGestor
-**Product Requirements Document retroativo, gerado a partir do código-fonte. Última verificação: 2026-08-25.**
+**Referência retroativa. Corpo verificado originalmente em 2026-08-25;
+índice de fases reconciliado em 2026-09-07. Não usar como inventário atual.**
+
+Estado atual: [roadmap](roadmap.md). Contrato da API:
+[CONTRATO_API_FRONTEND.md](CONTRATO_API_FRONTEND.md). Guia de leitura:
+[README.md](README.md). A revisão integral do corpo deste PRD continua pendente;
+afirmações históricas precisam ser confrontadas com código e evidência datada.
 
 > ## ⚠️ Leia isto primeiro — o frontend descrito aqui foi SUBSTITUÍDO
 >
@@ -8,7 +14,7 @@
 > (`frontend/nexgestor-dashboard`, Vite+React+TS+Tailwind). Corrigido em
 > 26/08 sem reescrever o corpo do texto, porque o que ele descreve continua
 > majoritariamente válido — o dashboard **reaproveita a extensão por cópia**
-> (`types.ts`, todo o `lib/`, componentes e mock são idênticos byte-a-byte).
+> (origem por cópia; os arquivos evoluíram e não são equivalentes hoje).
 >
 > **O que ler com ressalva:**
 >
@@ -16,11 +22,11 @@
 > |---|---|
 > | "extensão Chrome (side panel)", `sidepanel.html`, Plasmo, MV3 | `frontend/nexgestor-dashboard`, app web servida por Vite |
 > | "base COMPARTILHADA, sem dono" (§2.5, §3.15) | **Superado em 24/08**: isolada por `dono` via header `X-Nex-Dono` (sem senha ainda) |
-> | "decisão em aberto: extensão ou app web?" (§9) | **Decidida**: app web. `frontend/nexgestor-extension` está **congelada**, tag `extensao-estavel-2026-08` |
-> | Contagens de teste | Backend **1457**, dashboard **331** (26/08) |
+> | "decisão em aberto: extensão ou app web?" (§9) | **Decidida**: app web. Extensão removida do checkout em `01bfe1f`; documentação em `historico/` |
+> | Contagens de teste | Evidências históricas; consultar sessões e roadmap para execuções posteriores |
 >
-> **Continua válido sem ressalva:** todo o backend (§3.1–3.7, 3.16–3.17), as
-> regras de negócio, o adapter, e a seção 10 de divergências de documentação.
+> Backend, regras e adapter também evoluíram desde a redação original;
+> não presumir equivalência sem conferir os arquivos atuais.
 > **Uma revisão completa deste PRD contra o dashboard é trabalho pendente.**
 >
 > Documentação completa da extensão descontinuada, consolidada num só lugar:
@@ -36,18 +42,18 @@
 
 ## Fases
 
-A partir de 26/08/2026 o projeto adota a hierarquia: este PRD grande
-(guarda-chuva, estável) descreve o estado atual do produto; cada fase abaixo
-é um PRD pequeno e temporário em `prds/`, cada um gerando no máximo 2 PRs.
+Os PRDs em `prds/` guardam requisitos e decisões por frente. Orçamentos de
+PRs pertencem a cada fase; não há teto universal de dois PRs (a fase-5 tem
+PR1–PR7). O roadmap consolida estados; este índice facilita a navegação.
 
 | Fase | Nome | Status | PRD |
 |---|---|---|---|
 | 1 | Ajuda em linguagem simples no formulário "Criar campanha" | implementado | [`prds/fase-1-ajuda-formulario-campanha.md`](prds/fase-1-ajuda-formulario-campanha.md) |
 | 2 | Dashboard: telas dedicadas e navegação intuitiva | implementado (falta o teste manual com usuário leigo, §8 do PRD) | [`prds/fase-2-dashboard-intuitividade.md`](prds/fase-2-dashboard-intuitividade.md) |
-| 2b | Benchmark de mercado para metas não definidas | rascunho — só especificação, nada implementado | [`prds/fase-2b-benchmark-mercado.md`](prds/fase-2b-benchmark-mercado.md) |
+| 2b | Benchmark de mercado para metas não definidas | implementado; positivo real com fonte e controles para ativação pública pendentes | [`prds/fase-2b-benchmark-mercado.md`](prds/fase-2b-benchmark-mercado.md) |
 | 3 | Gráficos no detalhe da campanha (Fuse React) — Parte A "Áreas da campanha" implementada e depois SUBSTITUÍDA pelo feed da fase 4 (ver A6 no PRD); Parte B "histórico/tendência" só especificação | parcial | [`prds/fase-3-graficos-campanha.md`](prds/fase-3-graficos-campanha.md) |
 | 4 | Feed de métricas reorganizado (Faixa de resultado / Painel do funil / Ações / Contexto) | implementado | [`prds/fase-3-graficos-campanha.md`](prds/fase-3-graficos-campanha.md) §A6 (ainda sem PRD próprio — nasceu de um rascunho direto, não de um mini-PRD) |
-| 5 | Revisão de vocabulário e linguagem | rascunho — só especificação, nada implementado | [`prds/fase-5-vocabulario-linguagem.md`](prds/fase-5-vocabulario-linguagem.md) |
+| 5 | Revisão de vocabulário e linguagem | implementada; aceite real PR6 pendente | [`prds/fase-5-vocabulario-linguagem.md`](prds/fase-5-vocabulario-linguagem.md) |
 
 ---
 
