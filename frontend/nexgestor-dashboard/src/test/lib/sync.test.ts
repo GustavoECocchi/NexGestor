@@ -250,6 +250,19 @@ describe("salvarCampanha", () => {
     if (!r.ok && !r.permanente) expect(r.aviso).toMatch(/cheia/i)
   })
 
+  // P5, 2026-09-09: a gravação passou a ter contrato de FORMATO, e o servidor
+  // responde 422 quando o payload não bate com ele. É causa de conteúdo desta
+  // campanha: retentar não muda o payload. Sem este ramo, uma campanha antiga
+  // do `localStorage` fora do contrato seria reenviada em toda abertura, para
+  // sempre, sem ninguém saber — o achado A3 de novo, por outra porta.
+  it("422 (payload fora do contrato de gravação) é permanente, com explicação", async () => {
+    fetchMock.mockResolvedValue(resposta(422))
+    const r = await salvarCampanha(vm())
+    expect(r.ok).toBe(false)
+    expect(r).toMatchObject({ permanente: true })
+    if (!r.ok && r.permanente) expect(r.explicacao).toMatch(/formato desta campanha/i)
+  })
+
   it("falhas silenciosas (rede, 500) NÃO carregam aviso — só 507 tem", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
     const semRede = await salvarCampanha(vm())

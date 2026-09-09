@@ -7,9 +7,10 @@
 > desenvolvimento, sessão a sessão: `docs/sessions/2026-07-24.md` até
 > `docs/sessions/2026-08-14.md`.
 >
-> O código (`frontend/nexgestor-extension/`) e o build pré-compilado
-> (`extensao-pronta/`) continuam no repositório, congelados — nada aqui
-> autoriza apagá-los.
+> **Retificação em 2026-09-09:** o código (`frontend/nexgestor-extension/`)
+> e o build pré-compilado (`extensao-pronta/`) foram removidos do checkout
+> no commit `01bfe1f`. Consulte o histórico Git para recuperar aquela versão;
+> os caminhos e comandos abaixo descrevem a estrutura da época.
 
 ## Por que foi descontinuada
 

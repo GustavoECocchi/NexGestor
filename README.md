@@ -7,6 +7,7 @@ regras e Gemini opcional, mais dashboard Vite + React + TypeScript.
 
 - [Como usar](COMO-USAR.md): fluxo do usuário.
 - [Mapa da documentação](docs/README.md): onde encontrar regras, requisitos e evidências.
+- [Requisitos](docs/prds/README.md), [sessões](docs/sessions/README.md) e [histórico](docs/historico/README.md): catálogos por assunto e data.
 - [Roadmap](docs/roadmap.md): estados e pendências, com limites da verificação externa.
 - Agentes: leia [AGENTS.md](AGENTS.md) e [CLAUDE.md](CLAUDE.md).
 

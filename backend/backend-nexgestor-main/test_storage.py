@@ -38,7 +38,36 @@ def sem_base(monkeypatch):
     monkeypatch.setattr(storage, "_iniciado", False)
 
 
-VM = {"id": 1000, "name": "Black Friday", "score": 72, "status": "YELLOW"}
+# Campanha no formato que o dashboard grava (`CampaignVM` em types.ts),
+# equivalente ao que `responseToVM` produz. Desde P5 (2026-09-09) a GRAVAÇÃO
+# exige esse formato: o payload deixou de ser um objeto qualquer (contrato,
+# fundamento e limites em app/service/campaign_payload.py). Os testes deste
+# arquivo são sobre isolamento, limites e robustez, não sobre o formato —
+# continuam exercitando o que sempre exercitaram, agora em cima de uma
+# campanha reconhecível.
+VM = {
+    "id": 1000, "name": "Black Friday", "platform": "Meta Ads",
+    "status": "YELLOW", "score": 72, "invest": 1500.0, "revenue": 4500,
+    "roasNum": 3.0, "cpaNum": 42.5, "ctrNum": 1.64, "freqNum": 1.39,
+    "m1": {"k": "CPA", "v": "R$ 42,50"}, "m2": {"k": "CTR Link", "v": "1,64%"},
+    "spark": [72, 72, 72, 72, 72, 72, 72], "trend": 0,
+    "ai": "", "summary": "resumo", "opportunity": "op", "primaryAction": "ação",
+    "tiles": [], "scenarios": [], "actions": [], "sugg": [],
+    "coverage": 80, "confidence": "medium", "hasAI": False,
+    "aiInsights": [], "aiRisks": [],
+}
+
+
+def vm(n: int | None = None, **extra) -> dict:
+    """
+    `VM` com alterações. `n` diferencia campanhas pelo nome — antes era uma
+    chave inventada (`{"n": 1}`), que o contrato de gravação agora rejeita
+    justamente por não existir no formato de uma campanha.
+    """
+    saida = {**VM, **extra}
+    if n is not None:
+        saida["name"] = f"Campanha {n}"
+    return saida
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -94,11 +123,19 @@ class TestCrud:
         assert lista[0]["payload"] == VM
 
     def test_payload_volta_intacto_com_acentos_e_aninhamento(self, base):
-        complexo = {
-            "name": "Campanha de Ação — Verão",
-            "scenarios": [{"code": "A", "nota": "Hook Rate < 24,5%"}],
-            "aninhado": {"lista": [1, 2, {"ok": True}]},
-        }
+        # Formas reais dos blocos (`CampaignVM` em types.ts): desde P5 a
+        # gravação confere item a item, então o teste de round-trip usa o
+        # formato de verdade — que é justamente o que precisa voltar intacto.
+        complexo = vm(
+            name="Campanha de Ação — Verão",
+            scenarios=[{
+                "code": "A", "title": "Hook fraco", "root_cause": "Hook Rate < 24,5%",
+                "funnel_impact": "Perde atenção nos 3s", "action": "Trocar os 3s iniciais",
+                "priority": 1,
+            }],
+            tiles=[["CPA", "R$ 42,50", "var(--red)", "acima da meta", "gestor", 30]],
+            aiInsights=[{"title": "Padrão cruzado", "explanation": "CPA sobe com a frequência."}],
+        )
         client.post("/api/v1/campaigns", json={"payload": complexo})
         assert client.get("/api/v1/campaigns").json()["campanhas"][0]["payload"] == complexo
 
@@ -130,7 +167,7 @@ class TestCrud:
 
     def test_lista_mais_recentes_primeiro(self, base):
         for nome in ["primeira", "segunda", "terceira"]:
-            client.post("/api/v1/campaigns", json={"payload": {"name": nome}})
+            client.post("/api/v1/campaigns", json={"payload": vm(name=nome)})
 
         nomes = [c["payload"]["name"] for c in client.get("/api/v1/campaigns").json()["campanhas"]]
         assert nomes[0] == "terceira"
@@ -173,12 +210,12 @@ class TestClientId:
         """O índice único é (dono, client_id) — não client_id sozinho."""
         r_ana = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"n": 1}, "client_id": "mesmo-id"},
+            json={"payload": vm(n=1), "client_id": "mesmo-id"},
             headers={"X-Nex-Dono": "ana"},
         )
         r_bruno = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"n": 2}, "client_id": "mesmo-id"},
+            json={"payload": vm(n=2), "client_id": "mesmo-id"},
             headers={"X-Nex-Dono": "bruno"},
         )
         assert r_ana.status_code == 200 and r_bruno.status_code == 200
@@ -198,23 +235,23 @@ class TestClientId:
         no teto — senão o retry vira o próprio motivo da falha.
         """
         novo_id = client.post(
-            "/api/v1/campaigns", json={"payload": {"n": 1}, "client_id": "c-1"}
+            "/api/v1/campaigns", json={"payload": vm(n=1), "client_id": "c-1"}
         ).json()["id"]
         monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)  # base já está no teto
 
         r = client.post(
-            "/api/v1/campaigns", json={"payload": {"n": 2}, "client_id": "c-1"}
+            "/api/v1/campaigns", json={"payload": vm(n=2), "client_id": "c-1"}
         )
         assert r.status_code == 200
         assert r.json()["id"] == novo_id
 
     def test_client_id_novo_continua_barrado_pelo_teto(self, base, monkeypatch):
         """Contraprova: a otimização acima não pode virar brecha do teto."""
-        client.post("/api/v1/campaigns", json={"payload": {"n": 1}, "client_id": "c-1"})
+        client.post("/api/v1/campaigns", json={"payload": vm(n=1), "client_id": "c-1"})
         monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
 
         r = client.post(
-            "/api/v1/campaigns", json={"payload": {"n": 2}, "client_id": "c-2-nunca-visto"}
+            "/api/v1/campaigns", json={"payload": vm(n=2), "client_id": "c-2-nunca-visto"}
         )
         assert r.status_code == 507
 
@@ -235,7 +272,7 @@ class TestClientId:
             )
             conn.commit()
 
-        r = client.post("/api/v1/campaigns", json={"payload": {"n": 1}, "client_id": "c-1"})
+        r = client.post("/api/v1/campaigns", json={"payload": vm(n=1), "client_id": "c-1"})
         assert r.status_code == 200
 
         lista = client.get("/api/v1/campaigns").json()["campanhas"]
@@ -250,12 +287,12 @@ class TestIsolamentoPorDono:
     def test_ana_nao_ve_campanha_do_bruno(self, base):
         client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "da Ana"}},
+            json={"payload": vm(name="da Ana")},
             headers={"X-Nex-Dono": "ana"},
         )
         client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "do Bruno"}},
+            json={"payload": vm(name="do Bruno")},
             headers={"X-Nex-Dono": "bruno"},
         )
 
@@ -273,7 +310,7 @@ class TestIsolamentoPorDono:
     def test_identificador_normalizado_ignora_espaco_e_maiuscula(self, base):
         client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "x"}},
+            json={"payload": vm(name="x")},
             headers={"X-Nex-Dono": "Ana"},
         )
         lista = client.get("/api/v1/campaigns", headers={"X-Nex-Dono": "  ana  "}).json()["campanhas"]
@@ -282,13 +319,13 @@ class TestIsolamentoPorDono:
     def test_atualizar_id_de_outro_dono_cria_campanha_nova_em_vez_de_sobrescrever(self, base):
         id_ana = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "da Ana"}},
+            json={"payload": vm(name="da Ana")},
             headers={"X-Nex-Dono": "ana"},
         ).json()["id"]
 
         r = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "do Bruno"}, "id": id_ana},
+            json={"payload": vm(name="do Bruno"), "id": id_ana},
             headers={"X-Nex-Dono": "bruno"},
         )
         assert r.status_code == 200
@@ -301,7 +338,7 @@ class TestIsolamentoPorDono:
     def test_apagar_id_de_outro_dono_e_404(self, base):
         id_ana = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "da Ana"}},
+            json={"payload": vm(name="da Ana")},
             headers={"X-Nex-Dono": "ana"},
         ).json()["id"]
 
@@ -358,25 +395,25 @@ class TestIdentificadorDono:
 class TestLimites:
     def test_payload_grande_demais_e_413(self, base, monkeypatch):
         monkeypatch.setattr(settings, "DB_MAX_PAYLOAD_BYTES", 200)
-        r = client.post("/api/v1/campaigns", json={"payload": {"lixo": "x" * 500}})
+        r = client.post("/api/v1/campaigns", json={"payload": vm(summary="x" * 500)})
         assert r.status_code == 413
         assert client.get("/api/v1/campaigns").json()["campanhas"] == []
 
     def test_base_cheia_e_507_e_nao_apaga_nada(self, base, monkeypatch):
         monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 2)
         for i in range(2):
-            assert client.post("/api/v1/campaigns", json={"payload": {"n": i}}).status_code == 200
+            assert client.post("/api/v1/campaigns", json={"payload": vm(n=i)}).status_code == 200
 
-        r = client.post("/api/v1/campaigns", json={"payload": {"n": 99}})
+        r = client.post("/api/v1/campaigns", json={"payload": vm(n=99)})
         assert r.status_code == 507
         # O limite não pode virar rotatividade silenciosa: o dado antigo fica.
         assert len(client.get("/api/v1/campaigns").json()["campanhas"]) == 2
 
     def test_limite_nao_impede_atualizar_o_que_ja_existe(self, base, monkeypatch):
-        novo_id = client.post("/api/v1/campaigns", json={"payload": {"n": 1}}).json()["id"]
+        novo_id = client.post("/api/v1/campaigns", json={"payload": vm(n=1)}).json()["id"]
         monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
 
-        r = client.post("/api/v1/campaigns", json={"payload": {"n": 2}, "id": novo_id})
+        r = client.post("/api/v1/campaigns", json={"payload": vm(n=2), "id": novo_id})
         assert r.status_code == 200
 
     def test_teto_por_dono_nao_trava_os_outros(self, base, monkeypatch):
@@ -384,17 +421,17 @@ class TestLimites:
         monkeypatch.setattr(settings, "DB_MAX_CAMPANHAS", 1)
 
         r_ana = client.post(
-            "/api/v1/campaigns", json={"payload": {"n": 1}}, headers={"X-Nex-Dono": "ana"}
+            "/api/v1/campaigns", json={"payload": vm(n=1)}, headers={"X-Nex-Dono": "ana"}
         )
         assert r_ana.status_code == 200
 
         r_ana_excede = client.post(
-            "/api/v1/campaigns", json={"payload": {"n": 2}}, headers={"X-Nex-Dono": "ana"}
+            "/api/v1/campaigns", json={"payload": vm(n=2)}, headers={"X-Nex-Dono": "ana"}
         )
         assert r_ana_excede.status_code == 507
 
         r_bruno = client.post(
-            "/api/v1/campaigns", json={"payload": {"n": 1}}, headers={"X-Nex-Dono": "bruno"}
+            "/api/v1/campaigns", json={"payload": vm(n=1)}, headers={"X-Nex-Dono": "bruno"}
         )
         assert r_bruno.status_code == 200
 
@@ -411,14 +448,14 @@ class TestLimites:
         for i in range(3):
             r = client.post(
                 "/api/v1/campaigns",
-                json={"payload": {"n": i}},
+                json={"payload": vm(n=i)},
                 headers={"X-Nex-Dono": f"pessoa{i}"},
             )
             assert r.status_code == 200
 
         r = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"n": 99}},
+            json={"payload": vm(n=99)},
             headers={"X-Nex-Dono": "pessoa-nova-em-folha"},
         )
         assert r.status_code == 507
@@ -430,7 +467,7 @@ class TestLimites:
 
 class TestRobustez:
     def test_linha_corrompida_nao_derruba_a_listagem(self, base):
-        client.post("/api/v1/campaigns", json={"payload": {"name": "boa"}})
+        client.post("/api/v1/campaigns", json={"payload": vm(name="boa")})
         with sqlite3.connect(base) as conn:
             conn.execute(
                 "INSERT INTO campanhas (payload, dono, criado_em, atualizado_em)"
@@ -517,15 +554,20 @@ class TestEntradaHostil:
     """Round-trip do payload — o backend não interpreta, então não pode alterar."""
 
     def test_conteudo_hostil_volta_identico_e_nao_executa_nada(self, base):
-        payload = {
-            "name": "<script>alert('xss')</script> & \"aspas\" 'simples'",
-            "sql": "'; DROP TABLE campanhas; --",
-            "emoji": "🚀 ação ñ",
-            "quebras": "linha1\nlinha2\ttab",
-            "aninhado": {"lista": [1, 2, {"profundo": None}]},
-            "zero": 0,
-            "falso": False,
-        }
+        payload = vm(
+            name="<script>alert('xss')</script> & \"aspas\" 'simples'",
+            summary="'; DROP TABLE campanhas; --",
+            opportunity="🚀 ação ñ",
+            primaryAction="linha1\nlinha2\ttab",
+            scenarios=[{
+                "code": "A", "title": "<b>não</b> vira HTML",
+                "root_cause": "'; DROP TABLE campanhas; --",
+                "funnel_impact": "🚀 ação ñ", "action": "linha1\nlinha2\ttab",
+                "priority": 3,
+            }],
+            trend=0,
+            hasAI=False,
+        )
         client.post("/api/v1/campaigns", json={"payload": payload})
 
         lista = client.get("/api/v1/campaigns").json()["campanhas"]

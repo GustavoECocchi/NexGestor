@@ -17,15 +17,36 @@ from pydantic import Field
 
 from app.schema.schema import _SemBooleanoEmInteiro
 from app.service import storage
+from app.service.campaign_payload import validar_payload_de_campanha
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/campaigns", tags=["Campanhas salvas"])
 
 
+def _validar_payload_campanha(payload: dict) -> None:
+    """
+    Fronteira de GRAVAÇÃO de campanha (P5) — traduz o contrato em 422.
+
+    A regra em si, o fundamento e os limites exatos moram em
+    `app/service/campaign_payload.py`; aqui só se transforma a lista de
+    problemas em resposta HTTP. Rejeição acontece ANTES de `storage.salvar`,
+    então não existe gravação parcial.
+    """
+    problemas = validar_payload_de_campanha(payload)
+    if problemas:
+        raise HTTPException(
+            status_code=422,
+            detail="Campanha inválida: " + "; ".join(problemas),
+        )
+
+
 class CampanhaEntrada(_SemBooleanoEmInteiro):
     """
-    O payload é opaco de propósito — quem define o formato é o cliente (hoje, o dashboard web).
+    O payload é o `CampaignVM` que a UI guarda, e desde P5 (2026-09-09) a
+    GRAVAÇÃO exige esse formato: ver `app/service/campaign_payload.py` para o
+    contrato, o fundamento de cada verificação e os limites do que ele prova.
+    Leitura de campanhas já gravadas não passa por ele.
 
     Herda `_SemBooleanoEmInteiro` (achado da revisão Opus, 2026-09-04): sem
     isso, `{"id": true}` era coagido para `id=1` e o POST atualizava —
@@ -33,7 +54,7 @@ class CampanhaEntrada(_SemBooleanoEmInteiro):
     chamando, em vez de 422.
     """
 
-    payload: dict = Field(..., description="Objeto da campanha como a UI o guarda.")
+    payload: dict = Field(..., description="Campanha no formato CampaignVM, como a UI a guarda.")
     id: int | None = Field(
         default=None,
         description="Informe para atualizar uma campanha existente; omita para criar.",
@@ -90,6 +111,7 @@ def listar_campanhas(dono: str = Depends(obter_dono)):
 @router.post("", summary="Salvar campanha (cria ou atualiza)")
 def salvar_campanha(entrada: CampanhaEntrada, dono: str = Depends(obter_dono)):
     _exigir_persistencia()
+    _validar_payload_campanha(entrada.payload)
     try:
         return storage.salvar(entrada.payload, dono, entrada.id, entrada.client_id)
     except storage.PayloadGrandeDemais as e:

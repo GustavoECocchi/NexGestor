@@ -1,0 +1,170 @@
+{
+  "id": 1000,
+  "name": "Black Friday — Conversão",
+  "platform": "Meta Ads",
+  "status": "RED",
+  "score": 42,
+  "invest": 4200,
+  "revenue": 10080,
+  "roasNum": 2.4,
+  "cpaNum": 37.5,
+  "ctrNum": 1.64,
+  "freqNum": 1.39,
+  "maxFrequencyFatigue": 2.8,
+  "m1": {
+    "k": "CPA",
+    "v": "R$ 37,50"
+  },
+  "m2": {
+    "k": "CTR Link",
+    "v": "1,6%"
+  },
+  "spark": [
+    42,
+    42,
+    42,
+    42,
+    42,
+    42,
+    42
+  ],
+  "trend": 0,
+  "ai": "resumo executivo",
+  "summary": "resumo do engine",
+  "opportunity": "<b>Janela de escala aberta.</b> causa raiz G",
+  "primaryAction": "ação primária do engine",
+  "tiles": [
+    [
+      "CPA",
+      "R$ 37,50",
+      "var(--amber)",
+      "Meta: 40. Acima do ideal.",
+      "gestor",
+      55
+    ],
+    [
+      "CTR Link",
+      "1,6%",
+      "var(--txt-2)",
+      "Meta: 1.5. Saudável.",
+      "sistema",
+      90
+    ],
+    [
+      "ROAS",
+      "2,4x",
+      "var(--red)",
+      "Meta: 3. Abaixo.",
+      "gestor",
+      20
+    ],
+    [
+      "Frequência",
+      "1,4",
+      "var(--green)",
+      "Audiência fresca.",
+      "gestor",
+      100
+    ],
+    [
+      "Investimento",
+      "R$ 4.200",
+      "var(--txt)",
+      "período informado"
+    ],
+    [
+      "Receita",
+      "R$ 10.080",
+      "var(--txt)",
+      "spend × ROAS"
+    ]
+  ],
+  "scenarios": [
+    {
+      "code": "A",
+      "title": "Hook fraco",
+      "root_cause": "causa raiz A",
+      "funnel_impact": "impacto A",
+      "action": "ação A",
+      "priority": 1
+    },
+    {
+      "code": "D",
+      "title": "LP desalinhada",
+      "root_cause": "causa raiz D",
+      "funnel_impact": "impacto D",
+      "action": "ação D",
+      "priority": 2
+    },
+    {
+      "code": "G",
+      "title": "Escala",
+      "root_cause": "causa raiz G",
+      "funnel_impact": "impacto G",
+      "action": "ação G",
+      "priority": 3
+    }
+  ],
+  "actions": [
+    {
+      "title": "ação A",
+      "prio": "Alta",
+      "why": "causa raiz A",
+      "impact": "impacto A"
+    },
+    {
+      "title": "ação D",
+      "prio": "Média",
+      "why": "causa raiz D",
+      "impact": "impacto D"
+    },
+    {
+      "title": "ação G",
+      "prio": "Baixa",
+      "why": "causa raiz G",
+      "impact": "impacto G"
+    }
+  ],
+  "sugg": [
+    {
+      "name": "Hook fraco",
+      "impact": "regra A",
+      "effort": "Imediato",
+      "urgency": "Alta"
+    },
+    {
+      "name": "LP desalinhada",
+      "impact": "regra D",
+      "effort": "Planejado",
+      "urgency": "Média"
+    },
+    {
+      "name": "Escala",
+      "impact": "regra G",
+      "effort": "Planejado",
+      "urgency": "Baixa"
+    },
+    {
+      "name": "Extra da IA",
+      "impact": "ação recomendada pela IA",
+      "effort": "IA",
+      "urgency": "Média"
+    }
+  ],
+  "coverage": 85,
+  "confidence": "high",
+  "hasAI": true,
+  "aiInsights": [
+    {
+      "title": "Padrão cruzado",
+      "explanation": "CPA sobe junto com a frequência."
+    }
+  ],
+  "aiRisks": [
+    {
+      "title": "Fadiga em 48h",
+      "explanation": "Frequência subindo rápido.",
+      "timeframe": "48h"
+    }
+  ]
+}

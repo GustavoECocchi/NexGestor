@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.schema.schema import AnalyzeInput, CampaignAnalysisResponse
 from app.service.service import analyze_campaign_async
+from app.service.metric_consistency import MetricasInconsistentes
 from app.service.ai_service import _redact_key
 from app.enum.campaign import ScenarioCode
 
@@ -37,6 +38,19 @@ async def analyze(data: AnalyzeInput) -> CampaignAnalysisResponse:
     """Handler único do endpoint de análise — delega 100% ao service."""
     try:
         return await analyze_campaign_async(data)
+    except MetricasInconsistentes as e:
+        # P5 (2026-09-08): dados demonstravelmente inválidos/contraditórios —
+        # 422 com corpo estruturado (não o 400 genérico abaixo) para o
+        # frontend conseguir associar cada mensagem aos campos envolvidos.
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Os dados informados têm contradições que impedem a análise.",
+                "field_errors": [
+                    {"fields": erro.campos, "message": erro.mensagem} for erro in e.erros
+                ],
+            },
+        )
     except ValueError as e:
         # Erros de validação semântica do domínio.
         raise HTTPException(status_code=400, detail=str(e))

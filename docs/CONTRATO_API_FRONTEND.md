@@ -55,6 +55,8 @@ Nenhuma métrica é obrigatória; o engine analisa o que receber. Métricas de t
 
 > O frontend pode mandar os brutos e deixar o backend calcular, **ou** mandar a taxa pronta. Se mandar a taxa, ela tem prioridade (não é sobrescrita). Todas as métricas têm validação `>= 0`.
 
+> **Precisão das derivadas:** toda taxa/custo derivado é arredondado para **2 casas decimais** (`round(x, 2)` em `_preprocess`). É a precisão que o produto produz — e, por isso, o piso da comparação de consistência descrita abaixo: uma taxa enviada não é acusada de contradizer os brutos por uma diferença de até `0,005` ponto percentual.
+
 **Campos de `metrics` aceitos:** `impressions`, `reach`, `spend`, `video_views_3s`, `video_views_50pct`, `thruplays`, `hook_rate`, `hold_rate`, `link_clicks`, `all_clicks`, `ctr_link`, `ctr_all`, `cpm`, `cpc`, `cpl`, `cpa`, `roas`, `landing_page_views`, `lp_conversion_rate`, `conversions`, `weekly_conversions`, `frequency`, `learning_phase` (bool).
 
 ### `targets` — metas do gestor (todos têm default)
@@ -280,8 +282,29 @@ const uiStatus = isEscalavel ? "BLUE" : mapStatus(response.final_status);
 |---|---|---|
 | `200` | Sucesso | `CampaignAnalysisResponse` |
 | `422` | Payload mal-formado (faltou `campaign.id` ou `name`, tipo errado) | Erro de validação do FastAPI |
+| `422` | Contradição/impossibilidade demonstrada entre métricas informadas (P5) — ex.: `ctr_link` declarado `0.4` com `impressions: 100` e `link_clicks: 50` (que dão 50%), ou um evento (`link_clicks`, `video_views_3s`, `thruplays`, `all_clicks`) acima de zero com `impressions: 0`. Corpo próprio, **distinto** do erro nativo do FastAPI acima: `detail` é um objeto, não uma lista. | `{ "detail": { "message": "...", "field_errors": [{ "fields": ["impressions", "link_clicks", "ctr_link"], "message": "..." }] } }` — `message` já pronta para exibição; `fields` usa os nomes de `Metrics`. |
 | `400` | Erro de validação semântica do domínio | `{ "detail": "..." }` |
 | `500` | Bug inesperado | `{ "detail": "Erro interno ao processar análise. ..." }` |
+
+### Quando uma taxa "contradiz" os brutos (P5)
+
+Só duas regras, e as duas são independentes — mandar a taxa nunca desliga a
+verificação dos brutos:
+
+* **Taxa × brutos.** Se o numerador, o denominador (`> 0`) e a taxa vierem
+  todos, a taxa enviada precisa poder ser um **arredondamento** da taxa que os
+  brutos implicam. O critério é a precisão escrita no próprio valor: um número
+  com `k` casas decimais afirma a medição a menos de meia unidade da última
+  casa (`0.4` afirma `[0,35; 0,45)`; `35` afirma `[34,5; 35,5)`), com piso de
+  `0,005` ponto percentual — a precisão que o backend produz (ver acima).
+  Nenhum limite arbitrário entra nessa conta.
+* **Entrega zero.** Denominador enviado como `0` (não ausente) com evento ou
+  taxa acima de zero.
+
+**Não existe** regra de teto: `link_clicks > impressions` ou `ctr_link > 100`
+não são rejeitados sozinhos — as plataformas não deduplicam evento por
+impressão, e o repositório não tem fonte que descarte essas combinações.
+Campo ausente nunca é inconsistência; `0` é medição, não ausência.
 
 ---
 
@@ -441,15 +464,65 @@ X-Nex-Dono: ana
   ]
 }
 ```
-`payload` é opaco — o backend não interpreta, só guarda e devolve o que o
-cliente mandou no `POST`.
+`payload` volta **exatamente como foi gravado** — a leitura não interpreta,
+não valida e não converte nada, inclusive para linhas gravadas antes do
+contrato de escrita descrito abaixo existir.
 
 ### `POST /api/v1/campaigns`
 
 **Request:**
 ```json
-{ "payload": { "...": "qualquer objeto" }, "id": null, "client_id": null }
+{ "payload": { "...": "campanha no formato CampaignVM" }, "id": null, "client_id": null }
 ```
+
+⚠️ **`payload` deixou de ser um objeto qualquer (P5, 2026-09-09).** A gravação
+era totalmente aberta: dava para criar uma "campanha" por requisição direta,
+sem análise nenhuma, com números contraditórios dentro. Agora o corpo precisa
+ser o `CampaignVM` que o dashboard guarda
+(`frontend/nexgestor-dashboard/src/types.ts`), e é uma **lista fechada**:
+
+* **Obrigatórios:** `id` (inteiro > 0), `name` e `platform` (textos não
+  vazios), `status` (`GREEN` | `YELLOW` | `RED` | `BLUE` | `PAUSED`), `score`
+  (0–100), `invest` e `revenue` (números `>= 0`),
+  `roasNum`/`cpaNum`/`ctrNum`/`freqNum` (número `>= 0` ou `null`),
+  `spark`, `trend`, `m1`/`m2`, `ai`, `summary`, `opportunity`, `primaryAction`,
+  `tiles`, `scenarios`, `actions` e `sugg`. Uma métrica não informada usa
+  `null`; os blocos sem itens usam `[]`. Omitir um obrigatório retorna 422
+  antes de gravar, inclusive em atualizações.
+* **Opcionais, conferidos quando vêm:** `maxFrequencyFatigue`, `coverage`
+  (0–100), `confidence` (`low`|`medium`|`high`), `hasAI`,
+  `aiInsights`, `aiRisks`, `benchmarks`, `serverId`,
+  `clientId`, `syncFalhouPermanente`, `syncAviso`.
+* **Chave fora dessa lista é rejeitada**, não ignorada — é o que impede
+  embrulhar um bloco de métricas contraditórias numa campanha de fachada.
+* **Forma dos itens de cada bloco**, não só "é uma lista". `tiles` é uma lista
+  de tuplas `[rótulo, valor, cor, nota, origem?, score?]` — os quatro
+  primeiros textos, `origem` em `gestor|sistema|ausente`, `score` de 0 a 100.
+  `scenarios`, `actions`, `sugg`, `aiInsights`, `aiRisks` e `benchmarks` são
+  listas de objetos com exatamente os campos do tipo correspondente em
+  `types.ts`, com `priority` em `1|2|3` e `prio`/`urgency` em
+  `Alta|Média|Baixa`. O CONTEÚDO do texto livre (título, causa raiz,
+  recomendação) não é conferido; a forma, sim. Sem isso, `tiles: [null]` era
+  gravado, devolvido pelo `GET` e derrubava a tela da campanha.
+* **Faixa numérica:** todo campo numérico precisa caber no formato — número
+  finito e representável como `number` do JavaScript; `id`/`serverId` param no
+  maior inteiro exato desse formato (2⁵³−1), acima do qual dois ids diferentes
+  deixam de se distinguir no cliente. Não é teto de negócio: é o domínio do
+  próprio contrato.
+* **Consistência interna:** `revenue` tem que ser `invest × roasNum`
+  arredondado (é como o adapter o calcula, e o tile exibe "spend × ROAS").
+  Declarar receita sem `invest`/`roasNum` que a produzam também é rejeitado —
+  omitir o campo não é saída.
+
+O que o contrato **não** prova: que os números venham de uma análise real. Um
+cliente que monte um `CampaignVM` coerente grava, e autenticação não mudaria
+isso. Fundamento e limites exatos: `app/service/campaign_payload.py`.
+
+Campanhas gravadas **antes** deste contrato continuam sendo devolvidas pelo
+`GET` como sempre — a regra vale só para escrita nova, e nada é migrado nem
+apagado. Uma dessas campanhas, se for reenviada, recebe `422`; o dashboard
+trata isso como falha permanente e avisa, em vez de reenviar para sempre.
+
 Omita `id` (ou mande `null`) para criar; informe o `id` devolvido por um
 `POST`/`GET` anterior para atualizar. **Atualizar um `id` que não existe, ou
 que existe mas pertence a outro dono, não falha — cria uma campanha nova** e
@@ -478,7 +551,7 @@ respondem igual, de propósito (não revela que a campanha é de outra pessoa).
 
 | Status | Quando |
 |---|---|
-| `422` | Header `X-Nex-Dono` ausente, vazio/só espaço, ou com mais de 120 caracteres. Também: `payload` ausente/não-objeto, ou `campanha_id` não numérico no DELETE. |
+| `422` | Header `X-Nex-Dono` ausente, vazio/só espaço, ou com mais de 120 caracteres. Também: `payload` ausente/não-objeto, `payload` fora do contrato de gravação acima (campo obrigatório ausente, tipo/faixa errados, chave desconhecida, item de bloco malformado, `revenue` incoerente), ou `campanha_id` não numérico no DELETE. `detail` é um texto com todos os problemas encontrados, separados por `;`. Rejeição acontece **antes** de gravar: não existe gravação parcial. **É falha permanente**: reenviar o mesmo payload não muda o resultado, então o cliente deve avisar o usuário em vez de retentar em silêncio (ver `salvarCampanha` no dashboard). |
 | `404` | `DELETE`/atualização de id que não existe (para aquele dono). |
 | `413` | `payload` acima do limite de bytes configurado no servidor. |
 | `501` | Persistência desligada neste servidor (`DB_PATH` vazio) — **não é erro**, é a configuração padrão de quem roda local sem banco. O cliente deve cair para armazenamento local em silêncio, sem mostrar erro ao usuário. |
