@@ -1,113 +1,153 @@
-﻿Execute a integração do PR #6 de P5 à main do NexGestor.
-Este pedido autoriza conferir a versão, concluir os registros documentais,
-commitar/enviar os ajustes documentais necessários e realizar o merge do PR #6
-quando as verificações abaixo estiverem satisfeitas. Não exige nova confirmação
-só porque o checkpoint anterior parava antes do merge. Respeite permissões do
-ambiente e proteções reais do repositório, sem contorná-las.
+﻿Revise e integre o PR #5 de governança mínima à main atual do NexGestor,
+que já recebeu o P5 pelo PR #6. Conclua revisão documental, reconciliação
+necessária, commit/push, merge e registro da entrega.
 
-## Contexto e referências
+Este pedido autoriza a integração do PR #5 quando o resultado estiver
+validado. As restrições históricas que paravam antes do merge pertenciam
+àquelas etapas; não exigem nova confirmação para esta tarefa já solicitada.
+Respeite permissões do ambiente e proteções do GitHub. Se a revisão automática
+de aprovação bloquear o merge, apresente a ação concreta e o motivo informado
+para autorização pelo usuário; não contorne o bloqueio.
 
-Leia AGENTS.md, CLAUDE.md e docs/roadmap.md. Consulte em
- docs/sessions/2026-09-10.md:
-- “Revisão independente final — P5 (Claude)”.
-- “Correção — achados 1 e 2 da revisão independente final (Claude)”.
-- “Revisão Codex — duas correções finais do Sonnet”.
-- “Entrega Git — P5 revisado”.
+## Contexto e fontes
 
-PR: https://github.com/GustavoECocchi/NexGestor/pull/6
+Leia AGENTS.md, CLAUDE.md e docs/roadmap.md da main atual antes de trabalhar.
+Consulte:
+- docs/sessions/2026-09-10.md: “Integração — PR #6 mergeado na main (Claude)”
+  e a preparação deste prompt de governança.
+- docs/sessions/2026-09-08.md: “Continuidade — pr-governanca-minima”,
+  “Revisão Codex — entrega de governança mínima” e
+  “Continuidade — finalização da entrega de governança (ajustes finais,
+  commit, envio, PR)”. Considere retificações posteriores na mesma sessão.
+- Na branch de governança, docs/prds/nexgestor-governance-docs/
+  05-pr-governanca-minima.md: requisitos G01–G09 e exemplos de aceite.
+  Sua ordem operacional antiga deve ser adaptada ao Git atual; a dependência
+  692a0f9 e o P5 já foram integrados. Não execute novamente tarefas antigas.
+
+PR: https://github.com/GustavoECocchi/NexGestor/pull/5
 Repositório: GustavoECocchi/NexGestor
-Base: main
-Branch: fix/p5-validacao-consistencia-metricas
-Último HEAD local conferido na preparação: bbf3e06
-Correções finais: b7a80e2; bbf3e06 registra a publicação do PR.
-Base main consultada na publicação: 692a0f9.
+Branch de origem: docs/governanca-minima
+Destino: main
 
-A consulta remota anterior confirmou o PR OPEN, fora de rascunho, recebendo
-bbf3e06. Após o último push, mergeable estava UNKNOWN e não havia checks
-listados. UNKNOWN não demonstra conflito nem aprovação: consulte novamente.
-Estas informações são históricas; confira GitHub e Git atuais antes de agir.
+Base LOCAL conferida ao preparar este prompt:
+- main em b0b3818, registro final de P5; merge do PR #6 em 5fec3a8.
+- docs/governanca-minima em c433626.
+- Worktree inicialmente limpo, na main. Este prompt e sua seção de preparação
+  em docs/sessions/2026-09-10.md serão alterações documentais locais novas.
+- Diff da branch de governança desde a base comum: nove arquivos documentais,
+  incluindo 49 linhas em CLAUDE.md, docs/README.md, seis documentos do pacote
+  e sessão de 08/09. Nenhuma alteração de produto nesse diff local.
 
-O delta final do Codex (obrigatórios/Decimal) foi aprovado pelo Claude.
-Os dois achados posteriores foram corrigidos pelo Sonnet e aprovados pelo
-Codex: PAUSED recusado na escrita e guarda de paridade dos obrigatórios.
-Não há achado técnico aberto dessas revisões. Não reinicie a auditoria geral.
+Não houve consulta remota nova na preparação. O último relato registra PR #5
+OPEN; confira agora estado, head/base, proteções, reviews, checks e conflitos.
 
-## 1. Conferir e preservar o estado
+## 1. Preparar sem perder trabalho
 
-Confira branch, HEAD, status, diff local/staged e arquivos novos; consulte
-origin, atualize referências e confira o PR, head/base, reviews, checks,
-proteções e conflitos. Confirme que o destino é o repositório acima.
+Confira branch, HEAD, status, diff local/staged e arquivos novos; fetch das
+referências necessárias. Confirme main contendo P5 e o registro final.
+Se o PR já estiver integrado, confira seu conteúdo e siga para reconciliação,
+sem repetir merge. Se estiver fechado sem merge, investigue antes de reabrir.
 
-Este prompt e o registro de sua preparação em docs/sessions/2026-09-10.md
-serão alterações documentais locais sobre bbf3e06. Inspecione-os e inclua-os
-em commit documental na branch P5, com push antes da conferência final do PR.
-Preserve qualquer outra alteração: não use git add indiscriminado, reset,
-clean, force push ou stash para liberar a troca de branch. Se houver trabalho
-não relacionado, use checkout/worktree isolado quando necessário.
+Preserve o prompt e os registros locais desta preparação e qualquer trabalho
+concorrente. Use worktree/checkout isolado ou transporte documental conferido
+para trabalhar na branch de governança sem sobrescrever a main. Inclua esta
+preparação no fluxo documental da entrega. Não faça stage indiscriminado,
+reset, clean, force push nem manipule stash para liberar a troca de branch.
+Não carregue commits de produto de fix/auditoria-precisao-confiabilidade:
+essa branch contém contexto histórico que não pertence a esta integração.
 
-Confira o diff completo do PR para confirmar seu escopo e o delta desde a
-versão revisada. O snapshot de transferência já inclui organização documental,
-sessões e mini-PRD de diagnóstico parcial; isso é conhecido, não implementação
-nova de diagnóstico parcial. Governança está em PR separado.
+## 2. Revisar e reconciliar o PR sobre a main atual
 
-Se o PR já estiver integrado, confira commit/conteúdo e siga para a reconciliação
-final; não tente integrar duas vezes. Se houver mudanças novas de produto,
-revise e valide o delta antes de considerar a aprovação anterior aplicável.
+Leia o diff completo e os documentos novos. Não basta o Git indicar CLEAN:
+confira a coerência do texto resultante e sua relação com as decisões atuais.
+Atualize a branch de governança com main quando necessário para resolver
+conflitos/validar a integração, preferindo merge sem reescrever histórico.
 
-## 2. Validar o necessário
+Pontos de aceite:
+- CLAUDE.md continua sendo a fonte única de política. As duas seções novas,
+  “Achados, bloqueios e encerramento” e “Mudanças analíticas, contratos e
+  dados”, complementam a política existente sem duplicar estados ou mudar
+  papéis: usuário coordena, Claude executa por padrão, Codex revisa por padrão;
+  revisão não autoriza correção automática de produto.
+- Achado confirmado, hipótese e lacuna de validação ficam distintos.
+  Bloqueador identifica requisito e ação afetada; partes independentes seguem.
+  Encerramento depende do escopo e da evidência, sem exigir eliminar backlog
+  ou declarar validação empírica por haver testes verdes.
+- Mudança analítica exige fundamento independente e revisão explicitada;
+  contratos/dados exigem compatibilidade e reversibilidade quando aplicável.
+  Não impor checklists irrelevantes a toda tarefa nem novas confirmações
+  para ações já autorizadas.
+- Pacote 01–04 permanece proposta histórica/referência, sem autoridade
+  concorrente. Documento 05 é a especificação desta governança, não gatilho
+  para executar novamente auditorias, P5 ou outras tarefas.
+- AGENTS.md mantém a referência para CLAUDE.md. Ajuste links/índices afetados
+  na estrutura atual quando necessário; não restaure versões antigas dos guias.
 
-Reutilize a evidência sobre código idêntico, com autoria/data explícitas:
-- Sonnet em 10/09: backend completo 1924 passed, consumidor CampaignVM
-  8 passed e tsc -b aprovado.
-- Codex em 10/09: backend focal 247 passed e consumidor 8 passed;
-  nenhuma nova falha nas duas correções.
-- Testes completos/build/lint anteriores do dashboard estão registrados
-  em 09/09; não foram repetidos nas últimas correções exclusivamente backend.
+Atenção especial às sobreposições:
+- docs/README.md foi reorganizado na main pelo P5; preserve a organização
+  atual ao incluir a referência ao pacote de governança.
+- docs/sessions/2026-09-08.md existe dos dois lados com históricos relacionados.
+  Reconcilie por seção: preserve evidências e retificações de governança e
+  P5, sem duplicar blocos comuns nem substituir a sessão inteira por um lado.
+- Preserve sessões de 09/09–10/09, índices de PRDs/sessões/histórico e o
+  mini-PRD de diagnóstico parcial. Não reabra achados P5 resolvidos por ler
+  registros antigos. Use um registro novo para explicar o estado atual;
+  não apague a história para fazer parecer que sempre esteve assim.
 
-Não declare essas execuções como novas. Commits somente documentais pedem
-revisão do diff e git diff --check, não repetição automática de todas as suítes.
-Se mudanças novas, conflitos ou avanço da base afetarem comportamento,
-execute verificações pertinentes à versão que será integrada. Use SQLite
- temporário, GEMINI_ENABLED=false e BENCHMARK_ENABLED=false; sem chamadas
-pagas, dados reais ou edição de .env.
+Corrija inconsistências documentais e conflitos necessários dentro desse
+escopo. Se houver escolha material de política sem decisão anterior, isole-a,
+registre as alternativas e peça decisão; não invente regra para conseguir merge.
 
-Ausência de CI listado não significa CI aprovado. Aguarde checks exigidos
-quando existirem. Em conflito, resolva apenas o que estiver claro pelos
-requisitos e revisões, preservando os dois lados e validando o resultado.
-Se surgir impedimento técnico ou decisão de produto não resolvível neste
-escopo, registre evidência e próximo passo; não declare merge concluído.
+## 3. Validar a versão a integrar
 
-## 3. Integrar o PR #6
+Compare o resultado com origin/main atualizado. O delta entregue deve continuar
+exclusivamente documental: nenhuma remoção/alteração de backend, frontend,
+testes, dependências ou configuração de produto do P5.
 
-Depois dos commits documentais, obtenha o SHA completo atual da branch e
-confira que o PR continua apontando exatamente para a versão examinada.
-Faça o merge normal pelo GitHub, preferindo merge commit para preservar os
-commits/checkpoints existentes, se esse método for permitido pelo repositório.
-Use a proteção de correspondência do head oferecida pelo comando/ferramenta;
-se o head mudar, confira o novo delta antes de repetir. Respeite o método
-permitido e as proteções; não use bypass administrativo ou force push.
+Revise o diff completo, links locais novos/alterados, âncoras, índices e
+marcadores de conflito; execute git diff --check. Exercite os exemplos de
+aceite do documento 05 como revisão de consistência da política, registrando
+as conclusões. Isso valida o texto; eficácia operacional futura não é provada.
 
-Não apague a branch local/remota nesta etapa. Não integre PR #5 de governança.
-Depois do merge, consulte novamente o GitHub: confirme MERGED, mergedAt,
-commit de integração e main remota contendo o resultado esperado.
-Atualize main local por fast-forward se for seguro, preservando alterações
-locais; caso use checkout isolado, declare onde está a main atualizada.
+Não execute suítes de produto por mudanças apenas documentais. Reutilize
+registros anteriores com suas datas e limites, sem relatar testes alheios
+como recém-executados. Se detectar mudança inesperada de produto, investigue
+a origem e preserve-a; não aprove esse delta como se fosse só documentação.
 
-## 4. Registrar e entregar
+Registre resultado da revisão, resolução de conflitos e validação na sessão.
+Commite/envie os arquivos conferidos na branch do PR. Atualize descrição do
+PR para refletir o conteúdo final e a main após P5; use argumento estruturado
+ou arquivo com --body-file para textos multilinha.
 
-Atualize a sessão da data de execução com versão conferida, validações
-reutilizadas/novas, PR, commit de integração, resultado remoto e pendências.
-Preserve o histórico e atualize o índice se criar uma nova sessão. Publique
-a confirmação documental respeitando as proteções do repositório, usando
-PR documental se necessário. Não deixe o checkpoint dizendo apenas
-“merge pendente” depois de uma integração comprovada.
+## 4. Integrar e confirmar
 
-Roadmap só muda se um item realmente mudar de fase; P5 não tem item próprio
-atualmente. Não confunda P5 de consistência com fase-5 de vocabulário.
-Entregue resumo curto: PR integrado ou impedimento concreto, commit de merge,
-estado da main local/remota, testes e registro publicado.
+Confira novamente head/base, proteções e checks após os commits. Ausência
+de CI não é CI aprovado; UNKNOWN não é conflito nem aprovação. Aguarde
+verificações obrigatórias quando existirem. Use o SHA completo exato que
+acabou de revisar para proteger o merge contra mudanças concorrentes.
 
-Limites: integração não é deploy. Aceites com leigo, leitor de tela e viewport
-real continuam separados. Não ative benchmark/Gemini, não altere produção e
-não implemente diagnóstico parcial, P6/P7 ou governança. A próxima frente
-após esta entrega será coordenada separadamente pelo usuário.
+Faça merge do PR #5 pelo GitHub, preferindo merge commit se permitido e
+usando a opção de correspondência do head. Não use bypass administrativo.
+Não apague a branch local/remota. Se houver recusa automática de aprovação,
+peça autorização para a ação específica com o estado já pronto e validado.
+
+Confirme MERGED, mergedAt, commit de integração e main remota contendo o
+resultado. Atualize main local por fast-forward quando seguro, preservando
+worktrees e alterações; declare a branch/checkout final corretamente.
+
+## 5. Registro final e entrega
+
+Publique o registro da integração na sessão da data, respeitando proteções
+(com PR documental se necessário). Inclua PR, head revisado, commit de merge,
+validações, conflitos tratados, estado local/remoto e limites. Preserve
+histórico e atualize o índice se criar sessão. Não deixe apenas “merge
+pendente” após integração confirmada. Roadmap só muda se um item mudar de
+fase; governança é melhoria de processo registrada na sessão.
+
+Entregue resumo curto: o que foi reconciliado, veredito, PR/commit de merge,
+main local/remota e registro publicado. Separe implementado, validado,
+commitado, enviado, integrado e implantado.
+
+Sem deploy, chamadas pagas, ativação de IA/benchmark, implementação de
+P5/P6/P7 ou diagnóstico parcial, auditoria geral ou retomada do PR #4.
+Conclua esta integração; a próxima frente será coordenada pelo usuário.
