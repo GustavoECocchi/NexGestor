@@ -58,6 +58,12 @@ discutidas e simplificadas. São referências de discussão. A implementação
 vigente está em `CLAUDE.md`; não criar `.ai/STATE`, TASKS ou HANDOFF por ler as
 propostas. Decisões posteriores do usuário prevalecem sobre o texto original.
 
+O pacote [`prds/nexgestor-governance-docs/`](prds/nexgestor-governance-docs/README.md)
+tem o mesmo status: proposta auditada, não política ativa. Os ajustes já
+aprovados dessa auditoria (critérios de achado, bloqueio e encerramento) foram
+incorporados a `CLAUDE.md`; o corpo dos documentos 01–04 permanece como
+referência histórica.
+
 [temporario.md](../temporario.md) e [rascunho_prompt.md](rascunho_prompt.md)
 são entradas reutilizáveis de prompt.
 Só executar quando o usuário invocar; podem conter pedidos já atendidos.
