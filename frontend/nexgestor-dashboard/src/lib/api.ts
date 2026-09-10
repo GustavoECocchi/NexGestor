@@ -45,6 +45,58 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof Error && (e as Partial<ApiError>).userFacing === true
 }
 
+/** Uma inconsistência entre métricas (P5) — já associada aos campos envolvidos. */
+export interface ErroConsistenciaMetrica {
+  /** Nomes de campos de `Metrics` (schema do backend) — ex.: ["impressions", "link_clicks", "ctr_link"]. */
+  fields: string[]
+  /** Mensagem pronta para exibição, em linguagem simples — não requer tradução nem glossário. */
+  message: string
+}
+
+/**
+ * A análise foi recusada porque os dados têm contradição ou impossibilidade
+ * demonstrada (P5, 2026-09-08) — não é falha de rede nem bug do servidor.
+ * `userFacing` segue o mesmo contrato de `ApiError`: a UI não deve embrulhar
+ * `message` em "A análise falhou: ...".
+ */
+export class MetricConsistencyError extends Error {
+  readonly userFacing = true
+  readonly fieldErrors: ErroConsistenciaMetrica[]
+
+  constructor(fieldErrors: ErroConsistenciaMetrica[], message: string) {
+    super(message)
+    this.name = "MetricConsistencyError"
+    this.fieldErrors = fieldErrors
+  }
+}
+
+export function isMetricConsistencyError(e: unknown): e is MetricConsistencyError {
+  return e instanceof Error && Array.isArray((e as Partial<MetricConsistencyError>).fieldErrors)
+}
+
+/**
+ * Parse defensivo do corpo 422 novo — mesmo padrão de
+ * `validarResultadosBenchmark`: qualquer desvio de forma descarta tudo (`null`)
+ * em vez de deixar um item malformado seguir sozinho para a UI.
+ */
+function extrairErrosDeConsistencia(corpo: unknown): { erros: ErroConsistenciaMetrica[]; mensagem: string } | null {
+  if (typeof corpo !== "object" || corpo === null) return null
+  const detail = (corpo as { detail?: unknown }).detail
+  if (typeof detail !== "object" || detail === null) return null
+  const { message, field_errors } = detail as { message?: unknown; field_errors?: unknown }
+  if (typeof message !== "string" || !Array.isArray(field_errors) || field_errors.length === 0) return null
+
+  const erros: ErroConsistenciaMetrica[] = []
+  for (const item of field_errors) {
+    if (typeof item !== "object" || item === null) return null
+    const { fields, message: msg } = item as { fields?: unknown; message?: unknown }
+    if (!Array.isArray(fields) || fields.length === 0 || !fields.every((f) => typeof f === "string")) return null
+    if (typeof msg !== "string" || !msg.trim()) return null
+    erros.push({ fields: fields as string[], message: msg })
+  }
+  return { erros, mensagem: message }
+}
+
 /**
  * Abort do nosso timeout.
  *
@@ -104,6 +156,17 @@ export async function analyzeCampaign(
       throw new ApiError(
         "O servidor está fora do ar no momento. Tente de novo em alguns minutos; se continuar, avise o responsável técnico."
       )
+    }
+
+    // 422 = dados com contradição/impossibilidade demonstrada (P5). Corpo
+    // estruturado próprio, distinto do formato nativo de validação do
+    // FastAPI/Pydantic — por isso o parse defensivo em vez de confiar no shape.
+    if (res.status === 422) {
+      let corpo: unknown = null
+      try { corpo = await res.json() } catch { /* corpo não é JSON — cai no genérico abaixo */ }
+      const parsed = extrairErrosDeConsistencia(corpo)
+      if (parsed) throw new MetricConsistencyError(parsed.erros, parsed.mensagem)
+      throw new Error(`Falha na análise: ${res.status}`)
     }
 
     // Demais códigos ficam crus de propósito: são inesperados, e o número é o
@@ -404,7 +467,8 @@ export async function listarCampanhasSalvas(): Promise<CampaignVM[] | null> {
  * achado A3): falha TRANSITÓRIA (rede caída, servidor fora do ar, 500, 501 —
  * persistência desligada é config esperada, não erro) vale a pena retentar
  * na próxima abertura, exatamente como já acontecia. Falha PERMANENTE (413 —
- * payload grande demais) nunca vai ter sucesso sozinha: antes, ela caía no
+ * payload grande demais; 422 — payload fora do contrato de gravação) nunca
+ * vai ter sucesso sozinha: antes, ela caía no
  * mesmo `null` que a transitória, e o laço de sincronização (`App.tsx`)
  * retentava pra sempre, sem jamais avisar o usuário de que aquela campanha
  * nunca sairia do navegador dele.
@@ -452,6 +516,21 @@ export async function salvarCampanha(vm: CampaignVM): Promise<ResultadoSalvar> {
       // desta campanha — continua elegível pro laço de sync retentar assim
       // que alguém liberar espaço (R1).
       return { ok: false, permanente: false, aviso: "A base do servidor está cheia — fale com quem administra." }
+    }
+    if (res.status === 422) {
+      // Contrato de gravação (P5, 2026-09-09): o servidor recusou o FORMATO
+      // desta campanha. É causa de CONTEÚDO e não muda sozinha — nenhuma
+      // retentativa transforma um payload fora do contrato num payload
+      // válido. Sem este ramo, uma campanha antiga do `localStorage` que não
+      // batesse com o contrato cairia no `permanente: false` e o laço de
+      // sincronização (`App.tsx`) a reenviaria em TODA abertura, para sempre,
+      // sem nunca avisar ninguém — exatamente o achado A3 da auditoria de
+      // rede de 2026-09-03, que este projeto já pagou uma vez.
+      return {
+        ok: false,
+        permanente: true,
+        explicacao: "O servidor não reconheceu o formato desta campanha — ela continua salva só neste navegador."
+      }
     }
     if (!res.ok) return { ok: false, permanente: false }
 

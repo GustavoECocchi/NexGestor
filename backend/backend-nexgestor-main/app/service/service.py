@@ -9,6 +9,7 @@ from app.schema.schema import (
     Targets,
 )
 from app.enum.campaign import CampaignStatus, ScenarioCode
+from app.service.metric_consistency import MetricasInconsistentes, validar_consistencia_metricas
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1652,6 +1653,15 @@ def analyze_campaign(data: AnalyzeInput) -> CampaignAnalysisResponse:
     NÃO chama a IA (para isso use `analyze_campaign_async`).
     Útil para testes, scripts em background, ou quando IA não é necessária.
     """
+    # 0. P5 — rejeitar dados demonstravelmente inválidos/contraditórios ANTES
+    # de derivar ou avaliar qualquer coisa. Roda em `analyze_campaign`, não em
+    # `_preprocess`, porque `analyze_campaign_async` chama este entry point
+    # primeiro e só invoca a IA depois (ver decisão de produto — P5, sessão
+    # 2026-09-08): uma rejeição aqui nunca gera chamada paga.
+    erros_consistencia = validar_consistencia_metricas(data.metrics)
+    if erros_consistencia:
+        raise MetricasInconsistentes(erros_consistencia)
+
     # 1. Calcular métricas derivadas dos dados brutos
     m = _preprocess(data.metrics)
     t = data.targets

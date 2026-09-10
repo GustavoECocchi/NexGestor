@@ -1,6 +1,6 @@
 # PRD — NexGestor
 **Referência retroativa. Corpo verificado originalmente em 2026-08-25;
-índice de fases reconciliado em 2026-09-07. Não usar como inventário atual.**
+catálogo de requisitos em [prds/README.md](prds/README.md). Não usar como inventário atual.**
 
 Estado atual: [roadmap](roadmap.md). Contrato da API:
 [CONTRATO_API_FRONTEND.md](CONTRATO_API_FRONTEND.md). Guia de leitura:
@@ -42,18 +42,15 @@ afirmações históricas precisam ser confrontadas com código e evidência data
 
 ## Fases
 
-Os PRDs em `prds/` guardam requisitos e decisões por frente. Orçamentos de
-PRs pertencem a cada fase; não há teto universal de dois PRs (a fase-5 tem
-PR1–PR7). O roadmap consolida estados; este índice facilita a navegação.
+Consulte o [catálogo de requisitos por funcionalidade](prds/README.md) para
+as fases 1–5, especificações adicionais e referências de P5. Os estados ficam
+no [roadmap](roadmap.md) e nos cabeçalhos/evidências dos PRDs. Esta seção mantém
+o acesso por `PRD.md#fases` para referências existentes.
 
-| Fase | Nome | Status | PRD |
-|---|---|---|---|
-| 1 | Ajuda em linguagem simples no formulário "Criar campanha" | implementado | [`prds/fase-1-ajuda-formulario-campanha.md`](prds/fase-1-ajuda-formulario-campanha.md) |
-| 2 | Dashboard: telas dedicadas e navegação intuitiva | implementado (falta o teste manual com usuário leigo, §8 do PRD) | [`prds/fase-2-dashboard-intuitividade.md`](prds/fase-2-dashboard-intuitividade.md) |
-| 2b | Benchmark de mercado para metas não definidas | implementado; positivo real com fonte e controles para ativação pública pendentes | [`prds/fase-2b-benchmark-mercado.md`](prds/fase-2b-benchmark-mercado.md) |
-| 3 | Gráficos no detalhe da campanha (Fuse React) — Parte A "Áreas da campanha" implementada e depois SUBSTITUÍDA pelo feed da fase 4 (ver A6 no PRD); Parte B "histórico/tendência" só especificação | parcial | [`prds/fase-3-graficos-campanha.md`](prds/fase-3-graficos-campanha.md) |
-| 4 | Feed de métricas reorganizado (Faixa de resultado / Painel do funil / Ações / Contexto) | implementado | [`prds/fase-3-graficos-campanha.md`](prds/fase-3-graficos-campanha.md) §A6 (ainda sem PRD próprio — nasceu de um rascunho direto, não de um mini-PRD) |
-| 5 | Revisão de vocabulário e linguagem | implementada; aceite real PR6 pendente | [`prds/fase-5-vocabulario-linguagem.md`](prds/fase-5-vocabulario-linguagem.md) |
+Especificação adicional (implementação não iniciada):
+[Nota das métricas analisadas e diagnóstico parcial](prds/diagnostico-parcial.md).
+Preparada em 09/09 a partir da decisão do usuário; independente da revisão final
+de P5 e dos PRs já implementados da fase-5.
 
 ---
 

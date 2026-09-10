@@ -285,7 +285,14 @@ class TestGastoSemRetornoVenceQuemMandaGastar:
     duplicar a estrutura para novos públicos.
     """
 
-    CASO_D = dict(conversions=0, spend=2000, ctr_link=4.0, lp_conversion_rate=0.1,
+    # `lp_conversion_rate` era declarado como 0.1 junto de `conversions=0` e
+    # `landing_page_views=500` — os três não podem ser verdade ao mesmo tempo
+    # (0 conversões em 500 visitas é 0%, não 0,1%). A validação de consistência
+    # de P5 (2026-09-08) passou a rejeitar exatamente esse tipo de contradição.
+    # A taxa foi removida em vez de "afrouxada": o engine deriva 0,0% dos
+    # próprios brutos, que continua abaixo de `min_lp_conversion_rate` (1.0) e
+    # mantém o Cenário D disparável — que é o ponto destes testes.
+    CASO_D = dict(conversions=0, spend=2000, ctr_link=4.0,
                   landing_page_views=500, link_clicks=600)
     CASO_H = dict(conversions=0, spend=2000, cpa=30.0, frequency=2.6, link_clicks=800)
 

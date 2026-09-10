@@ -214,6 +214,11 @@ describe("normalizaCampo — campo inteiro não pode virar 422", () => {
   // O backend tipa impressões, cliques, visitas e conversões como int. Um
   // decimal ali devolvia 422 "int_from_float", que chegava ao gestor como
   // "A análise falhou: Falha na análise: 422" — sem dizer qual campo.
+  //
+  // A função continua sendo o arredondamento; o que mudou em 2026-09-09
+  // (achado 4 da revisão Codex) é QUEM chega até ela: os campos de P5 são
+  // barrados antes, porque arredondar ali muda a validade do dado
+  // (`-0.4` → `-0` → `0`) em vez de só normalizar a apresentação.
   it("arredonda os campos que o backend tipa como inteiro", () => {
     expect(normalizaCampo("impressions", 120000.5)).toBe(120001)
     expect(normalizaCampo("link_clicks", 1600.4)).toBe(1600)
@@ -229,15 +234,44 @@ describe("normalizaCampo — campo inteiro não pode virar 422", () => {
     expect(normalizaCampo("spend", 2000.99)).toBe(2000.99)
   })
 
-  it("a importação de JSON recebe o mesmo tratamento", () => {
+  it("na importação, campo inteiro FORA de P5 continua sendo arredondado", () => {
+    const r = parseFileJSON(JSON.stringify({
+      metrics: { reach: 50000.7, weekly_conversions: 20.2, cpa: 49.99 }
+    }))
+    expect("error" in r).toBe(false)
+    if ("error" in r) return
+    expect(r.input.metrics.reach).toBe(50001)
+    expect(r.input.metrics.weekly_conversions).toBe(20)
+    expect(r.input.metrics.cpa).toBe(49.99)
+    expect(r.bloqueios).toEqual([])
+  })
+
+  it("na importação, campo inteiro DE P5 é bloqueado em vez de arredondado", () => {
     const r = parseFileJSON(JSON.stringify({
       metrics: { impressions: 50000.7, link_clicks: 900.2, cpa: 49.99 }
     }))
     expect("error" in r).toBe(false)
     if ("error" in r) return
-    expect(r.input.metrics.impressions).toBe(50001)
-    expect(r.input.metrics.link_clicks).toBe(900)
+    // Nada de valor arredondado no payload: o dado original é preservado e a
+    // análise fica parada até a pessoa corrigir o arquivo.
+    expect(r.input.metrics.impressions).toBeUndefined()
+    expect(r.input.metrics.link_clicks).toBeUndefined()
     expect(r.input.metrics.cpa).toBe(49.99)
+    expect(r.bloqueios.map((b) => b.key)).toEqual(["impressions", "link_clicks"])
+    expect(r.bloqueios[0].message).toMatch(/não é um número inteiro/)
+  })
+
+  it("na importação, número negativo em campo de P5 não vira zero", () => {
+    // `Math.round(-0.4)` é `-0`, que sai como `0` no JSON — o backend recusa
+    // o valor original (int, ge=0) e aceita o normalizado.
+    const r = parseFileJSON(JSON.stringify({
+      metrics: { impressions: 100, link_clicks: -0.4, ctr_link: 0 }
+    }))
+    expect("error" in r).toBe(false)
+    if ("error" in r) return
+    expect(r.input.metrics.link_clicks).toBeUndefined()
+    expect(r.bloqueios.map((b) => b.key)).toEqual(["link_clicks"])
+    expect(r.bloqueios[0].message).toMatch(/número negativo/)
   })
 })
 
