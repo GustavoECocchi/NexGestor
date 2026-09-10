@@ -29,7 +29,11 @@ from app.core.config import settings
 from app.main import app
 from app.schema.schema import AnalyzeInput, Campaign, Metrics, Targets
 from app.service import storage
-from app.service.campaign_payload import _CHAVES_CONHECIDAS
+from app.service.campaign_payload import (
+    _CHAVES_CONHECIDAS,
+    _CHAVES_OBRIGATORIAS,
+    _STATUS_DE_CAMPANHA,
+)
 from app.service.metric_consistency import (
     MetricasInconsistentes,
     _fmt_pct,
@@ -724,6 +728,13 @@ class TestContratoDeGravacao:
         dashboard. Sem esta conferência, um campo novo no VM viraria 422 na
         gravação (ou, pior, um campo removido continuaria aceito) sem ninguém
         perceber até alguém perder uma campanha.
+
+        Cobre também `_CHAVES_OBRIGATORIAS` contra o subconjunto SEM `?` da
+        interface (achado 2 da revisão Claude, 2026-09-10): a conferência
+        acima só via o total obrigatórios+opcionais e não pegava um campo
+        obrigatório novo cuja chave fosse esquecida em `_CHAVES_OBRIGATORIAS`,
+        nem um obrigatório que virasse opcional em `types.ts` sem a exigência
+        acompanhar — os dois sentidos reproduzidos na revisão.
         """
         types_ts = Path("../../frontend/nexgestor-dashboard/src/types.ts")
         if not types_ts.exists():
@@ -735,6 +746,40 @@ class TestContratoDeGravacao:
         assert corpo, "interface CampaignVM não encontrada em types.ts"
         do_vm = set(re.findall(r"^  ([A-Za-z0-9_]+)\??:", corpo.group(1), re.M))
         assert do_vm == _CHAVES_CONHECIDAS
+
+        obrigatorias_do_vm = set(re.findall(r"^  ([A-Za-z0-9_]+):", corpo.group(1), re.M))
+        assert obrigatorias_do_vm == _CHAVES_OBRIGATORIAS
+
+    def test_status_de_campanha_e_exatamente_o_ui_status(self):
+        """
+        Achado 1 da revisão Claude (2026-09-10): `_STATUS_DE_CAMPANHA` aceitava
+        `PAUSED`, que não está em `UIStatus` (types.ts). Gravar com `PAUSED`
+        dava 200 e o GET devolvia o valor; `STATUS`/`STATUS_ICON`
+        (`lib/status.ts`, `Record<UIStatus, …>`) não têm entrada para ele, e
+        `CampaignCard`/`CampaignDetail` leem esse mapa sem fallback —
+        derrubava a tela da campanha ao abrir a lista.
+        """
+        types_ts = Path("../../frontend/nexgestor-dashboard/src/types.ts")
+        if not types_ts.exists():
+            pytest.skip("checkout sem o dashboard")
+        declaracao = re.search(
+            r"export type UIStatus = ([^\n]+)", types_ts.read_text(encoding="utf-8"),
+        )
+        assert declaracao, "UIStatus não encontrado em types.ts"
+        ui_status = set(re.findall(r'"(\w+)"', declaracao.group(1)))
+        assert ui_status == _STATUS_DE_CAMPANHA
+
+    def test_status_paused_e_recusado_na_gravacao(self, base):
+        """
+        Reprodução do achado 1: `PAUSED` é reservado no enum do backend
+        (`app/enum/campaign.py`, "uso futuro") e o adapter nunca o emite
+        (`resolveUIStatus` converte em `YELLOW`), mas antes da correção a
+        gravação direta aceitava.
+        """
+        r = self.gravar(vm(status="PAUSED"))
+        assert r.status_code == 422
+        assert "status" in r.json()["detail"]
+        assert self.salvas() == []
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Forma dos blocos e números impossíveis — achados 1 e 2 da segunda revisão

@@ -482,7 +482,10 @@ ser o `CampaignVM` que o dashboard guarda
 (`frontend/nexgestor-dashboard/src/types.ts`), e é uma **lista fechada**:
 
 * **Obrigatórios:** `id` (inteiro > 0), `name` e `platform` (textos não
-  vazios), `status` (`GREEN` | `YELLOW` | `RED` | `BLUE` | `PAUSED`), `score`
+  vazios), `status` (`GREEN` | `YELLOW` | `RED` | `BLUE` — os mesmos quatro
+  valores de `UIStatus`; `PAUSED` é reservado no enum do backend, mas o
+  adapter nunca o emite e a UI não sabe desenhá-lo, então a gravação recusa),
+  `score`
   (0–100), `invest` e `revenue` (números `>= 0`),
   `roasNum`/`cpaNum`/`ctrNum`/`freqNum` (número `>= 0` ou `null`),
   `spark`, `trend`, `m1`/`m2`, `ai`, `summary`, `opportunity`, `primaryAction`,

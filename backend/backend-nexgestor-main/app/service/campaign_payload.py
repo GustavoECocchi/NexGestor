@@ -102,10 +102,16 @@ _CHAVES_OBRIGATORIAS = {
     "actions", "sugg",
 }
 
-# `UIStatus` em types.ts, produzido por `resolveUIStatus` no adapter. `PAUSED`
-# não é gerado hoje (o adapter o converte em `YELLOW`), mas é aceito por vir do
-# enum do próprio backend.
-_STATUS_DE_CAMPANHA = {"GREEN", "YELLOW", "RED", "BLUE", "PAUSED"}
+# `UIStatus` em types.ts, produzido por `resolveUIStatus` no adapter. Fechado
+# nos MESMOS quatro valores do tipo — não no enum do backend, que tem `PAUSED`
+# como reservado para uso futuro (`app/enum/campaign.py`): o adapter nunca
+# emite `PAUSED` (converte em `YELLOW`), e `STATUS`/`STATUS_ICON`
+# (dashboard `lib/status.ts`) são `Record<UIStatus, …>` sem entrada para ele —
+# um VM gravado com `PAUSED` lido de volta pelo GET derruba `CampaignCard` e
+# `CampaignDetail` (achado 1 da revisão Claude, 2026-09-10, mesma classe do
+# achado 1 do Codex sobre `tiles:[null]`: valor que a escrita aceitava e a
+# tela não renderiza). Ver `test_status_de_campanha_e_exatamente_o_ui_status`.
+_STATUS_DE_CAMPANHA = {"GREEN", "YELLOW", "RED", "BLUE"}
 _CONFIANCA_DO_SCORE = {"low", "medium", "high"}
 
 # `revenue = Math.round(invest * roasNum)` em lib/adapt.ts. Arredondar para

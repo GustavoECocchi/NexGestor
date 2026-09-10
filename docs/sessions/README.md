@@ -23,6 +23,7 @@ Na retomada, confira branch, HEAD, diff e arquivos novos conforme [CLAUDE.md](..
 
 | Data | Assuntos registrados |
 |---|---|
+| [10/09](2026-09-10.md) | Conferência do checkpoint, preparação e revisão independente final de P5. |
 | [09/09](2026-09-09.md) | Revisões e correções P5, governança, diagnóstico parcial e organização documental. |
 | [08/09](2026-09-08.md) | Governança mínima, preparação de integração, decisão e implementação inicial P5, revisões e recuperação após interrupção. |
 | [07/09](2026-09-07.md) | Benchmark com grounding real, pendências, política de continuidade e reconciliação documental. |
