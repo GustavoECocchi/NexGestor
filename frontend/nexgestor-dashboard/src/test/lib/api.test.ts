@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { ApiError, analyzeCampaign, isApiError } from "~lib/api"
+import { ApiError, MetricConsistencyError, analyzeCampaign, isApiError, isMetricConsistencyError } from "~lib/api"
 import type { AnalyzeInput } from "~types"
 
 const input: AnalyzeInput = {
@@ -81,6 +81,85 @@ describe("analyzeCampaign — respostas de erro do servidor", () => {
     const err = await analyzeCampaign(input).catch((e) => e)
     expect(isApiError(err)).toBe(false)
     expect(err.message).toContain("500")
+  })
+})
+
+describe("analyzeCampaign — 422 contradição de métricas (P5)", () => {
+  const CORPO_VALIDO = {
+    detail: {
+      message: "Os dados informados têm contradições que impedem a análise.",
+      field_errors: [
+        {
+          fields: ["impressions", "link_clicks", "ctr_link"],
+          message: "A taxa de ctr link não combina com os números informados. ..."
+        }
+      ]
+    }
+  }
+
+  it("corpo estruturado vira MetricConsistencyError com os campos e a mensagem", async () => {
+    fetchMock.mockResolvedValue(resposta(422, CORPO_VALIDO))
+    const err = await analyzeCampaign(input).catch((e) => e)
+
+    expect(isMetricConsistencyError(err)).toBe(true)
+    expect(err).toBeInstanceOf(MetricConsistencyError)
+    expect(err.fieldErrors).toEqual(CORPO_VALIDO.detail.field_errors)
+    expect(err.message).toBe(CORPO_VALIDO.detail.message)
+  })
+
+  it("é userFacing — a UI não deve embrulhar a mensagem em 'A análise falhou'", async () => {
+    // Duck-typing por design (mesmo contrato de ApiError): `isApiError` também
+    // reconhece MetricConsistencyError como texto pronto para exibição — o que
+    // importa é que NewCampaignModal checa `isMetricConsistencyError` primeiro
+    // e nunca chama `mensagemDeErro` sobre este tipo (ver runAnalyze).
+    fetchMock.mockResolvedValue(resposta(422, CORPO_VALIDO))
+    const err = await analyzeCampaign(input).catch((e) => e)
+    expect(isApiError(err)).toBe(true)
+    expect((err as MetricConsistencyError).userFacing).toBe(true)
+  })
+
+  it("422 nativo do FastAPI (detail é array, não objeto) cai no genérico — nunca finge ser P5", async () => {
+    fetchMock.mockResolvedValue(resposta(422, { detail: [{ loc: ["body"], msg: "erro", type: "value_error" }] }))
+    const err = await analyzeCampaign(input).catch((e) => e)
+    expect(isMetricConsistencyError(err)).toBe(false)
+    expect(err.message).toContain("422")
+  })
+
+  it("field_errors vazio, com tipo errado ou item malformado descarta tudo (defensivo)", async () => {
+    const corpos = [
+      { detail: { message: "x", field_errors: [] } },
+      { detail: { message: "x", field_errors: "não é array" } },
+      { detail: { message: "x", field_errors: [{ fields: [], message: "sem campos" }] } },
+      { detail: { message: "x", field_errors: [{ fields: [123], message: "campo não-string" }] } },
+      { detail: { message: "x", field_errors: [{ fields: ["a"], message: "" }] } },
+      { detail: "string solta" },
+      {},
+    ]
+    for (const corpo of corpos) {
+      fetchMock.mockResolvedValue(resposta(422, corpo))
+      const err = await analyzeCampaign(input).catch((e) => e)
+      expect(isMetricConsistencyError(err), JSON.stringify(corpo)).toBe(false)
+    }
+  })
+
+  it("corpo 422 que não é JSON não derruba a chamada — cai no erro genérico", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false, status: 422,
+      json: async () => { throw new SyntaxError("não é JSON") }
+    } as unknown as Response)
+    const err = await analyzeCampaign(input).catch((e) => e)
+    expect(isMetricConsistencyError(err)).toBe(false)
+    expect(err.message).toContain("422")
+  })
+})
+
+describe("isMetricConsistencyError", () => {
+  it("reconhece MetricConsistencyError e rejeita valores soltos", () => {
+    expect(isMetricConsistencyError(new MetricConsistencyError([{ fields: ["a"], message: "m" }], "x"))).toBe(true)
+    expect(isMetricConsistencyError(new Error("oi"))).toBe(false)
+    expect(isMetricConsistencyError(new ApiError("oi"))).toBe(false)
+    expect(isMetricConsistencyError(null)).toBe(false)
+    expect(isMetricConsistencyError({ fieldErrors: [] })).toBe(false) // precisa ser Error de verdade
   })
 })
 

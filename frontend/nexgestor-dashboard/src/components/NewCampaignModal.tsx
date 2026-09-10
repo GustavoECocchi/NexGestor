@@ -4,7 +4,14 @@ import { FieldHint } from "~components/FieldHint"
 import { IconCheck, IconEdit, IconRefresh } from "~components/Icons"
 import { responseToVM } from "~lib/adapt"
 import { registrarAnalise } from "~lib/aiHealth"
-import { analyzeCampaign, API_BASE, IS_LOCAL_BACKEND, isApiError } from "~lib/api"
+import {
+  analyzeCampaign,
+  API_BASE,
+  IS_LOCAL_BACKEND,
+  isApiError,
+  isMetricConsistencyError,
+  type ErroConsistenciaMetrica
+} from "~lib/api"
 import { isCampaignNiche, NICHE_LABELS, NICHE_VALUES } from "~lib/niche"
 import { nextLiveId } from "~lib/store"
 import type { AnalyzeInput, CampaignNiche, CampaignVM, Metrics, Targets } from "~types"
@@ -112,7 +119,20 @@ const FIELDS_DELIVERY: Field[] = [
 ]
 const FIELDS_CREATIVE: Field[] = [
   { label: "Hook rate (%)", key: "hook_rate", ph: "0", hint: "De quem viu o anúncio, quantos assistiram pelo menos 3 segundos — mede se o começo prende atenção." },
-  { label: "Hold rate (%)", key: "hold_rate", ph: "0", hint: "De quem começou a assistir, quantos ficaram até a metade — mede se o anúncio segura o interesse." },
+  // Ajuda corrigida em 2026-09-09 (P5): dizia "de quem começou a assistir,
+  // quantos ficaram até a metade" — duas coisas erradas ao mesmo tempo. O
+  // denominador é `impressions`, não quem começou a assistir (tabela de
+  // derivação em docs/CONTRATO_API_FRONTEND.md), e "até a metade" descreve
+  // `video_views_50pct`, outro campo.
+  //
+  // A primeira correção trocou isso por "assistido quase inteiro — pelo menos
+  // 15 segundos, ou até 97% dele", o que trouxe dois problemas: 15s de um
+  // vídeo longo não é "quase inteiro" (a frase se contradizia), e o limiar em
+  // si não tem fonte conferida — a página primária da Meta sobre ThruPlay não
+  // abriu na consulta de 2026-09-09. O texto agora aponta o campo do relatório
+  // e diz o que ele conta, sem afirmar o limiar. Ver a mensagem equivalente em
+  // app/service/metric_consistency.py.
+  { label: "Hold rate (%)", key: "hold_rate", ph: "0", hint: "De quantas vezes o anúncio apareceu, em quantas o vídeo foi reproduzido por tempo suficiente para a plataforma contar como ThruPlay. É o número do campo 'ThruPlays' do seu relatório." },
   { label: "CTR link (%)", key: "ctr_link", ph: "0", hint: "De quem viu o anúncio, quantos clicaram para ir ao seu site/página." },
   { label: "CTR todos (%)", key: "ctr_all", ph: "0", hint: "Como o CTR link, mas conta qualquer clique no anúncio (curtir, comentar etc.), não só o link." },
   { label: "Frequência", key: "frequency", ph: "0", hint: "Quantas vezes, em média, a mesma pessoa viu esse anúncio. Número alto pode cansar o público." },
@@ -166,6 +186,78 @@ const METRIC_KEYS: (keyof Metrics)[] = [
   "cpm", "cpc", "cpl", "cpa", "roas", "landing_page_views", "lp_conversion_rate",
   "conversions", "weekly_conversions", "frequency", "learning_phase"
 ]
+/**
+ * Campos que entram nas regras de consistência do backend (P5).
+ *
+ * Um valor inválido NESTES campos não pode virar "campo ausente" nem virar um
+ * valor diferente: o backend deriva a taxa a partir dos brutos e aceitaria a
+ * campanha, que é exatamente o que a regra existe para impedir (achado 4 da
+ * revisão Codex, 2026-09-08 — `ctr_link: "0,4"` no arquivo era descartado e a
+ * campanha passava).
+ *
+ * Isto NÃO é uma cópia da matriz de regras: a comparação continua sendo feita
+ * só no backend. Aqui só se decide o que fazer com um valor que sequer é uma
+ * contagem ou taxa possível — bloquear em vez de apagar ou arredondar.
+ */
+const CAMPOS_P5 = new Set<string>([
+  "impressions", "video_views_3s", "thruplays", "link_clicks", "all_clicks",
+  "landing_page_views", "conversions",
+  "hook_rate", "hold_rate", "ctr_link", "ctr_all", "lp_conversion_rate"
+])
+
+/** Rótulo legível de um campo de métrica, para as mensagens de bloqueio. */
+const ROTULO_P5: Record<string, string> = {
+  impressions: "Impressões",
+  video_views_3s: "Visualizações de 3s",
+  thruplays: "ThruPlays",
+  link_clicks: "Cliques no link",
+  all_clicks: "Cliques (todos os tipos)",
+  landing_page_views: "Visitas à página",
+  conversions: "Conversões",
+  hook_rate: "Hook rate (%)",
+  hold_rate: "Hold rate (%)",
+  ctr_link: "CTR link (%)",
+  ctr_all: "CTR todos (%)",
+  lp_conversion_rate: "Conversão na página (%)"
+}
+
+export function rotuloDoCampo(chave: string): string {
+  return ROTULO_P5[chave] ?? chave
+}
+
+/**
+ * Por que um valor JÁ NUMÉRICO de um campo de P5 não pode seguir — ou `null`.
+ *
+ * Achado 4 da revisão Codex de 2026-09-09: `normalizaCampo` arredondava os
+ * campos inteiros com `Math.round` ANTES de qualquer verificação, nos dois
+ * modos. `link_clicks: -0.4` virava `-0`, que sai como `0` no JSON: o backend
+ * recusa o valor original (`ge=0`, `int`) e aceita o normalizado. Uma campanha
+ * inválida passava a existir porque o cliente "consertou" o número sozinho.
+ *
+ * A resposta é bloquear e explicar, preservando o que a pessoa escreveu —
+ * nunca reescrever o valor. Vale só para os campos de P5; os demais campos
+ * inteiros continuam sendo arredondados como sempre (ver `normalizaCampo`).
+ */
+export function problemaEmValorP5(chave: string, valor: number): string | null {
+  if (!CAMPOS_P5.has(chave)) return null
+  const rotulo = rotuloDoCampo(chave)
+  if (valor < 0) {
+    return (
+      `O campo '${rotulo}' está preenchido com um número negativo (${String(valor)}). ` +
+      "Nenhum desses números pode ser menor que zero — nem uma contagem, nem uma taxa. " +
+      "Corrija o valor ou apague o campo."
+    )
+  }
+  if (CAMPOS_INTEIROS.has(chave) && !Number.isInteger(valor)) {
+    return (
+      `O campo '${rotulo}' está preenchido com ${String(valor)}, que não é um número ` +
+      "inteiro. Esse campo conta quantas vezes algo aconteceu, e não existe meia " +
+      "vez. Escreva o número inteiro que você quer informar."
+    )
+  }
+  return null
+}
+
 const TARGET_KEYS: (keyof Targets)[] = [
   "min_hook_rate", "min_hold_rate", "min_ctr_link", "max_ctr_all_ratio", "max_cpa",
   "max_cpc", "max_cpm", "max_cpl", "min_roas", "min_lp_conversion_rate",
@@ -216,6 +308,12 @@ export type ParsedFile = {
   invalidTypeKeys: string[]
   /** Campos de lista fechada com valor fora da lista (ex: plataforma com typo). */
   invalidValueKeys: string[]
+  /**
+   * Campos de P5 com valor inválido — impedem analisar (não são "ignorados"
+   * nem "corrigidos"). Os demais campos continuam sendo descartados com aviso
+   * (valor de tipo errado) ou arredondados (contagem fracionária), como antes.
+   */
+  bloqueios: { key: string; message: string }[]
 }
 
 export function parseFileJSON(raw: string): ParsedFile | { error: string } {
@@ -241,6 +339,7 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
   const unknownKeys: string[] = []
   const invalidTypeKeys: string[] = []
   const invalidValueKeys: string[] = []
+  const bloqueios: { key: string; message: string }[] = []
 
   for (const [k, v] of Object.entries(rawMetrics)) {
     if (!METRIC_KEYS.includes(k as keyof Metrics)) { unknownKeys.push(`metrics.${k}`); continue }
@@ -248,9 +347,24 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
       if (typeof v === "boolean") (metrics as Record<string, unknown>)[k] = v
       else invalidTypeKeys.push(`metrics.${k}`)
     } else if (typeof v === "number" && Number.isFinite(v)) {
-      (metrics as Record<string, number>)[k] = normalizaCampo(k, v)
+      // A verificação vem ANTES de `normalizaCampo`: arredondar primeiro é o
+      // que transformava `-0.4` em `0` e fazia o backend aceitar (achado 4).
+      const problema = problemaEmValorP5(k, v)
+      if (problema) bloqueios.push({ key: k, message: `${problema} Corrija o arquivo e importe de novo.` })
+      else (metrics as Record<string, number>)[k] = normalizaCampo(k, v)
     } else {
       invalidTypeKeys.push(`metrics.${k}`)
+      // Descartar um valor inválido de campo de P5 transformaria erro em
+      // ausência e deixaria o backend derivar a taxa dos brutos.
+      if (CAMPOS_P5.has(k)) {
+        bloqueios.push({
+          key: k,
+          message:
+            `O campo '${rotuloDoCampo(k)}' está preenchido com um valor que não é um número. ` +
+            "Ele não vai ser apagado nem ignorado: corrija o valor no arquivo (só o número, " +
+            "sem aspas) e importe de novo, ou remova esse campo do arquivo se você não tem o dado."
+        })
+      }
     }
   }
   for (const [k, v] of Object.entries(rawTargets)) {
@@ -283,8 +397,67 @@ export function parseFileJSON(raw: string): ParsedFile | { error: string } {
     targets
   }
 
-  return { input, unknownKeys, invalidTypeKeys, invalidValueKeys }
+  return { input, unknownKeys, invalidTypeKeys, invalidValueKeys, bloqueios }
 }
+
+/**
+ * Problemas nos campos de P5 preenchidos no formulário manual.
+ *
+ * Duas portas para o mesmo buraco, as duas fechadas aqui:
+ *   • texto que não é número — `num()` devolve `undefined` e o campo sumia do
+ *     payload ("erro vira ausência", achado 4 de 2026-09-08);
+ *   • número que não é uma contagem/taxa possível — `normalizaCampo` o
+ *     arredondava antes de sair ("erro vira valor válido", achado 4 de
+ *     2026-09-09). Ver `problemaEmValorP5`.
+ */
+export function problemasP5NoFormulario(
+  valores: Record<string, string>
+): { key: string; message: string }[] {
+  const problemas: { key: string; message: string }[] = []
+  for (const f of [...FIELDS_DELIVERY, ...FIELDS_CREATIVE]) {
+    if (!CAMPOS_P5.has(f.key)) continue
+    const escrito = (valores[f.key] ?? "").trim()
+    if (escrito === "") continue
+    const n = num(escrito)
+    if (n === undefined) {
+      problemas.push({ key: f.key, message: mensagemCampoNaoNumerico(f.key, escrito) })
+      continue
+    }
+    const problema = problemaEmValorP5(f.key, n)
+    if (problema) problemas.push({ key: f.key, message: problema })
+  }
+  return problemas
+}
+
+/** Mensagem de um campo de P5 preenchido com texto que não é número. */
+export function mensagemCampoNaoNumerico(chave: string, escrito: string): string {
+  return (
+    `O campo '${rotuloDoCampo(chave)}' está preenchido com "${escrito.trim()}", ` +
+    "que não é um número. Escreva só o número (use vírgula para os decimais, " +
+    "como 1,5) ou apague o campo. Se ficar assim, esse valor seria descartado " +
+    "e a campanha analisada como se você não tivesse informado nada nele."
+  )
+}
+
+/**
+ * Campos que a importação realmente descartou — os bloqueados ficam de fora,
+ * porque nada foi descartado neles: a análise inteira está parada por eles.
+ */
+export function ignoradosNaPreVisualizacao(arquivo: ParsedFile): string[] {
+  const bloqueados = new Set(arquivo.bloqueios.map((b) => `metrics.${b.key}`))
+  return arquivo.invalidTypeKeys.filter((k) => !bloqueados.has(k))
+}
+
+/**
+ * Um problema apontado na última tentativa de analisar.
+ *
+ * `revalidar` marca que um dos campos envolvidos foi editado DEPOIS da
+ * rejeição: não sabemos mais se o problema continua, e afirmar que ele foi
+ * resolvido seria mentira (achado 5 da revisão Codex, 2026-09-08 — trocar
+ * 0,4 por 1,5 com 100 impressões e 50 cliques apagava o alerta embora os
+ * números continuassem incompatíveis). Quem decide é a próxima análise.
+ */
+type ErroDeConsistencia = ErroConsistenciaMetrica & { revalidar?: boolean }
 
 export function NewCampaignModal({
   onClose,
@@ -309,6 +482,10 @@ export function NewCampaignModal({
   const [mode, setMode] = useState<"manual" | "file">("manual")
   const [step, setStep] = useState(-1) // -1 = idle
   const [error, setError] = useState<string | null>(null)
+  // P5 (2026-09-08): contradições entre métricas, devolvidas pelo backend já
+  // associadas aos campos envolvidos (ver ~lib/api), mais os bloqueios locais
+  // de valor não numérico. Vazio fora de uma tentativa rejeitada.
+  const [fieldErrors, setFieldErrors] = useState<ErroDeConsistencia[]>([])
   const [name, setName] = useState("")
   // "" = não informado. Nunca vira `false` sozinho — ver comentário no <select>.
   const [learningPhase, setLearningPhase] = useState("")
@@ -325,8 +502,16 @@ export function NewCampaignModal({
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
-  const setV = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const setV = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setValues((v) => ({ ...v, [key]: e.target.value }))
+    // Editar NÃO apaga o problema: marca que ele precisa ser conferido de novo.
+    // O cliente não repete a comparação (a regra vive só no backend), então a
+    // única coisa honesta a dizer aqui é "mudou, analise de novo para saber".
+    // Erros que não citam este campo continuam confirmados, sem serem escondidos.
+    setFieldErrors((atual) =>
+      atual.map((fe) => (fe.fields.includes(key) ? { ...fe, revalidar: true } : fe))
+    )
+  }
 
   function buildInput(): AnalyzeInput {
     const metrics: Metrics = {}
@@ -355,9 +540,20 @@ export function NewCampaignModal({
 
   async function runAnalyze(overrideInput?: AnalyzeInput) {
     setError(null)
+    setFieldErrors([])
     if (!overrideInput) {
+      // Campo de P5 com valor impossível: bloquear ANTES de qualquer coisa —
+      // inclusive antes da reescrita de normalização logo abaixo, que é o que
+      // transformava "-0,4" em "0" na tela e no payload (achado 4, 2026-09-09).
+      // O que a pessoa escreveu fica exatamente como está.
+      const problemas = problemasP5NoFormulario(values)
+      if (problemas.length > 0) {
+        setFieldErrors(problemas.map((p) => ({ fields: [p.key], message: p.message })))
+        return
+      }
       // Sem isto o formulário continuaria exibindo "120000,5" depois de enviar
-      // 120000 — o gestor leria um número que não foi o analisado.
+      // 120000 — o gestor leria um número que não foi o analisado. Só chega
+      // aqui o que já passou pelo bloqueio acima.
       setValues((atual) => {
         const ajustado = { ...atual }
         for (const f of [...FIELDS_DELIVERY, ...FIELDS_CREATIVE, ...FIELDS_TARGETS]) {
@@ -369,6 +565,7 @@ export function NewCampaignModal({
         return ajustado
       })
     }
+
     const input = overrideInput ?? buildInput()
 
     if (Object.keys(input.metrics).length === 0) {
@@ -407,11 +604,38 @@ export function NewCampaignModal({
     } catch (e) {
       clearTimeout(timer.current)
       setStep(-1)
+      // P5: contradição/impossibilidade nos dados — não é falha de rede nem
+      // bug do servidor, então não passa por `mensagemDeErro`. Os valores
+      // preenchidos continuam no formulário (nunca limpamos `values` aqui).
+      if (isMetricConsistencyError(e)) {
+        setFieldErrors(e.fieldErrors)
+        return
+      }
       setError(mensagemDeErro(e))
     }
   }
 
   const collecting = step >= 0
+
+  /** Índice em `fieldErrors` do primeiro erro que envolve este campo, ou -1. */
+  const erroIndexDoCampo = (key: string) => fieldErrors.findIndex((fe) => fe.fields.includes(key))
+
+  /**
+   * Acessibilidade e realce de um campo citado num erro.
+   *
+   * `aria-invalid` só enquanto o problema está CONFIRMADO pela última análise.
+   * Depois de editar o campo, a explicação continua associada (`describedby`),
+   * mas não afirmamos mais que o valor é inválido — ninguém revalidou ainda.
+   */
+  const propsDeErro = (errIdx: number) => {
+    if (errIdx < 0) return {}
+    const pendente = fieldErrors[errIdx].revalidar === true
+    return {
+      "aria-invalid": pendente ? undefined : true,
+      "aria-describedby": `consistencia-erro-${errIdx}`,
+      style: { borderColor: pendente ? "var(--amber)" : "var(--red)" }
+    }
+  }
 
   return (
     <div className="overlay" onClick={(e) => e.target === e.currentTarget && !collecting && onClose()}>
@@ -505,9 +729,32 @@ export function NewCampaignModal({
                     Chaves desconhecidas ignoradas (não enviadas): {filePreview.unknownKeys.join(", ")}
                   </div>
                 )}
-                {filePreview.invalidTypeKeys.length > 0 && (
+                {ignoradosNaPreVisualizacao(filePreview).length > 0 && (
                   <div style={{ color: "var(--red)", fontSize: "var(--text-body)", marginTop: 8 }}>
-                    Valores com tipo inválido ignorados (não enviados): {filePreview.invalidTypeKeys.join(", ")}
+                    Valores com tipo inválido ignorados (não enviados):{" "}
+                    {ignoradosNaPreVisualizacao(filePreview).join(", ")}
+                  </div>
+                )}
+
+                {/* P5: estes NÃO são "ignorados" nem corrigidos — impedem
+                    analisar, porque descartá-los (ou arredondá-los) faria o
+                    backend derivar a taxa dos brutos e aceitar a campanha. */}
+                {filePreview.bloqueios.length > 0 && (
+                  <div
+                    role="alert"
+                    style={{
+                      marginTop: 12, padding: "14px 16px", borderRadius: 12,
+                      background: "var(--red-bg)", color: "var(--red)",
+                      fontSize: "var(--text-body)", lineHeight: 1.6
+                    }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                      O arquivo não pode ser analisado como está.
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+                      {filePreview.bloqueios.map((b) => (
+                        <li key={b.key}>{b.message}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 {filePreview.invalidValueKeys.length > 0 && (
@@ -516,7 +763,11 @@ export function NewCampaignModal({
                   </div>
                 )}
 
-                <button className="submit" style={{ marginTop: 16 }} onClick={() => runAnalyze(filePreview.input)}>
+                <button
+                  className="submit"
+                  style={{ marginTop: 16 }}
+                  disabled={filePreview.bloqueios.length > 0}
+                  onClick={() => runAnalyze(filePreview.input)}>
                   Analisar campanha
                 </button>
               </div>
@@ -563,6 +814,41 @@ export function NewCampaignModal({
               lineHeight: 1.6
             }}>
             {error}
+          </div>
+        )}
+
+        {/* P5: sempre visível (nunca só em hover), independe do modo — vale
+            tanto para manual (balões associados abaixo) quanto para importação
+            de arquivo, que não tem inputs individuais para ancorar o balão. */}
+        {fieldErrors.length > 0 && !collecting && (
+          <div
+            role="alert"
+            style={{
+              margin: "14px 0",
+              padding: "14px 16px",
+              borderRadius: 12,
+              background: "var(--red-bg)",
+              color: "var(--red)",
+              fontSize: "var(--text-body)",
+              lineHeight: 1.6
+            }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              Alguns dados não combinam entre si — corrija antes de analisar:
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+              {fieldErrors.map((fe, i) => (
+                <li key={i} id={`consistencia-erro-${i}`}>
+                  {fe.message}
+                  {fe.revalidar && (
+                    <>
+                      {" "}
+                      <b>Você mudou um desses campos. Clique em “Analisar campanha”
+                      para conferir se agora os números combinam.</b>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -619,24 +905,36 @@ export function NewCampaignModal({
             <div className="grp">
               <div className="grp-h">Entrega &amp; custo</div>
               <div className="fld-grid">
-                {FIELDS_DELIVERY.map((f) => (
-                  <div className="fld" key={f.key}>
-                    <label>{f.label}<FieldHint text={f.hint} /></label>
-                    <input inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)} />
-                  </div>
-                ))}
+                {FIELDS_DELIVERY.map((f) => {
+                  const errIdx = erroIndexDoCampo(f.key)
+                  return (
+                    <div className="fld" key={f.key}>
+                      <label>{f.label}<FieldHint text={f.hint} /></label>
+                      <input
+                        inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)}
+                        {...propsDeErro(errIdx)}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
             <div className="grp">
               <div className="grp-h">Criativo &amp; cliques</div>
               <div className="fld-grid">
-                {FIELDS_CREATIVE.map((f) => (
-                  <div className="fld" key={f.key}>
-                    <label>{f.label}<FieldHint text={f.hint} /></label>
-                    <input inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)} />
-                  </div>
-                ))}
+                {FIELDS_CREATIVE.map((f) => {
+                  const errIdx = erroIndexDoCampo(f.key)
+                  return (
+                    <div className="fld" key={f.key}>
+                      <label>{f.label}<FieldHint text={f.hint} /></label>
+                      <input
+                        inputMode="decimal" placeholder={f.ph} value={values[f.key] ?? ""} onChange={setV(f.key)}
+                        {...propsDeErro(errIdx)}
+                      />
+                    </div>
+                  )
+                })}
                 {/* Tri-estado de propósito, não checkbox. Um checkbox desmarcado
                     afirmaria "não está em aprendizado" para quem simplesmente
                     não sabe — inventar evidência favorável é exatamente o

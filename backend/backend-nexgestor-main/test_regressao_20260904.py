@@ -143,6 +143,19 @@ class TestCampanhaEntradaRejeitaBooleano:
     ficou fora da varredura original — achado da revisão Opus de 2026-09-04.
     """
 
+    # Campanha no formato que a gravação exige desde P5 (2026-09-09) — ver
+    # app/service/campaign_payload.py. Estes testes são sobre o `id`/`client_id`
+    # da requisição, não sobre o payload: ele só precisa ser válido para o
+    # `id=true` chegar a ser avaliado.
+    VM = {
+        "id": 1000, "name": "Black Friday", "platform": "Meta Ads",
+        "status": "GREEN", "score": 92, "invest": 0.0, "revenue": 0,
+        "roasNum": None, "cpaNum": None, "ctrNum": None, "freqNum": None,
+        "m1": {"k": "CPA", "v": "—"}, "m2": {"k": "CTR Link", "v": "—"},
+        "spark": [92], "trend": 0, "ai": "", "summary": "s", "opportunity": "o",
+        "primaryAction": "a", "tiles": [], "scenarios": [], "actions": [], "sugg": [],
+    }
+
     @pytest.fixture
     def base(self, tmp_path, monkeypatch):
         caminho = tmp_path / "teste.db"
@@ -155,7 +168,7 @@ class TestCampanhaEntradaRejeitaBooleano:
     def test_post_campaigns_com_id_bool_e_422_nao_500(self, base, valor):
         r = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "x"}, "id": valor},
+            json={"payload": self.VM, "id": valor},
             headers={"X-Nex-Dono": "revisao"},
         )
         assert r.status_code == 422
@@ -166,47 +179,55 @@ class TestCampanhaEntradaRejeitaBooleano:
         """Reprodução exata do achado do Opus: id=true não pode sobrescrever id=1."""
         dono = {"X-Nex-Dono": "revisao"}
         legitima = client.post(
-            "/api/v1/campaigns", json={"payload": {"name": "Black Friday", "score": 92}}, headers=dono
+            "/api/v1/campaigns", json={"payload": self.VM}, headers=dono
         )
         assert legitima.json()["id"] == 1
 
         ataque = client.post(
-            "/api/v1/campaigns", json={"payload": {"name": "Rascunho vazio"}, "id": True}, headers=dono
+            "/api/v1/campaigns", json={"payload": {**self.VM, "name": "Rascunho vazio"}, "id": True}, headers=dono
         )
         assert ataque.status_code == 422
 
         campanhas = client.get("/api/v1/campaigns", headers=dono).json()["campanhas"]
         assert len(campanhas) == 1
-        assert campanhas[0]["payload"] == {"name": "Black Friday", "score": 92}
+        assert campanhas[0]["payload"] == self.VM
 
     def test_client_id_bool_tambem_e_422(self, base):
         # client_id é str, não int — bool também não deveria ser aceito, mas
         # por ser tipo errado (não pela regra de booleano em inteiro).
         r = client.post(
             "/api/v1/campaigns",
-            json={"payload": {"name": "x"}, "client_id": True},
+            json={"payload": self.VM, "client_id": True},
             headers={"X-Nex-Dono": "revisao"},
         )
         assert r.status_code == 422
 
     def test_id_valido_continua_atualizando_normalmente(self, base):
         dono = {"X-Nex-Dono": "revisao"}
-        criada = client.post("/api/v1/campaigns", json={"payload": {"name": "v1"}}, headers=dono)
+        criada = client.post(
+            "/api/v1/campaigns",
+            json={"payload": {**self.VM, "name": "v1", "score": 10, "status": "RED"}},
+            headers=dono,
+        )
         campanha_id = criada.json()["id"]
 
         atualizada = client.post(
-            "/api/v1/campaigns", json={"payload": {"name": "v2"}, "id": campanha_id}, headers=dono
+            "/api/v1/campaigns",
+            json={"payload": {**self.VM, "name": "v2", "score": 20, "status": "YELLOW"}, "id": campanha_id},
+            headers=dono,
         )
         assert atualizada.status_code == 200
         assert atualizada.json()["id"] == campanha_id
 
         campanhas = client.get("/api/v1/campaigns", headers=dono).json()["campanhas"]
         assert len(campanhas) == 1
-        assert campanhas[0]["payload"] == {"name": "v2"}
+        assert campanhas[0]["payload"] == {**self.VM, "name": "v2", "score": 20, "status": "YELLOW"}
 
     def test_criacao_sem_id_continua_funcionando(self, base):
         r = client.post(
-            "/api/v1/campaigns", json={"payload": {"name": "nova"}}, headers={"X-Nex-Dono": "revisao"}
+            "/api/v1/campaigns",
+            json={"payload": {**self.VM, "name": "nova", "score": 50}},
+            headers={"X-Nex-Dono": "revisao"},
         )
         assert r.status_code == 200
         assert isinstance(r.json()["id"], int)
